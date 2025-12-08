@@ -1,0 +1,1 @@
+web: gunicorn sistema_contable.wsgi --log-file -
