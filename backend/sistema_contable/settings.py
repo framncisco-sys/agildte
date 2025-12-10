@@ -125,9 +125,8 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-]
+# Configuración CORS
+CORS_ALLOW_ALL_ORIGINS = True
 # --- CONFIGURACIÓN BASE DE DATOS NUBE ---
 # Si Railway nos da una base de datos, la usamos. Si no, usamos la local.
 db_from_env = dj_database_url.config(conn_max_age=500)
