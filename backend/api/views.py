@@ -18,18 +18,22 @@ def limpiar(valor):
     return str(valor).replace("-", "").replace(" ", "").strip()
 
 # --- CLIENTES ---
-@api_view(['GET'])
-def listar_clientes(request):
-    clientes = Cliente.objects.all()
-    serializer = ClienteSerializer(clientes, many=True)
-    return Response(serializer.data)
-
-@api_view(['POST'])
-def crear_cliente(request):
-    serializer = ClienteSerializer(data=request.data)
-    if serializer.is_valid(): serializer.save(); return Response(serializer.data, status=201)
-    return Response(serializer.errors, status=400)
-
+# --- CLIENTES (UNIFICADO) ---
+@api_view(['GET', 'POST'])
+def clientes_api(request):
+    if request.method == 'GET':
+        # Lógica de listar
+        clientes = Cliente.objects.all()
+        serializer = ClienteSerializer(clientes, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        # Lógica de crear
+        serializer = ClienteSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
 # --- CARGA MASIVA ---
 @api_view(['POST'])
 def procesar_lote_dtes(request):
