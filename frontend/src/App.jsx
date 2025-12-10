@@ -166,7 +166,7 @@ function App() {
     if(!nuevoNombre || !nuevoNrc) { alert("Datos incompletos"); return; }
     
     // CORRECCIÓN AQUÍ ABAJO:
-    fetch('https://backend-production-8f98.up.railway.app/api/clientes/crear/', { 
+    fetch('https://backend-production-8f98.up.railway.app/api/clientes/', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ 
