@@ -1,23 +1,51 @@
 from django.db import models
 
-# --- TABLA 1: CLIENTES (Ya la teníamos) ---
+# 1. MODELO EMPRESA (Tus 12 Clientes VIP)
+# Aquí va la configuración pesada: Logos, Correo para leer facturas, Sellos.
+class Empresa(models.Model):
+    nombre = models.CharField(max_length=200)
+    nrc = models.CharField(max_length=20, unique=True)
+    nit = models.CharField(max_length=30, blank=True, null=True)
+    direccion = models.TextField(null=True, blank=True)
+    es_importador = models.BooleanField(default=False)
+    
+    # --- MÓDULO DE LECTURA DE CORREOS (Solo para tus VIPs) ---
+    email_lectura = models.EmailField(blank=True, null=True, help_text="Correo donde llegan los DTEs de proveedores")
+    clave_correo = models.CharField(max_length=100, blank=True, null=True, help_text="Contraseña de aplicación para leer el correo")
+    hora_sync = models.TimeField(default="03:00:00", help_text="Hora automática de lectura")
+    
+    # Logo para sus facturas
+    logo = models.ImageField(upload_to='logos/', null=True, blank=True)
+
+    def __str__(self):
+        return self.nombre
+
+
+# 2. MODELO CLIENTE (Directorio General / Excel Masivo)
+# Aquí cargaremos a los 50,000 contribuyentes. Debe ser ligero.
 class Cliente(models.Model):
-    nrc = models.CharField(max_length=20, unique=True, primary_key=True)
+    # Nota: Mantenemos el NRC como llave primaria si así lo tenías, 
+    # es excelente para evitar duplicados en la carga masiva.
+    nrc = models.CharField(max_length=20, unique=True, primary_key=True) 
+    
     nombre = models.CharField(max_length=200)
     nit = models.CharField(max_length=30, blank=True, null=True)
     dui = models.CharField(max_length=20, blank=True, null=True)
-    es_importador = models.BooleanField(default=False)
-    email_facturas = models.EmailField(blank=True, null=True)
-    clave_correo = models.CharField(max_length=100, blank=True, null=True)
-    hora_sync = models.TimeField(default="03:00:00")
+    
+    # Solo necesitamos su correo para ENVIARLE la factura, no su clave.
+    email_contacto = models.EmailField(blank=True, null=True) 
+    
+    direccion = models.TextField(null=True, blank=True)
+    giro = models.CharField(max_length=200, blank=True, null=True) # Útil para el Excel
 
     def __str__(self):
         return f"{self.nombre} ({self.nrc})"
 
 # --- TABLA 2: LIBRO DE COMPRAS (¡NUEVA!) ---
 class Compra(models.Model):
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='compras_realizadas', null=True)
     # Relación: Una compra pertenece a un Cliente
-    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="compras")
+    proveedor = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='compras_recibidas')
     
     # Datos del Documento
     fecha_emision = models.DateField()
@@ -49,7 +77,8 @@ class Compra(models.Model):
 
 # --- TABLA 3: LIBRO DE VENTAS (VERSIÓN FINAL COMPLETA) ---
 class Venta(models.Model):
-    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="ventas")
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='ventas_realizadas', null=True)
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='compras_hechas')
     
     # Datos Generales
     fecha_emision = models.DateField()
