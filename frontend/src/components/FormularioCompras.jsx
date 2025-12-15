@@ -117,6 +117,9 @@ const FormularioCompras = ({ clienteInfo, volverAlInicio }) => {
         clasificacion_2: clasif2,
         clasificacion_3: clasif3
     };
+    // --- AGREGA ESTA LÍNEA AQUÍ: ---
+    console.log("📤 ENVIANDO COMPRA:", nuevaCompra); 
+    // -------------------------------
 
     try {
         const respuesta = await fetch('https://backend-production-8f98.up.railway.app/api/compras/crear/', {

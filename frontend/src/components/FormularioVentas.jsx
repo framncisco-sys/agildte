@@ -82,6 +82,9 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio }) => {
         total: parseFloat(montoTotal),
         tipo_documento: tipoDocumento
     };
+    // --- AGREGA ESTA LÍNEA AQUÍ: ---
+    console.log("📤 ENVIANDO Vents:", nuevaVenta); 
+    // -------------------------------
 
     try {
         const respuesta = await fetch('https://backend-production-8f98.up.railway.app/api/ventas/crear/', {
