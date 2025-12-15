@@ -103,20 +103,21 @@ const FormularioCompras = ({ clienteInfo, volverAlInicio }) => {
         return;
     }
 
-  const nuevaCompra = {
-        // CORRECCIÓN: Nombres para Django
-        empresa: clienteInfo.nrc,          // Django probablemente espera 'empresa', no 'empresa_nrc'
-        fecha_emision: fechaFactura,       // Igual que en ventas
-        periodo_aplicado: periodoContable, 
+    const nuevaCompra = {
+        cliente: clienteInfo.id || clienteInfo.nrc, // El backend pide "cliente" (tu empresa logueada)
+        fecha_emision: fechaFactura,
+        periodo_aplicado: periodoContable,
         numero_documento: numeroDocumento,
-        proveedor: nrcProveedor,           // Antes era 'nrc_proveedor'
-        // nombre_proveedor: nombreProveedor, 
+        
+        // CORRECCIÓN: Volvemos a los nombres que pide el error
+        nrc_proveedor: nrcProveedor,       // El error pedía "nrc_proveedor"
+        nombre_proveedor: nombreProveedor, // El error pedía "nombre_proveedor"
+        
         total_gravado: parseFloat(montoGravado),
         total_iva: parseFloat(montoIva),
         total: parseFloat(montoTotal),
-        tipo_compra: tipoDocumento,        // Antes era 'tipo_documento'
+        tipo_compra: tipoDocumento,
         
-        // Las clasificaciones suelen ir igual, pero verifiquemos si pasan
         clasificacion_1: clasif1,
         clasificacion_2: clasif2,
         clasificacion_3: clasif3

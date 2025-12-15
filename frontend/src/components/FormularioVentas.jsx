@@ -126,11 +126,13 @@ const nuevaVenta = {
         <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px'}}>
             <div>
                 <label style={{display: 'block'}}>Tipo Documento</label>
+                {/* CAMBIO: Probamos con códigos de texto si los números fallan */}
                 <select value={tipoDocumento} onChange={(e) => setTipoDocumento(e.target.value)} style={{width: '100%', padding: '10px'}}>
-                    <option value="03">03 - Crédito Fiscal (CCF)</option>
-                    <option value="01">01 - Factura (CF)</option>
-                    <option value="11">11 - Exportación</option>
+                    <option value="CCF">CCF - Crédito Fiscal</option>
+                    <option value="CF">CF - Factura</option>
+                    <option value="EXP">EXP - Exportación</option>
                 </select>
+                {/* Si "CCF" también falla, prueba enviando el número entero: value={3} (sin comillas) */}
             </div>
             <div>
                 <label style={{display: 'block'}}>Periodo de Trabajo</label>
