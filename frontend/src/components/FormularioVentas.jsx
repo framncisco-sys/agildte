@@ -71,16 +71,17 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio }) => {
         return;
     }
 
-    const nuevaVenta = {
-        empresa_nrc: clienteInfo.nrc, // La empresa que vende
-        fecha: fechaFactura,
+const nuevaVenta = {
+        // CORRECCIÓN: Usamos los nombres exactos que pide Django
+        fecha_emision: fechaFactura,      // Antes era 'fecha'
+        periodo_aplicado: periodoContable, // Antes no lo enviábamos
         numero_documento: numeroDocumento,
-        nrc_cliente: nrcCliente,
-        nombre_cliente: nombreCliente,
+        cliente: nrcCliente,              // Antes era 'nrc_cliente'
+        // nombre_cliente: nombreCliente, // Django no suele pedir el nombre, solo el ID/NRC
         total_gravado: parseFloat(montoGravado),
         total_iva: parseFloat(montoIva),
         total: parseFloat(montoTotal),
-        tipo_documento: tipoDocumento
+        tipo_venta: tipoDocumento         // Antes era 'tipo_documento'
     };
     // --- AGREGA ESTA LÍNEA AQUÍ: ---
     console.log("📤 ENVIANDO Vents:", nuevaVenta); 

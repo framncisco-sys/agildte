@@ -103,16 +103,20 @@ const FormularioCompras = ({ clienteInfo, volverAlInicio }) => {
         return;
     }
 
-    const nuevaCompra = {
-        empresa_nrc: clienteInfo.nrc, // Vinculamos la compra a la empresa seleccionada
-        fecha: fechaFactura,
+  const nuevaCompra = {
+        // CORRECCIÓN: Nombres para Django
+        empresa: clienteInfo.nrc,          // Django probablemente espera 'empresa', no 'empresa_nrc'
+        fecha_emision: fechaFactura,       // Igual que en ventas
+        periodo_aplicado: periodoContable, 
         numero_documento: numeroDocumento,
-        nrc_proveedor: nrcProveedor,
-        nombre_proveedor: nombreProveedor,
+        proveedor: nrcProveedor,           // Antes era 'nrc_proveedor'
+        // nombre_proveedor: nombreProveedor, 
         total_gravado: parseFloat(montoGravado),
         total_iva: parseFloat(montoIva),
         total: parseFloat(montoTotal),
-        tipo_documento: tipoDocumento,
+        tipo_compra: tipoDocumento,        // Antes era 'tipo_documento'
+        
+        // Las clasificaciones suelen ir igual, pero verifiquemos si pasan
         clasificacion_1: clasif1,
         clasificacion_2: clasif2,
         clasificacion_3: clasif3
