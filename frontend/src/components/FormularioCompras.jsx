@@ -10,6 +10,25 @@ const FormularioCompras = ({ clienteInfo, volverAlInicio }) => {
   const [montoGravado, setMontoGravado] = useState("");
   const [montoIva, setMontoIva] = useState("");
   const [montoTotal, setMontoTotal] = useState("");
+    
+  // NUEVO: Estado para el Periodo (Mes de trabajo)
+  const [periodoContable, setPeriodoContable] = useState(""); 
+  const [listaPeriodos, setListaPeriodos] = useState([]);
+
+  // NUEVO: Al cargar el formulario, calculamos: Mes Actual y Mes Siguiente
+  useEffect(() => {
+    const hoy = new Date();
+    
+    // Mes Actual
+    const mesActual = hoy.toISOString().slice(0, 7); // Ejemplo: "2025-12"
+    
+    // Mes Siguiente (Manejo automático de cambio de año)
+    const proximoMesDate = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1);
+    const mesSiguiente = proximoMesDate.toISOString().slice(0, 7); // Ejemplo: "2026-01"
+
+    setListaPeriodos([mesActual, mesSiguiente]);
+    setPeriodoContable(mesActual); // Por defecto selecciona el actual
+  }, []);
   
   // Clasificaciones
   const [clasif1, setClasif1] = useState("");
@@ -100,7 +119,7 @@ const FormularioCompras = ({ clienteInfo, volverAlInicio }) => {
     };
 
     try {
-        const respuesta = await fetch('https://backend-production-8f98.up.railway.app/api/compras/', {
+        const respuesta = await fetch('https://backend-production-8f98.up.railway.app/api/compras/crear/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(nuevaCompra)

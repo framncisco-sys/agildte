@@ -1,10 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const FormularioVentas = ({ clienteInfo, volverAlInicio }) => {
   // --- ESTADOS ---
   const [tipoDocumento, setTipoDocumento] = useState("03");
   const [fechaFactura, setFechaFactura] = useState("");
   const [numeroDocumento, setNumeroDocumento] = useState("");
+  
+  
+  // NUEVO: Estado para el Periodo (Mes de trabajo)
+  const [periodoContable, setPeriodoContable] = useState(""); 
+  const [listaPeriodos, setListaPeriodos] = useState([]);
+
+  // NUEVO: Al cargar el formulario, calculamos: Mes Actual y Mes Siguiente
+  useEffect(() => {
+    const hoy = new Date();
+    
+    // Mes Actual
+    const mesActual = hoy.toISOString().slice(0, 7); // Ejemplo: "2025-12"
+    
+    // Mes Siguiente (Manejo automático de cambio de año)
+    const proximoMesDate = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1);
+    const mesSiguiente = proximoMesDate.toISOString().slice(0, 7); // Ejemplo: "2026-01"
+
+    setListaPeriodos([mesActual, mesSiguiente]);
+    setPeriodoContable(mesActual); // Por defecto selecciona el actual
+  }, []);
   
   // Datos del Cliente
   const [nrcCliente, setNrcCliente] = useState("");
@@ -64,7 +84,7 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio }) => {
     };
 
     try {
-        const respuesta = await fetch('https://backend-production-8f98.up.railway.app/api/ventas/', {
+        const respuesta = await fetch('https://backend-production-8f98.up.railway.app/api/ventas/crear/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(nuevaVenta)
@@ -109,8 +129,32 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio }) => {
                 </select>
             </div>
             <div>
-                <label style={{display: 'block'}}>Fecha</label>
-                <input type="date" value={fechaFactura} onChange={(e) => setFechaFactura(e.target.value)} style={{width: '100%', padding: '8px', border: '1px solid #ccc'}} />
+                <label style={{display: 'block'}}>Periodo de Trabajo</label>
+                {/* SELECTOR AUTOMATICO: Muestra Hoy y el Próximo Mes */}
+                <select 
+                    value={periodoContable} 
+                    onChange={(e) => setPeriodoContable(e.target.value)} 
+                    style={{width: '100%', padding: '10px', background: '#e8f6f3', fontWeight: 'bold'}}
+                >
+                    {listaPeriodos.map(periodo => (
+                        <option key={periodo} value={periodo}>
+                            {periodo} (Operativo)
+                        </option>
+                    ))}
+                </select>
+            </div>
+            
+            <div style={{marginTop: '10px'}}>
+                <label style={{display: 'block'}}>Fecha del Documento</label>
+                {/* La fecha se limita al mes seleccionado arriba para evitar errores */}
+                <input 
+                    type="date" 
+                    value={fechaFactura} 
+                    min={`${periodoContable}-01`} 
+                    max={`${periodoContable}-31`}
+                    onChange={(e) => setFechaFactura(e.target.value)} 
+                    style={{width: '100%', padding: '8px', border: '1px solid #ccc'}} 
+                />
             </div>
         </div>
 
