@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { usePeriodo } from '../contexts/PeriodoContext';
 
-const FormularioVentas = ({ clienteInfo, volverAlInicio }) => {
+const FormularioVentas = ({ clienteInfo, volverAlInicio, ventaId = null }) => {
+  // --- CONTEXTO GLOBAL ---
+  const { periodoFormateado, mes, anio } = usePeriodo();
+  
   // --- ESTADOS ---
   const [tipoDocumento, setTipoDocumento] = useState("CCF"); 
   const [fechaFactura, setFechaFactura] = useState("");
@@ -10,142 +14,316 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio }) => {
   const [nrcCliente, setNrcCliente] = useState("");
   const [nombreCliente, setNombreCliente] = useState("");
   
-  // Periodo Contable
-  const [periodoContable, setPeriodoContable] = useState(""); 
-  const [listaPeriodos, setListaPeriodos] = useState([]);
+  // NUEVO: Estados para la búsqueda/creación de cliente
+  const [isLoadingCliente, setIsLoadingCliente] = useState(false);
+  const [existeCliente, setExisteCliente] = useState(false);
+  const [nombreBloqueado, setNombreBloqueado] = useState(false);
+  const [modoCrearCliente, setModoCrearCliente] = useState(false);
+  const [modoEdicion, setModoEdicion] = useState(false);
+  const [cargandoDatos, setCargandoDatos] = useState(false);
 
   // Montos
   const [montoGravado, setMontoGravado] = useState("");
   const [montoIva, setMontoIva] = useState("");
   const [montoTotal, setMontoTotal] = useState("");
 
-  // --- USE EFFECT: Cargar Fecha y Periodo Automático ---
+  // --- USE EFFECT: Cargar Fecha Automática ---
   useEffect(() => {
-    const hoy = new Date();
-    const mesActual = hoy.toISOString().slice(0, 7); 
-    const proximoMesDate = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1);
-    const mesSiguiente = proximoMesDate.toISOString().slice(0, 7);
-
-    setListaPeriodos([mesActual, mesSiguiente]);
-    setPeriodoContable(mesActual);
-    setFechaFactura(hoy.toISOString().slice(0, 10)); 
+    if (!ventaId) {
+      const hoy = new Date();
+      setFechaFactura(hoy.toISOString().slice(0, 10));
+    }
   }, []);
 
-  // --- CALCULOS ---
-  const handleMontoChange = (e) => {
-    const gravado = parseFloat(e.target.value) || 0;
-    setMontoGravado(gravado);
-    const iva = parseFloat((gravado * 0.13).toFixed(2));
-    setMontoIva(iva);
-    setMontoTotal((gravado + iva).toFixed(2));
-  };
+  // --- CARGAR DATOS SI HAY ID (MODO EDICIÓN) ---
+  useEffect(() => {
+    if (ventaId) {
+      setCargandoDatos(true);
+      setModoEdicion(true);
+      fetch(`http://127.0.0.1:8000/api/ventas/${ventaId}/`)
+        .then(res => res.json())
+        .then(data => {
+          // Mapear datos del backend a los estados del formulario
+          setTipoDocumento(data.tipo_venta || "CCF");
+          setFechaFactura(data.fecha_emision || "");
+          setNumeroDocumento(data.numero_documento || data.codigo_generacion || "");
+          setMontoGravado(data.venta_gravada?.toString() || "");
+          setMontoIva(data.debito_fiscal?.toString() || "");
+          setMontoTotal((parseFloat(data.venta_gravada || 0) + parseFloat(data.debito_fiscal || 0)).toString());
+          
+          // Si no es CF, cargar datos del cliente
+          if (data.tipo_venta !== 'CF') {
+            // El serializer ahora envía nrc_receptor y nombre_receptor directamente
+            const nrcCliente = data.nrc_receptor || (typeof data.cliente === 'string' ? data.cliente : data.cliente?.nrc) || "";
+            const nombreCliente = data.nombre_receptor || (typeof data.cliente === 'object' && data.cliente ? data.cliente.nombre : "") || "";
+            
+            if (nrcCliente) {
+              setNrcCliente(nrcCliente);
+              setNombreCliente(nombreCliente);
+              setExisteCliente(true);
+              setNombreBloqueado(true);
+            }
+          }
+          setCargandoDatos(false);
+        })
+        .catch(error => {
+          console.error("Error cargando venta:", error);
+          alert("Error al cargar los datos de la venta");
+          setCargandoDatos(false);
+        });
+    }
+  }, [ventaId]);
+  
+  // Determinar si es Consumidor Final
+  const esConsumidorFinal = tipoDocumento === "CF";
 
-  // --- BUSCAR CLIENTE (Opcional) ---
-  const buscarCliente = async () => {
-    if(nrcCliente.length < 5) return;
-    try {
-        const res = await fetch(`https://backend-production-8f98.up.railway.app/api/clientes/buscar/?nrc=${nrcCliente}`);
-        if(res.ok) {
-            const data = await res.json();
-            if(data.nombre) setNombreCliente(data.nombre);
-        }
-    } catch (error) {
-        console.log("Cliente no encontrado en búsqueda rápida.");
+  // --- CALCULOS ---
+  const handleMontoChange = (e, tipoCampo = 'base') => {
+    const valorIngresado = parseFloat(e.target.value) || 0;
+    
+    if (esConsumidorFinal) {
+      // LÓGICA CF: IVA INCLUIDO
+      // El usuario escribe el TOTAL (con IVA incluido) en el primer campo
+      // Calculamos hacia atrás:
+      const total = valorIngresado;
+      const subtotal = parseFloat((total / 1.13).toFixed(2)); // Base sin IVA
+      const iva = parseFloat((total - subtotal).toFixed(2)); // IVA = Total - Subtotal
+      
+      setMontoGravado(subtotal); // Guardamos la base (sin IVA) para el backend
+      setMontoIva(iva);
+      setMontoTotal(total.toFixed(2));
+    } else {
+      // LÓGICA CCF: IVA AGREGADO
+      // El usuario escribe la BASE (sin IVA) en el primer campo
+      // Calculamos hacia adelante:
+      const gravado = valorIngresado;
+      const iva = parseFloat((gravado * 0.13).toFixed(2));
+      const total = gravado + iva;
+      
+      setMontoGravado(gravado);
+      setMontoIva(iva);
+      setMontoTotal(total.toFixed(2));
     }
   };
 
-  // --- FUNCIÓN DE RESPALDO: CREAR CLIENTE AUTOMÁTICAMENTE ---
-  const crearClienteRapido = async () => {
-      // Si no tenemos nombre, ponemos uno genérico para no trabar la venta
-      const nombreFinal = nombreCliente || "Cliente General (Auto)";
-      
-      const nuevoCliente = {
-          nombre: nombreFinal,
-          nrc: nrcCliente,
-          nit: "0000-000000-000-0", // NIT Genérico si no lo tienes
-          es_importador: false
-      };
-
-      try {
-          console.log("🛠️ Creando cliente fantasma...", nuevoCliente);
-          const res = await fetch('https://backend-production-8f98.up.railway.app/api/clientes/crear/', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(nuevoCliente)
-          });
-          return res.ok;
-      } catch (e) {
-          console.error("Fallo al crear cliente rápido", e);
-          return false;
-      }
+  // --- BUSCAR CLIENTE (Al escribir NRC - onBlur) ---
+  const buscarCliente = async () => {
+    if(nrcCliente.length < 5) {
+      // Resetear estados si el NRC es muy corto
+      setExisteCliente(false);
+      setNombreBloqueado(false);
+      setModoCrearCliente(false);
+      setNombreCliente("");
+      return;
+    }
+    
+    setIsLoadingCliente(true);
+    
+    try {
+        // Buscar cliente por NRC usando filtro del backend
+        const res = await fetch(`http://127.0.0.1:8000/api/clientes/?nrc=${nrcCliente}`);
+        
+        if(res.ok) {
+            const data = await res.json();
+            const clienteEncontrado = Array.isArray(data) && data.length > 0 ? data[0] : null;
+            
+            if(clienteEncontrado) {
+                // ESCENARIO A: El cliente EXISTE
+                setNombreCliente(clienteEncontrado.nombre);
+                setExisteCliente(true);
+                setNombreBloqueado(true); // Bloquear campo nombre
+                setModoCrearCliente(false);
+            } else {
+                // ESCENARIO B: El cliente NO EXISTE
+                setExisteCliente(false);
+                setNombreBloqueado(false);
+                setNombreCliente(""); // Limpiar nombre
+                
+                // Preguntar si desea crearlo
+                const deseaCrear = window.confirm(
+                    `⚠️ Este cliente (NRC: ${nrcCliente}) no existe en la base de datos.\n\n¿Deseas crearlo ahora?`
+                );
+                
+                if(deseaCrear) {
+                    setModoCrearCliente(true);
+                    setNombreBloqueado(false); // Desbloquear para que escriba el nombre
+                } else {
+                    setModoCrearCliente(false);
+                }
+            }
+        }
+    } catch (error) {
+        console.error("Error buscando cliente:", error);
+        alert("Error al buscar cliente. Verifica tu conexión.");
+    } finally {
+        setIsLoadingCliente(false);
+    }
   };
 
-  // --- GUARDAR VENTA (INTELIGENTE) ---
+  // --- CREAR CLIENTE (Cuando el usuario escribe el nombre y sale del campo) ---
+  const crearCliente = async () => {
+    if(!nombreCliente || nombreCliente.trim() === "") {
+      alert("⚠️ Debes escribir el nombre del cliente antes de guardarlo.");
+      return;
+    }
+
+    if(!nrcCliente || nrcCliente.length < 5) {
+      alert("⚠️ El NRC del cliente es inválido.");
+      return;
+    }
+
+    const confirmarCrear = window.confirm(
+      `¿Deseas guardar el cliente "${nombreCliente}" (NRC: ${nrcCliente}) ahora?`
+    );
+
+    if(!confirmarCrear) return;
+
+    setIsLoadingCliente(true);
+
+    try {
+      const nuevoCliente = {
+        nrc: nrcCliente,
+        nombre: nombreCliente,
+        nit: "", // Opcional
+      };
+
+      const res = await fetch('http://127.0.0.1:8000/api/clientes/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nuevoCliente)
+      });
+
+      if(res.ok) {
+        alert("✅ Cliente creado exitosamente");
+        setExisteCliente(true);
+        setNombreBloqueado(true); // Bloquear después de crear
+        setModoCrearCliente(false);
+      } else {
+        const errorData = await res.json();
+        alert(`❌ Error al crear cliente: ${JSON.stringify(errorData)}`);
+      }
+    } catch (error) {
+      console.error("Error creando cliente:", error);
+      alert("Error de conexión al crear cliente.");
+    } finally {
+      setIsLoadingCliente(false);
+    }
+  };
+
+  // Estado para mostrar error de fecha
+  const [errorFecha, setErrorFecha] = useState("");
+
+  // --- VALIDAR FECHA CONTRA PERIODO (Solo para mostrar mensaje) ---
+  const validarFechaContraPeriodo = (fecha) => {
+    if (!fecha) return { valida: false, mensaje: "Debes seleccionar una fecha" };
+    
+    const fechaDoc = new Date(fecha);
+    const mesDoc = fechaDoc.getMonth() + 1; // 1-12
+    const anioDoc = fechaDoc.getFullYear();
+    
+    // Comparar con el periodo actual del contexto
+    if (mesDoc !== mes || anioDoc !== anio) {
+      const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const mesDocNombre = meses[mesDoc - 1];
+      const mesActualNombre = meses[mes - 1];
+      
+      return {
+        valida: false,
+        mensaje: `Error: El documento es de ${mesDocNombre}-${anioDoc} pero estás trabajando en el periodo ${mesActualNombre}-${anio}. Cambia la fecha o el periodo de trabajo.`
+      };
+    }
+    
+    return { valida: true };
+  };
+
+  // --- HANDLE FECHA BLUR: Validar cuando el usuario sale del campo ---
+  const handleFechaBlur = (e) => {
+    const fecha = e.target.value;
+    if (!fecha) {
+      setErrorFecha("");
+      return;
+    }
+    
+    const validacion = validarFechaContraPeriodo(fecha);
+    if (!validacion.valida) {
+      setErrorFecha(validacion.mensaje);
+      alert(`⚠️ ${validacion.mensaje}`);
+    } else {
+      setErrorFecha("");
+    }
+  };
+
+  // --- GUARDAR VENTA ---
   const guardarVenta = async (terminar) => {
-    if (!montoGravado || !nrcCliente || !fechaFactura) {
-        alert("⚠️ Faltan datos obligatorios (Monto, Cliente o Fecha)");
+    if (!montoGravado || !fechaFactura) {
+        alert("⚠️ Faltan datos obligatorios (Monto o Fecha)");
         return;
     }
 
+    // VALIDACIÓN ESTRICTA: La fecha debe pertenecer al periodo actual
+    const validacionFecha = validarFechaContraPeriodo(fechaFactura);
+    if (!validacionFecha.valida) {
+        alert(`❌ ${validacionFecha.mensaje}`);
+        return;
+    }
+
+    // Validar cliente solo si NO es Consumidor Final
+    if (!esConsumidorFinal) {
+        if (!nrcCliente) {
+            alert("⚠️ Debes proporcionar el NRC del cliente para ventas a Contribuyentes.");
+            return;
+        }
+        if (!existeCliente && !modoCrearCliente) {
+            alert("⚠️ Debes buscar y crear el cliente antes de guardar la venta.");
+            return;
+        }
+    }
+
     const payloadVenta = {
-        empresa: clienteInfo.nrc,         
-        cliente: nrcCliente,              
+        empresa: clienteInfo.id || null,     // ID de la empresa (opcional)
+        // Para CF: no enviar cliente (o null explícito) - el backend lo maneja
+        // Para CCF: enviar el NRC del cliente
+        ...(esConsumidorFinal ? {} : { cliente: nrcCliente }),
         fecha_emision: fechaFactura,
-        periodo_aplicado: periodoContable,
-        numero_documento: numeroDocumento,
-        total_gravado: parseFloat(montoGravado),
-        total_iva: parseFloat(montoIva),
-        total: parseFloat(montoTotal),
-        tipo_venta: tipoDocumento         
+        periodo_aplicado: periodoFormateado,  // Usar período del contexto global
+        numero_documento: numeroDocumento || null,
+        venta_gravada: parseFloat(montoGravado) || 0,  // Base sin IVA (ya calculada correctamente)
+        debito_fiscal: parseFloat(montoIva) || 0,       // IVA calculado
+        tipo_venta: tipoDocumento === "CCF" ? "CCF" : "CF", // Asegurar valores válidos
+        nombre_receptor: esConsumidorFinal ? "Consumidor Final" : (nombreCliente || null),
+        nrc_receptor: esConsumidorFinal ? "0000-000000-000-0" : (nrcCliente || null),
+        clase_documento: "1",                // Default: Impreso por Imprenta
+        clasificacion_venta: "1",           // Default: Gravada
+        tipo_ingreso: "3"                    // Default: Comercial
     };
 
     try {
-        // INTENTO 1: Guardar Venta Directamente
-        let respuesta = await fetch('https://backend-production-8f98.up.railway.app/api/ventas/crear/', {
-            method: 'POST',
+        const url = modoEdicion 
+            ? `http://127.0.0.1:8000/api/ventas/actualizar/${ventaId}/`
+            : 'http://127.0.0.1:8000/api/ventas/crear/';
+        
+        const metodo = modoEdicion ? 'PUT' : 'POST';
+
+        const respuesta = await fetch(url, {
+            method: metodo,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payloadVenta)
         });
 
-        // SI FALLA POR "CLIENTE NO EXISTE" (Error 400 y mensaje de pk invalid)
-        if (respuesta.status === 400) {
-            const errorData = await respuesta.json();
-            // Detectamos si el error es sobre el cliente
-            if (JSON.stringify(errorData).includes("does not exist") || JSON.stringify(errorData).includes("Invalid pk")) {
-                
-                // PREGUNTA INTELIGENTE AL USUARIO
-                const deseaCrear = window.confirm(`⚠️ El cliente con NRC ${nrcCliente} no existe en la base de datos general.\n\n¿Deseas crearlo automáticamente como "${nombreCliente || 'Nuevo Cliente'}" y guardar la venta?`);
-                
-                if (deseaCrear) {
-                    // 1. Creamos al cliente
-                    const creado = await crearClienteRapido();
-                    if (creado) {
-                        // 2. Reintentamos guardar la venta
-                        respuesta = await fetch('https://backend-production-8f98.up.railway.app/api/ventas/crear/', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payloadVenta)
-                        });
-                    } else {
-                        alert("❌ No se pudo crear el cliente automático.");
-                        return;
-                    }
-                } else {
-                    return; // Usuario canceló
-                }
-            } else {
-                 // Es otro error (ej. fecha), mostrarlo
-                 alert(`Error: ${JSON.stringify(errorData)}`);
-                 return;
-            }
-        }
-
         if (respuesta.ok) {
-            alert("✅ Venta Guardada Exitosamente");
+            alert(modoEdicion ? "✅ Venta Actualizada Exitosamente" : "✅ Venta Guardada Exitosamente");
             setMontoGravado(""); setMontoIva(""); setMontoTotal("");
             setNumeroDocumento(""); setNrcCliente(""); setNombreCliente("");
+            setExisteCliente(false);
+            setNombreBloqueado(false);
+            setModoCrearCliente(false);
+            setModoEdicion(false);
             if (terminar) volverAlInicio();
-        } 
+        } else {
+            const errorData = await respuesta.json();
+            alert(`❌ Error al guardar venta: ${JSON.stringify(errorData)}`);
+        }
 
     } catch (error) {
         console.error(error);
@@ -158,30 +336,70 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio }) => {
         
         <div style={{display: 'flex', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px'}}>
             <button onClick={volverAlInicio} style={{marginRight: '15px', cursor: 'pointer', border: 'none', background: 'transparent', fontSize: '1.5em'}}>⬅️</button>
-            <h2 style={{margin: 0, color: '#9b59b6'}}>🛒 Registrar Nueva Venta</h2>
+            <h2 style={{margin: 0, color: '#9b59b6'}}>
+                {modoEdicion ? '✏️ Editar Venta' : '🛒 Registrar Nueva Venta'}
+            </h2>
             <span style={{marginLeft: 'auto', fontSize: '0.9em', color: '#7f8c8d'}}>{clienteInfo.nombre}</span>
         </div>
+        
+        {cargandoDatos && (
+            <div style={{padding: '20px', textAlign: 'center', background: '#f0f0f0', borderRadius: '5px', marginBottom: '20px'}}>
+                ⏳ Cargando datos de la venta...
+            </div>
+        )}
 
         {/* FILA 1 */}
-        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '20px'}}>
+        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px'}}>
             <div>
                 <label style={{display: 'block'}}>Tipo Documento</label>
-                <select value={tipoDocumento} onChange={(e) => setTipoDocumento(e.target.value)} style={{width: '100%', padding: '10px'}}>
-                    <option value="CCF">CCF - Crédito Fiscal</option>
-                    <option value="CF">CF - Factura</option>
-                    <option value="EXP">EXP - Exportación</option>
-                </select>
-            </div>
-            <div>
-                <label style={{display: 'block'}}>Periodo</label>
-                <select value={periodoContable} onChange={(e) => setPeriodoContable(e.target.value)} style={{width: '100%', padding: '10px', background: '#e8f6f3'}}>
-                    {listaPeriodos.map(p => <option key={p} value={p}>{p}</option>)}
+                <select value={tipoDocumento} onChange={(e) => {
+                    setTipoDocumento(e.target.value);
+                    // Si cambia a CF, limpiar datos de cliente
+                    if (e.target.value === "CF") {
+                        setNrcCliente("");
+                        setNombreCliente("");
+                        setExisteCliente(false);
+                        setNombreBloqueado(false);
+                        setModoCrearCliente(false);
+                    }
+                    // Resetear montos al cambiar tipo de documento
+                    setMontoGravado("");
+                    setMontoIva("");
+                    setMontoTotal("");
+                }} style={{width: '100%', padding: '10px'}}>
+                    <option value="CCF">CCF - Crédito Fiscal (Contribuyente)</option>
+                    <option value="CF">CF - Consumidor Final</option>
                 </select>
             </div>
             <div>
                 <label style={{display: 'block'}}>Fecha</label>
-                <input type="date" value={fechaFactura} onChange={(e) => setFechaFactura(e.target.value)} style={{width: '100%', padding: '8px', border: '1px solid #ccc'}} />
+                <input 
+                    type="date" 
+                    value={fechaFactura} 
+                    onChange={(e) => {
+                        // Solo actualizar el estado, sin validar
+                        setFechaFactura(e.target.value);
+                        // Limpiar error mientras escribe
+                        setErrorFecha("");
+                    }}
+                    onBlur={handleFechaBlur}
+                    style={{
+                        width: '100%', 
+                        padding: '8px', 
+                        border: errorFecha ? '2px solid #e74c3c' : '1px solid #ccc'
+                    }} 
+                />
+                {errorFecha && (
+                    <small style={{display: 'block', color: '#e74c3c', marginTop: '5px'}}>
+                        ❌ {errorFecha}
+                    </small>
+                )}
             </div>
+        </div>
+        
+        {/* INFO PERÍODO (Desde barra superior) */}
+        <div style={{marginBottom: '20px', padding: '10px', background: '#e8f6f3', borderRadius: '5px', fontSize: '0.9em', color: '#27ae60'}}>
+            📅 Período aplicado: <strong>{periodoFormateado}</strong> (configurado en la barra superior)
         </div>
 
         {/* FILA 2 */}
@@ -190,25 +408,129 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio }) => {
             <input value={numeroDocumento} onChange={(e) => setNumeroDocumento(e.target.value)} style={{width: '100%', padding: '10px', border: '1px solid #ccc'}} />
         </div>
 
-        {/* IMPORTANTE: AGREGAMOS VALUE Y ONCHANGE AL NOMBRE PARA PODER GUARDARLO */}
-        <div style={{display: 'flex', gap: '10px', marginBottom: '20px'}}>
-            <input placeholder="NRC Cliente (Ej: 123456-7)" value={nrcCliente} onChange={(e) => setNrcCliente(e.target.value)} onBlur={buscarCliente} style={{padding:'10px', width:'30%'}} />
-            <input placeholder="Nombre Cliente (Escríbelo si es nuevo)" value={nombreCliente} onChange={(e)=>setNombreCliente(e.target.value)} style={{padding:'10px', flex: 1}} />
-        </div>
+        {/* CLIENTE: Solo mostrar si NO es Consumidor Final */}
+        {!esConsumidorFinal && (
+            <div style={{display: 'flex', gap: '10px', marginBottom: '20px', alignItems: 'center'}}>
+                <div style={{width: '30%', position: 'relative'}}>
+                    <input 
+                        placeholder="NRC Cliente (Ej: 123456-7)" 
+                        value={nrcCliente} 
+                        onChange={(e) => {
+                            setNrcCliente(e.target.value);
+                            // Resetear estados cuando cambia el NRC
+                            setExisteCliente(false);
+                            setNombreBloqueado(false);
+                            setModoCrearCliente(false);
+                            setNombreCliente("");
+                        }} 
+                        onBlur={buscarCliente} 
+                        style={{padding:'10px', width: '100%'}}
+                        disabled={isLoadingCliente}
+                    />
+                    {isLoadingCliente && (
+                        <span style={{position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8em', color: '#7f8c8d'}}>
+                            🔍 Buscando...
+                        </span>
+                    )}
+                </div>
+                <div style={{flex: 1, position: 'relative'}}>
+                    <input 
+                        placeholder={modoCrearCliente ? "Escribe el nombre del cliente" : "Nombre Cliente"} 
+                        value={nombreCliente} 
+                        onChange={(e)=>setNombreCliente(e.target.value)} 
+                        onBlur={modoCrearCliente ? crearCliente : undefined}
+                        readOnly={nombreBloqueado}
+                        style={{
+                            padding:'10px', 
+                            width: '100%',
+                            background: nombreBloqueado ? '#e9ecef' : 'white',
+                            cursor: nombreBloqueado ? 'not-allowed' : 'text',
+                            border: existeCliente ? '2px solid #27ae60' : '1px solid #ccc'
+                        }} 
+                    />
+                    {existeCliente && (
+                        <span style={{position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8em', color: '#27ae60'}}>
+                            ✅ Existe
+                        </span>
+                    )}
+                    {modoCrearCliente && !existeCliente && (
+                        <span style={{position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8em', color: '#f39c12'}}>
+                            ✏️ Nuevo
+                        </span>
+                    )}
+                </div>
+            </div>
+        )}
+        
+        {/* Mensaje para Consumidor Final */}
+        {esConsumidorFinal && (
+            <div style={{marginBottom: '20px', padding: '15px', background: '#fff3cd', borderRadius: '5px', border: '1px solid #ffc107'}}>
+                <strong>ℹ️ Consumidor Final:</strong> No se requiere cliente específico. El sistema asignará automáticamente "Consumidor Final".
+            </div>
+        )}
 
-        {/* FILA 3 */}
+        {/* FILA 3: MONTOS */}
         <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '20px', background: '#fcf3cf', padding: '15px', borderRadius: '5px'}}>
             <div>
-                <label>Gravado</label>
-                <input type="number" placeholder="0.00" value={montoGravado} onChange={handleMontoChange} style={{padding:'10px', width: '100%'}} />
+                <label style={{fontWeight: 'bold', color: '#2c3e50'}}>
+                    {esConsumidorFinal ? '💰 Total (IVA Incluido)' : '📊 Base Gravada'}
+                </label>
+                <input 
+                    type="number" 
+                    step="0.01"
+                    placeholder={esConsumidorFinal ? "Ej: 113.00" : "Ej: 100.00"} 
+                    value={esConsumidorFinal ? montoTotal : montoGravado} 
+                    onChange={handleMontoChange} 
+                    style={{
+                        padding:'10px', 
+                        width: '100%',
+                        fontSize: '1.1em',
+                        fontWeight: esConsumidorFinal ? 'bold' : 'normal'
+                    }} 
+                />
+                <small style={{display: 'block', color: '#7f8c8d', marginTop: '5px', fontSize: '0.85em'}}>
+                    {esConsumidorFinal 
+                        ? '✏️ Escribe el monto total que pagó el cliente (IVA incluido)' 
+                        : '✏️ Escribe la base sin IVA'}
+                </small>
+            </div>
+            <div>
+                <label>Base Gravada</label>
+                <input 
+                    type="number" 
+                    placeholder="0.00" 
+                    value={montoGravado} 
+                    readOnly 
+                    style={{padding:'10px', width: '100%', background:'#f9e79f'}} 
+                />
+                <small style={{display: 'block', color: '#7f8c8d', marginTop: '5px', fontSize: '0.85em'}}>
+                    {esConsumidorFinal ? '🔢 Calculado: Total ÷ 1.13' : 'Base sin IVA'}
+                </small>
             </div>
             <div>
                 <label>IVA (13%)</label>
-                <input type="number" placeholder="0.00" value={montoIva} readOnly style={{padding:'10px', width: '100%', background:'#f9e79f'}} />
+                <input 
+                    type="number" 
+                    placeholder="0.00" 
+                    value={montoIva} 
+                    readOnly 
+                    style={{padding:'10px', width: '100%', background:'#f9e79f'}} 
+                />
+                <small style={{display: 'block', color: '#7f8c8d', marginTop: '5px', fontSize: '0.85em'}}>
+                    {esConsumidorFinal ? '🔢 Calculado: Total - Base' : '13% de la base'}
+                </small>
             </div>
-            <div>
-                <label>Total</label>
-                <input type="number" placeholder="0.00" value={montoTotal} readOnly style={{padding:'10px', width: '100%', background:'#f9e79f', fontWeight: 'bold'}} />
+        </div>
+        
+        {/* Resumen visual */}
+        <div style={{marginBottom: '20px', padding: '15px', background: esConsumidorFinal ? '#e8f5e9' : '#e3f2fd', borderRadius: '5px', border: `2px solid ${esConsumidorFinal ? '#27ae60' : '#2196f3'}`}}>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                <span style={{fontSize: '0.9em', color: '#7f8c8d'}}>
+                    {esConsumidorFinal ? '💡 Modo: IVA Incluido' : '💡 Modo: IVA Agregado'}
+                </span>
+                <strong style={{fontSize: '1.2em', color: esConsumidorFinal ? '#27ae60' : '#2196f3'}}>
+                    Total: ${parseFloat(montoTotal || 0).toFixed(2)}
+                </strong>
             </div>
         </div>
 

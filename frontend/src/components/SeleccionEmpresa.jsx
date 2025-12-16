@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 const SeleccionEmpresa = ({ alSeleccionar }) => {
   const [empresas, setEmpresas] = useState([]);
   const [modoCrear, setModoCrear] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
   
   // Estados para nueva empresa
   const [nuevoNombre, setNuevoNombre] = useState("");
@@ -15,39 +17,69 @@ const SeleccionEmpresa = ({ alSeleccionar }) => {
     cargarEmpresas();
   }, []);
 
-  const cargarEmpresas = () => {
-    fetch('https://backend-production-8f98.up.railway.app/api/clientes/')
-      .then(res => res.json())
-      .then(data => setEmpresas(data))
-      .catch(err => console.error("Error cargando empresas:", err));
+  const cargarEmpresas = async () => {
+    setCargando(true);
+    setError(null);
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/empresas/');
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ detail: `Error ${res.status}: ${res.statusText}` }));
+        throw new Error(errorData.detail || `Error ${res.status}: ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      // DRF puede devolver un array directamente o un objeto con 'results'
+      const empresasList = Array.isArray(data) ? data : (data.results || []);
+      setEmpresas(empresasList);
+    } catch (err) {
+      console.error("Error cargando empresas:", err);
+      setError(err.message || "Error al conectar con el servidor. Verifica que el backend esté corriendo en http://127.0.0.1:8000");
+      setEmpresas([]);
+    } finally {
+      setCargando(false);
+    }
   };
 
-  const guardarNuevaEmpresa = () => {
-    if(!nuevoNombre || !nuevoNrc) { alert("Nombre y NRC son obligatorios"); return; }
+  const guardarNuevaEmpresa = async () => {
+    if(!nuevoNombre || !nuevoNrc) { 
+      alert("Nombre y NRC son obligatorios"); 
+      return; 
+    }
 
     const payload = { 
         nombre: nuevoNombre, 
         nrc: nuevoNrc, 
-        nit: nuevoNit, 
+        nit: nuevoNit || null, 
         es_importador: nuevoEsImportador 
     };
 
-    fetch('https://backend-production-8f98.up.railway.app/api/clientes/', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(payload) 
-    })
-    .then(async res => { 
-        if(res.ok) { 
-            alert("✅ Empresa Creada"); 
-            cargarEmpresas(); 
-            setModoCrear(false); 
-            // Limpiar campos
-            setNuevoNombre(""); setNuevoNrc(""); setNuevoNit(""); setNuevoEsImportador(false);
-        } else {
-            alert("❌ Error: Posible NRC duplicado o conexión fallida."); 
-        }
-    });
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/empresas/', { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify(payload) 
+      });
+
+      if(res.ok) { 
+          const nuevaEmpresa = await res.json();
+          alert("✅ Empresa Creada"); 
+          cargarEmpresas(); 
+          setModoCrear(false); 
+          // Limpiar campos
+          setNuevoNombre(""); 
+          setNuevoNrc(""); 
+          setNuevoNit(""); 
+          setNuevoEsImportador(false);
+      } else {
+          const errorData = await res.json().catch(() => ({ detail: `Error ${res.status}` }));
+          const mensajeError = errorData.nrc?.[0] || errorData.detail || "Error al crear la empresa";
+          alert(`❌ Error: ${mensajeError}`); 
+      }
+    } catch (err) {
+      console.error("Error guardando empresa:", err);
+      alert("❌ Error de conexión. Verifica que el backend esté corriendo.");
+    }
   };
 
   return (
@@ -64,14 +96,30 @@ const SeleccionEmpresa = ({ alSeleccionar }) => {
                     </button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
-                    {empresas.map(empresa => (
-                        <div key={empresa.nrc} onClick={() => alSeleccionar(empresa)} 
-                             style={{ padding: '15px', border: '1px solid #eee', borderRadius: '5px', cursor: 'pointer', textAlign: 'left', background: '#f9f9f9' }}>
+                    {cargando && (
+                        <p style={{ padding: '20px', color: '#7f8c8d' }}>⏳ Cargando empresas...</p>
+                    )}
+                    {!cargando && error && (
+                        <div style={{ padding: '15px', background: '#fee', border: '1px solid #fcc', borderRadius: '5px', color: '#c33' }}>
+                            <strong>❌ Error:</strong> {error}
+                            <br />
+                            <button onClick={cargarEmpresas} style={{ marginTop: '10px', padding: '5px 10px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
+                                🔄 Reintentar
+                            </button>
+                        </div>
+                    )}
+                    {!cargando && !error && empresas.length === 0 && (
+                        <p style={{ padding: '20px', color: '#7f8c8d' }}>No hay empresas registradas. Crea una nueva empresa para comenzar.</p>
+                    )}
+                    {!cargando && !error && empresas.map(empresa => (
+                        <div key={empresa.id || empresa.nrc} onClick={() => alSeleccionar(empresa)} 
+                             style={{ padding: '15px', border: '1px solid #eee', borderRadius: '5px', cursor: 'pointer', textAlign: 'left', background: '#f9f9f9', transition: 'background 0.2s' }}
+                             onMouseEnter={(e) => e.currentTarget.style.background = '#e8f5e9'}
+                             onMouseLeave={(e) => e.currentTarget.style.background = '#f9f9f9'}>
                             <strong style={{ display: 'block', fontSize: '1.1em' }}>{empresa.nombre}</strong>
                             <span style={{ color: '#7f8c8d', fontSize: '0.9em' }}>NRC: {empresa.nrc}</span>
                         </div>
                     ))}
-                    {empresas.length === 0 && <p>Cargando empresas...</p>}
                 </div>
             </>
         )}

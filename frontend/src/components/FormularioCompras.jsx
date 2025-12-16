@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { usePeriodo } from '../contexts/PeriodoContext';
 
-const FormularioCompras = ({ clienteInfo, volverAlInicio }) => {
+const FormularioCompras = ({ clienteInfo, volverAlInicio, compraId = null }) => {
+  // --- CONTEXTO GLOBAL ---
+  const { periodoFormateado, mes, anio } = usePeriodo();
+  
   // --- ESTADOS DEL FORMULARIO ---
   const [tipoDocumento, setTipoDocumento] = useState("03");
   const [fechaFactura, setFechaFactura] = useState("");
@@ -10,25 +14,14 @@ const FormularioCompras = ({ clienteInfo, volverAlInicio }) => {
   const [montoGravado, setMontoGravado] = useState("");
   const [montoIva, setMontoIva] = useState("");
   const [montoTotal, setMontoTotal] = useState("");
+  const [modoEdicion, setModoEdicion] = useState(false);
+  const [cargandoDatos, setCargandoDatos] = useState(false);
     
-  // NUEVO: Estado para el Periodo (Mes de trabajo)
-  const [periodoContable, setPeriodoContable] = useState(""); 
-  const [listaPeriodos, setListaPeriodos] = useState([]);
-
-  // NUEVO: Al cargar el formulario, calculamos: Mes Actual y Mes Siguiente
-  useEffect(() => {
-    const hoy = new Date();
-    
-    // Mes Actual
-    const mesActual = hoy.toISOString().slice(0, 7); // Ejemplo: "2025-12"
-    
-    // Mes Siguiente (Manejo automático de cambio de año)
-    const proximoMesDate = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1);
-    const mesSiguiente = proximoMesDate.toISOString().slice(0, 7); // Ejemplo: "2026-01"
-
-    setListaPeriodos([mesActual, mesSiguiente]);
-    setPeriodoContable(mesActual); // Por defecto selecciona el actual
-  }, []);
+  // NUEVO: Estados para la búsqueda/creación de proveedor
+  const [isLoadingProveedor, setIsLoadingProveedor] = useState(false);
+  const [existeProveedor, setExisteProveedor] = useState(false);
+  const [nombreBloqueado, setNombreBloqueado] = useState(false);
+  const [modoCrearProveedor, setModoCrearProveedor] = useState(false);
   
   // Clasificaciones
   const [clasif1, setClasif1] = useState("");
@@ -37,6 +30,42 @@ const FormularioCompras = ({ clienteInfo, volverAlInicio }) => {
 
   // Alertas
   const [alertaFecha, setAlertaFecha] = useState("");
+  const [alertaVencimiento, setAlertaVencimiento] = useState("");
+
+  // --- CARGAR DATOS SI HAY ID (MODO EDICIÓN) ---
+  useEffect(() => {
+    if (compraId) {
+      setCargandoDatos(true);
+      setModoEdicion(true);
+      fetch(`http://127.0.0.1:8000/api/compras/${compraId}/`)
+        .then(res => res.json())
+        .then(data => {
+          // Mapear datos del backend a los estados del formulario
+          setTipoDocumento(data.tipo_documento || "03");
+          setFechaFactura(data.fecha_emision || "");
+          setNumeroDocumento(data.codigo_generacion || "");
+          setNrcProveedor(data.nrc_proveedor || "");
+          setNombreProveedor(data.nombre_proveedor || "");
+          setMontoGravado(data.monto_gravado?.toString() || "");
+          setMontoIva(data.monto_iva?.toString() || "");
+          setMontoTotal(data.monto_total?.toString() || "");
+          setClasif1(data.clasificacion_1 || "");
+          setClasif2(data.clasificacion_2 || "");
+          setClasif3(data.clasificacion_3 || "");
+          // Si el proveedor existe, marcar como existente
+          if (data.nrc_proveedor) {
+            setExisteProveedor(true);
+            setNombreBloqueado(true);
+          }
+          setCargandoDatos(false);
+        })
+        .catch(error => {
+          console.error("Error cargando compra:", error);
+          alert("Error al cargar los datos de la compra");
+          setCargandoDatos(false);
+        });
+    }
+  }, [compraId]);
 
   // --- DATOS FIJOS (LISTAS) ---
   const opcionesGasto = {
@@ -65,34 +94,162 @@ const FormularioCompras = ({ clienteInfo, volverAlInicio }) => {
     setMontoTotal((gravado + iva).toFixed(2));
   };
 
-  // --- VALIDACIÓN DE FECHA (Periodo Actual) ---
-  const validarFecha = (fecha) => {
-    setFechaFactura(fecha);
-    const fechaObj = new Date(fecha);
+  // --- VALIDACIÓN DE FECHA Y REGLA DE 3 MESES (Solo en onBlur) ---
+  const handleFechaBlur = (e) => {
+    const fecha = e.target.value;
+    
+    if (!fecha) {
+      setAlertaFecha("");
+      setAlertaVencimiento("");
+      return;
+    }
+    
+    const fechaDoc = new Date(fecha);
     const hoy = new Date();
     
-    // Ejemplo de validación simple: Avisar si la fecha es de un mes futuro
-    if (fechaObj.getMonth() > hoy.getMonth() && fechaObj.getFullYear() === hoy.getFullYear()) {
+    // Validación 1: Fecha futura
+    if (fechaDoc > hoy) {
       setAlertaFecha("⚠️ Cuidado: Estás registrando una fecha futura.");
+      setAlertaVencimiento("");
+      return;
+    }
+    
+    setAlertaFecha("");
+    
+    // Validación 2: REGLA DE LOS 3 MESES (Solo para CCF - tipo 03)
+    if (tipoDocumento === "03") {
+      // Calcular la fecha de referencia (final del periodo actual)
+      const fechaPeriodo = new Date(anio, mes, 0); // Último día del mes del periodo
+      
+      // Calcular diferencia en días
+      const diferenciaMs = fechaPeriodo.getTime() - fechaDoc.getTime();
+      const diferenciaDias = Math.floor(diferenciaMs / (1000 * 60 * 60 * 24));
+      
+      // Si tiene más de 90 días (3 meses), el IVA ya no es deducible
+      if (diferenciaDias > 90) {
+        const mesesVencidos = Math.floor(diferenciaDias / 30);
+        
+        // Cambiar automáticamente a "14 - Sujeto Excluido" (Gasto no deducible)
+        setTipoDocumento("14");
+        setAlertaVencimiento(
+          `⚠️ Atención: Este documento tiene más de ${mesesVencidos} meses (${diferenciaDias} días). El IVA ya no es deducible. Se cambiará automáticamente a "Sujeto Excluido" (Gasto - No Deducible).`
+        );
+        
+        // Mostrar alerta al usuario
+        alert(
+          `⚠️ ATENCIÓN: Este documento tiene más de 3 meses (${diferenciaDias} días).\n\n` +
+          `Por ley, el IVA ya no es deducible después de 3 meses.\n\n` +
+          `El sistema cambiará automáticamente el tipo de documento a "14 - Sujeto Excluido" (Gasto - No Deducible).`
+        );
+      } else {
+        setAlertaVencimiento("");
+      }
     } else {
-      setAlertaFecha("");
+      setAlertaVencimiento("");
     }
   };
 
-  // --- BUSCAR PROVEEDOR (Al escribir NRC) ---
+  // --- BUSCAR PROVEEDOR (Al escribir NRC - onBlur) ---
   const buscarProveedor = async () => {
-    if(nrcProveedor.length < 5) return; // No buscar si es muy corto
+    if(nrcProveedor.length < 5) {
+      // Resetear estados si el NRC es muy corto
+      setExisteProveedor(false);
+      setNombreBloqueado(false);
+      setModoCrearProveedor(false);
+      setNombreProveedor("");
+      return;
+    }
+    
+    setIsLoadingProveedor(true);
     
     try {
-        // Asumiendo que tienes un endpoint para buscar proveedores. 
-        // Si no existe, este fetch fallará silenciosamente sin romper nada.
-        const res = await fetch(`https://backend-production-8f98.up.railway.app/api/proveedores/buscar/?nrc=${nrcProveedor}`);
+        // Buscar proveedor por NRC usando filtro del backend
+        const res = await fetch(`http://127.0.0.1:8000/api/clientes/?nrc=${nrcProveedor}`);
+        
         if(res.ok) {
             const data = await res.json();
-            if(data.nombre) setNombreProveedor(data.nombre);
+            const proveedorEncontrado = Array.isArray(data) && data.length > 0 ? data[0] : null;
+            
+            if(proveedorEncontrado) {
+                // ESCENARIO A: El proveedor EXISTE
+                setNombreProveedor(proveedorEncontrado.nombre);
+                setExisteProveedor(true);
+                setNombreBloqueado(true); // Bloquear campo nombre
+                setModoCrearProveedor(false);
+            } else {
+                // ESCENARIO B: El proveedor NO EXISTE
+                setExisteProveedor(false);
+                setNombreBloqueado(false);
+                setNombreProveedor(""); // Limpiar nombre
+                
+                // Preguntar si desea crearlo
+                const deseaCrear = window.confirm(
+                    `⚠️ Este proveedor (NRC: ${nrcProveedor}) no existe en la base de datos.\n\n¿Deseas crearlo ahora?`
+                );
+                
+                if(deseaCrear) {
+                    setModoCrearProveedor(true);
+                    setNombreBloqueado(false); // Desbloquear para que escriba el nombre
+                } else {
+                    setModoCrearProveedor(false);
+                }
+            }
         }
     } catch (error) {
-        console.log("No se encontró proveedor automático, ingresarlo manual.");
+        console.error("Error buscando proveedor:", error);
+        alert("Error al buscar proveedor. Verifica tu conexión.");
+    } finally {
+        setIsLoadingProveedor(false);
+    }
+  };
+
+  // --- CREAR PROVEEDOR (Cuando el usuario escribe el nombre y sale del campo) ---
+  const crearProveedor = async () => {
+    if(!nombreProveedor || nombreProveedor.trim() === "") {
+      alert("⚠️ Debes escribir el nombre del proveedor antes de guardarlo.");
+      return;
+    }
+
+    if(!nrcProveedor || nrcProveedor.length < 5) {
+      alert("⚠️ El NRC del proveedor es inválido.");
+      return;
+    }
+
+    const confirmarCrear = window.confirm(
+      `¿Deseas guardar el proveedor "${nombreProveedor}" (NRC: ${nrcProveedor}) ahora?`
+    );
+
+    if(!confirmarCrear) return;
+
+    setIsLoadingProveedor(true);
+
+    try {
+      const nuevoProveedor = {
+        nrc: nrcProveedor,
+        nombre: nombreProveedor,
+        nit: "", // Opcional
+      };
+
+      const res = await fetch('http://127.0.0.1:8000/api/clientes/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nuevoProveedor)
+      });
+
+      if(res.ok) {
+        alert("✅ Proveedor creado exitosamente");
+        setExisteProveedor(true);
+        setNombreBloqueado(true); // Bloquear después de crear
+        setModoCrearProveedor(false);
+      } else {
+        const errorData = await res.json();
+        alert(`❌ Error al crear proveedor: ${JSON.stringify(errorData)}`);
+      }
+    } catch (error) {
+      console.error("Error creando proveedor:", error);
+      alert("Error de conexión al crear proveedor.");
+    } finally {
+      setIsLoadingProveedor(false);
     }
   };
 
@@ -104,39 +261,57 @@ const guardarCompra = async (terminar) => {
         return;
     }
 
-    // 2. Preparar el paquete de datos (Usamos .nrc porque tu API no mostró ID)
+    // Validar que el proveedor existe antes de guardar
+    if (!existeProveedor && !modoCrearProveedor) {
+        alert("⚠️ Debes buscar y crear el proveedor antes de guardar la compra.");
+        return;
+    }
+
+    // 2. Preparar el paquete de datos según el modelo Compra
     const nuevaCompra = {
-        cliente: clienteInfo.nrc,          // <--- CLAVE: Usamos el NRC de la empresa seleccionada
-        nrc_proveedor: nrcProveedor,       // Requerido por backend
-        nombre_proveedor: nombreProveedor, // Requerido por backend
+        empresa: clienteInfo.id || null,     // ID de la empresa (opcional)
+        proveedor: nrcProveedor,             // NRC del proveedor (clave foránea)
+        nrc_proveedor: nrcProveedor,         // Requerido por backend
+        nombre_proveedor: nombreProveedor,    // Requerido por backend
         fecha_emision: fechaFactura,
-        periodo_aplicado: periodoContable,
-        numero_documento: numeroDocumento,
-        total_gravado: parseFloat(montoGravado),
-        total_iva: parseFloat(montoIva),
-        total: parseFloat(montoTotal),
-        tipo_compra: tipoDocumento, // Puede ser "03", "CCF", etc. (según acepte tu backend)
+        periodo_aplicado: periodoFormateado,  // Usar período del contexto global
+        codigo_generacion: numeroDocumento || null, // Código del documento
+        monto_gravado: parseFloat(montoGravado) || 0,
+        monto_iva: parseFloat(montoIva) || 0,
+        monto_total: parseFloat(montoTotal) || 0,
+        tipo_documento: tipoDocumento,        // "03", "05", "12", "14"
         
         // Opcionales
-        clasificacion_1: clasif1,
-        clasificacion_2: clasif2,
-        clasificacion_3: clasif3
+        clasificacion_1: clasif1 || "Gravada",
+        clasificacion_2: clasif2 || "",
+        clasificacion_3: clasif3 || "",
+        estado: "Registrado"
     };
 
     console.log("📤 ENVIANDO COMPRA (Revisar en Consola):", nuevaCompra);
 
     try {
-        const respuesta = await fetch('https://backend-production-8f98.up.railway.app/api/compras/crear/', {
-            method: 'POST',
+        const url = modoEdicion 
+            ? `http://127.0.0.1:8000/api/compras/actualizar/${compraId}/`
+            : 'http://127.0.0.1:8000/api/compras/crear/';
+        
+        const metodo = modoEdicion ? 'PUT' : 'POST';
+
+        const respuesta = await fetch(url, {
+            method: metodo,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(nuevaCompra)
         });
 
         if (respuesta.ok) {
-            alert("✅ Compra Guardada con Éxito");
+            alert(modoEdicion ? "✅ Compra Actualizada con Éxito" : "✅ Compra Guardada con Éxito");
             // Limpiar todo
             setMontoGravado(""); setMontoIva(""); setMontoTotal("");
             setNumeroDocumento(""); setNrcProveedor(""); setNombreProveedor("");
+            setExisteProveedor(false);
+            setNombreBloqueado(false);
+            setModoCrearProveedor(false);
+            setModoEdicion(false);
             if (terminar) volverAlInicio();
         } else {
             // Si falla, mostramos el error técnico en una alerta para que lo veas
@@ -156,25 +331,80 @@ const guardarCompra = async (terminar) => {
         {/* ENCABEZADO */}
         <div style={{display: 'flex', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px'}}>
             <button onClick={volverAlInicio} style={{marginRight: '15px', cursor: 'pointer', border: 'none', background: 'transparent', fontSize: '1.5em'}}>⬅️</button>
-            <h2 style={{margin: 0, color: '#3498db'}}>📝 Registrar Nueva Compra</h2>
+            <h2 style={{margin: 0, color: '#3498db'}}>
+                {modoEdicion ? '✏️ Editar Compra' : '📝 Registrar Nueva Compra'}
+            </h2>
             <span style={{marginLeft: 'auto', fontSize: '0.9em', color: '#7f8c8d'}}>{clienteInfo.nombre}</span>
+        </div>
+        
+        {cargandoDatos && (
+            <div style={{padding: '20px', textAlign: 'center', background: '#f0f0f0', borderRadius: '5px', marginBottom: '20px'}}>
+                ⏳ Cargando datos de la compra...
+            </div>
+        )}
+        
+        {/* INFO PERÍODO (Desde barra superior) */}
+        <div style={{marginBottom: '20px', padding: '10px', background: '#e8f6f3', borderRadius: '5px', fontSize: '0.9em', color: '#27ae60'}}>
+            📅 Período aplicado: <strong>{periodoFormateado}</strong> (configurado en la barra superior)
         </div>
 
         {/* FILA 1 */}
         <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '20px'}}>
             <div>
                 <label style={{display: 'block'}}>Tipo Doc</label>
-                <select value={tipoDocumento} onChange={(e) => setTipoDocumento(e.target.value)} style={{width: '100%', padding: '10px'}}>
-                    <option value="03">03 - CCF</option>
+                <select 
+                    value={tipoDocumento} 
+                    onChange={(e) => {
+                        setTipoDocumento(e.target.value);
+                        // Si cambia el tipo de documento, limpiar alerta de vencimiento
+                        setAlertaVencimiento("");
+                        // Si hay fecha y es tipo 03, re-validar al cambiar tipo
+                        if (fechaFactura && e.target.value === "03") {
+                            // Simular blur para re-validar
+                            const event = { target: { value: fechaFactura } };
+                            handleFechaBlur(event);
+                        }
+                    }} 
+                    style={{width: '100%', padding: '10px'}}
+                >
+                    <option value="03">03 - CCF (Crédito Fiscal - Deducible)</option>
                     <option value="05">05 - Nota Crédito</option>
-                    <option value="14">14 - Sujeto Excluido</option>
+                    <option value="14">14 - Sujeto Excluido (Gasto - No Deducible)</option>
                     {clienteInfo?.es_importador && <option value="12">12 - Importación</option>}
                 </select>
             </div>
             <div>
                 <label style={{display: 'block'}}>Fecha</label>
-                <input type="date" value={fechaFactura} onChange={(e) => validarFecha(e.target.value)} style={{width: '100%', padding: '8px', border: alertaFecha ? '2px solid red' : '1px solid #ccc'}} />
-                {alertaFecha && <small style={{color:'red', display:'block'}}>{alertaFecha}</small>}
+                <input 
+                    type="date" 
+                    value={fechaFactura} 
+                    onChange={(e) => {
+                        // Solo actualizar el estado, sin validar
+                        setFechaFactura(e.target.value);
+                        // Limpiar alertas mientras escribe
+                        setAlertaFecha("");
+                        setAlertaVencimiento("");
+                    }}
+                    onBlur={handleFechaBlur}
+                    style={{
+                        width: '100%', 
+                        padding: '8px', 
+                        border: (alertaFecha || alertaVencimiento) ? '2px solid #e74c3c' : '1px solid #ccc'
+                    }}
+                />
+                {alertaFecha && <small style={{color:'#e74c3c', display:'block', marginTop: '5px'}}>{alertaFecha}</small>}
+                {alertaVencimiento && (
+                    <div style={{
+                        marginTop: '10px', 
+                        padding: '10px', 
+                        background: '#fff3cd', 
+                        border: '1px solid #ffc107', 
+                        borderRadius: '5px',
+                        fontSize: '0.9em'
+                    }}>
+                        <strong>⚠️ {alertaVencimiento}</strong>
+                    </div>
+                )}
             </div>
             <div>
                 <label style={{display: 'block'}}>Nº Doc</label>
@@ -183,9 +413,55 @@ const guardarCompra = async (terminar) => {
         </div>
 
         {/* FILA 2: PROVEEDOR */}
-        <div style={{display: 'flex', gap: '10px', marginBottom: '20px'}}>
-            <input placeholder="NRC Proveedor" value={nrcProveedor} onChange={(e) => setNrcProveedor(e.target.value)} onBlur={buscarProveedor} style={{padding:'10px', width:'30%'}} />
-            <input placeholder="Nombre Proveedor" value={nombreProveedor} onChange={(e)=>setNombreProveedor(e.target.value)} style={{padding:'10px', flex: 1}} />
+        <div style={{display: 'flex', gap: '10px', marginBottom: '20px', alignItems: 'center'}}>
+            <div style={{width: '30%', position: 'relative'}}>
+                <input 
+                    placeholder="NRC Proveedor" 
+                    value={nrcProveedor} 
+                    onChange={(e) => {
+                        setNrcProveedor(e.target.value);
+                        // Resetear estados cuando cambia el NRC
+                        setExisteProveedor(false);
+                        setNombreBloqueado(false);
+                        setModoCrearProveedor(false);
+                        setNombreProveedor("");
+                    }} 
+                    onBlur={buscarProveedor} 
+                    style={{padding:'10px', width: '100%'}}
+                    disabled={isLoadingProveedor}
+                />
+                {isLoadingProveedor && (
+                    <span style={{position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8em', color: '#7f8c8d'}}>
+                        🔍 Buscando...
+                    </span>
+                )}
+            </div>
+            <div style={{flex: 1, position: 'relative'}}>
+                <input 
+                    placeholder={modoCrearProveedor ? "Escribe el nombre del proveedor" : "Nombre Proveedor"} 
+                    value={nombreProveedor} 
+                    onChange={(e)=>setNombreProveedor(e.target.value)} 
+                    onBlur={modoCrearProveedor ? crearProveedor : undefined}
+                    readOnly={nombreBloqueado}
+                    style={{
+                        padding:'10px', 
+                        width: '100%',
+                        background: nombreBloqueado ? '#e9ecef' : 'white',
+                        cursor: nombreBloqueado ? 'not-allowed' : 'text',
+                        border: existeProveedor ? '2px solid #27ae60' : '1px solid #ccc'
+                    }} 
+                />
+                {existeProveedor && (
+                    <span style={{position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8em', color: '#27ae60'}}>
+                        ✅ Existe
+                    </span>
+                )}
+                {modoCrearProveedor && !existeProveedor && (
+                    <span style={{position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8em', color: '#f39c12'}}>
+                        ✏️ Nuevo
+                    </span>
+                )}
+            </div>
         </div>
 
         {/* FILA 3: MONTOS */}

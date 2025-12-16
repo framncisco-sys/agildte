@@ -3,10 +3,10 @@ import csv
 from django.http import HttpResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, viewsets
 from django.db.models import Sum
-from .models import Cliente, Compra, Venta, Retencion
-from .serializers import ClienteSerializer, CompraSerializer, VentaSerializer, RetencionSerializer
+from .models import Cliente, Compra, Venta, Retencion, Empresa
+from .serializers import ClienteSerializer, CompraSerializer, VentaSerializer, RetencionSerializer, EmpresaSerializer
 
 # --- UTILIDADES ---
 def safe_float(val):
@@ -17,13 +17,20 @@ def limpiar(valor):
     if not valor: return ""
     return str(valor).replace("-", "").replace(" ", "").strip()
 
+class EmpresaViewSet(viewsets.ModelViewSet):
+    queryset = Empresa.objects.all()
+    serializer_class = EmpresaSerializer
+
 # --- CLIENTES ---
 # --- CLIENTES (UNIFICADO) ---
 @api_view(['GET', 'POST'])
 def clientes_api(request):
     if request.method == 'GET':
-        # Lógica de listar
+        # Lógica de listar con filtro por NRC
         clientes = Cliente.objects.all()
+        nrc = request.query_params.get('nrc', None)
+        if nrc:
+            clientes = clientes.filter(nrc=nrc)
         serializer = ClienteSerializer(clientes, many=True)
         return Response(serializer.data)
     
@@ -148,6 +155,16 @@ def listar_compras(request):
     cliente_id = request.query_params.get('nrc'); periodo = request.query_params.get('periodo')
     compras = Compra.objects.filter(cliente__nrc=cliente_id, periodo_aplicado=periodo).order_by('fecha_emision')
     serializer = CompraSerializer(compras, many=True); return Response(serializer.data)
+
+@api_view(['GET'])
+def obtener_compra(request, pk):
+    """Obtiene una compra específica por ID para edición"""
+    try:
+        compra = Compra.objects.get(pk=pk)
+        serializer = CompraSerializer(compra)
+        return Response(serializer.data)
+    except Compra.DoesNotExist:
+        return Response({"error": "Compra no encontrada"}, status=404)
 @api_view(['DELETE'])
 def borrar_compra(request, pk):
     try: Compra.objects.get(pk=pk).delete(); return Response(status=204)
@@ -170,10 +187,34 @@ def listar_ventas(request):
     ventas = Venta.objects.filter(cliente__nrc=cliente_id, periodo_aplicado=periodo)
     if tipo: ventas = ventas.filter(tipo_venta=tipo)
     serializer = VentaSerializer(ventas.order_by('fecha_emision'), many=True); return Response(serializer.data)
+
+@api_view(['GET'])
+def obtener_venta(request, pk):
+    """Obtiene una venta específica por ID para edición"""
+    try:
+        venta = Venta.objects.get(pk=pk)
+        serializer = VentaSerializer(venta)
+        return Response(serializer.data)
+    except Venta.DoesNotExist:
+        return Response({"error": "Venta no encontrada"}, status=404)
 @api_view(['DELETE'])
 def borrar_venta(request, pk):
     try: Venta.objects.get(pk=pk).delete(); return Response(status=204)
     except: return Response(status=404)
+
+@api_view(['PUT'])
+def actualizar_venta(request, pk):
+    """Actualiza una venta existente"""
+    try:
+        venta = Venta.objects.get(pk=pk)
+    except Venta.DoesNotExist:
+        return Response({"error": "Venta no encontrada"}, status=404)
+    
+    serializer = VentaSerializer(venta, data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=400)
 @api_view(['POST'])
 def crear_retencion(request):
     serializer = RetencionSerializer(data=request.data)
@@ -811,4 +852,685 @@ def generar_csv_163(request): # PERCEPCIÓN (ANEXO 10)
             "10" # Tipo Anexo 10
         ]
         writer.writerow(fila)
+    return response
+
+# ==========================================
+# MÓDULO DE LIBROS DE IVA - VISTA PREVIA Y REPORTES
+# ==========================================
+
+# --- VISTA PREVIA (JSON) PARA FRONTEND ---
+@api_view(['GET'])
+def vista_previa_compras(request):
+    """
+    Devuelve las compras de una empresa en formato JSON para vista previa.
+    Parámetros: empresa_id, periodo (YYYY-MM)
+    """
+    empresa_id = request.query_params.get('empresa_id')
+    periodo = request.query_params.get('periodo')
+    
+    if not empresa_id or not periodo:
+        return Response({"error": "Faltan empresa_id o periodo"}, status=400)
+    
+    try:
+        empresa = Empresa.objects.get(id=empresa_id)
+        compras = Compra.objects.filter(empresa=empresa, periodo_aplicado=periodo).order_by('fecha_emision')
+        
+        datos = []
+        for c in compras:
+            datos.append({
+                'id': c.id,
+                'fecha_emision': c.fecha_emision.strftime('%Y-%m-%d'),
+                'tipo_documento': c.tipo_documento,
+                'codigo_generacion': c.codigo_generacion or '',
+                'nrc_proveedor': c.nrc_proveedor,
+                'nombre_proveedor': c.nombre_proveedor,
+                'monto_gravado': float(c.monto_gravado),
+                'monto_iva': float(c.monto_iva),
+                'monto_total': float(c.monto_total),
+                'clasificacion_1': c.clasificacion_1,
+                'clasificacion_2': c.clasificacion_2,
+                'clasificacion_3': c.clasificacion_3,
+            })
+        
+        # Totales
+        totales = compras.aggregate(
+            total_gravado=Sum('monto_gravado'),
+            total_iva=Sum('monto_iva'),
+            total_general=Sum('monto_total')
+        )
+        
+        return Response({
+            'empresa': empresa.nombre,
+            'periodo': periodo,
+            'total_registros': len(datos),
+            'totales': {
+                'gravado': float(totales['total_gravado'] or 0),
+                'iva': float(totales['total_iva'] or 0),
+                'total': float(totales['total_general'] or 0),
+            },
+            'datos': datos
+        })
+    except Empresa.DoesNotExist:
+        return Response({"error": "Empresa no encontrada"}, status=404)
+
+@api_view(['GET'])
+def vista_previa_ventas_ccf(request):
+    """
+    Devuelve las ventas a Contribuyentes de una empresa en formato JSON.
+    """
+    empresa_id = request.query_params.get('empresa_id')
+    periodo = request.query_params.get('periodo')
+    
+    if not empresa_id or not periodo:
+        return Response({"error": "Faltan empresa_id o periodo"}, status=400)
+    
+    try:
+        empresa = Empresa.objects.get(id=empresa_id)
+        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CCF').order_by('fecha_emision')
+        
+        datos = []
+        for v in ventas:
+            datos.append({
+                'id': v.id,
+                'fecha_emision': v.fecha_emision.strftime('%Y-%m-%d'),
+                'numero_documento': v.numero_documento or '',
+                'codigo_generacion': v.codigo_generacion or '',
+                'nombre_receptor': v.nombre_receptor or '',
+                'nrc_receptor': v.nrc_receptor or '',
+                'venta_gravada': float(v.venta_gravada),
+                'debito_fiscal': float(v.debito_fiscal),
+                'total': float(v.venta_gravada + v.debito_fiscal),
+            })
+        
+        totales = ventas.aggregate(
+            total_gravado=Sum('venta_gravada'),
+            total_iva=Sum('debito_fiscal')
+        )
+        
+        return Response({
+            'empresa': empresa.nombre,
+            'periodo': periodo,
+            'total_registros': len(datos),
+            'totales': {
+                'gravado': float(totales['total_gravado'] or 0),
+                'iva': float(totales['total_iva'] or 0),
+                'total': float((totales['total_gravado'] or 0) + (totales['total_iva'] or 0)),
+            },
+            'datos': datos
+        })
+    except Empresa.DoesNotExist:
+        return Response({"error": "Empresa no encontrada"}, status=404)
+
+@api_view(['GET'])
+def vista_previa_ventas_cf(request):
+    """
+    Devuelve las ventas a Consumidor Final de una empresa en formato JSON.
+    """
+    empresa_id = request.query_params.get('empresa_id')
+    periodo = request.query_params.get('periodo')
+    
+    if not empresa_id or not periodo:
+        return Response({"error": "Faltan empresa_id o periodo"}, status=400)
+    
+    try:
+        empresa = Empresa.objects.get(id=empresa_id)
+        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CF').order_by('fecha_emision')
+        
+        datos = []
+        for v in ventas:
+            datos.append({
+                'id': v.id,
+                'fecha_emision': v.fecha_emision.strftime('%Y-%m-%d'),
+                'numero_documento': v.numero_documento or '',
+                'codigo_generacion': v.codigo_generacion or '',
+                'numero_control': v.numero_control or '',
+                'venta_gravada': float(v.venta_gravada),
+                'debito_fiscal': float(v.debito_fiscal),
+                'total': float(v.venta_gravada + v.debito_fiscal),
+            })
+        
+        totales = ventas.aggregate(
+            total_gravado=Sum('venta_gravada'),
+            total_iva=Sum('debito_fiscal')
+        )
+        
+        return Response({
+            'empresa': empresa.nombre,
+            'periodo': periodo,
+            'total_registros': len(datos),
+            'totales': {
+                'gravado': float(totales['total_gravado'] or 0),
+                'iva': float(totales['total_iva'] or 0),
+                'total': float((totales['total_gravado'] or 0) + (totales['total_iva'] or 0)),
+            },
+            'datos': datos
+        })
+    except Empresa.DoesNotExist:
+        return Response({"error": "Empresa no encontrada"}, status=404)
+
+# --- REPORTES CSV/PDF ADAPTADOS PARA EMPRESA ---
+@api_view(['GET'])
+def reporte_csv_compras_empresa(request):
+    """
+    Genera CSV de compras usando empresa_id.
+    """
+    empresa_id = request.query_params.get('empresa_id')
+    periodo = request.query_params.get('periodo')
+    
+    if not empresa_id or not periodo:
+        return HttpResponse("Faltan empresa_id o periodo", status=400)
+    
+    try:
+        empresa = Empresa.objects.get(id=empresa_id)
+        compras = Compra.objects.filter(empresa=empresa, periodo_aplicado=periodo).order_by('fecha_emision')
+        
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="LIBRO_COMPRAS_{empresa.nombre}_{periodo}.csv"'
+        writer = csv.writer(response, delimiter=';')
+        
+        # Encabezados (formato MH)
+        writer.writerow(['FECHA', 'CLASE', 'TIPO', 'CODIGO', 'NRC', 'PROVEEDOR', 'EXENTAS', 'NO_SUJETAS', 
+                         'IMPORT', 'INTERNAS', 'SERV_EXENTOS', 'SERV_GRAVADOS', 'OTROS', 'IVA', 'TOTAL', 
+                         'OBSERV', 'CLASIF1', 'CLASIF2', 'CLASIF3', 'TIPO_OP', 'TIPO_ING'])
+        
+        map_clasif_1 = {"Gravada": "1", "Exenta": "2", "No Sujeta": "3"}
+        map_clasif_2 = {"Costo": "1", "Gasto": "2"}
+        map_clasif_3 = {"Industria": "1", "Comercio": "2", "Servicios": "3", "Agropecuario": "4", 
+                        "Administración": "1", "Ventas": "2", "Financiero": "3"}
+        
+        for c in compras:
+            fecha_fmt = c.fecha_emision.strftime("%d/%m/%Y")
+            clase_doc = "4" if c.codigo_generacion and len(str(c.codigo_generacion)) > 20 else "1"
+            tipo_doc = c.tipo_documento.zfill(2)
+            nombre_limpio = c.nombre_proveedor.replace(";", "") if c.nombre_proveedor else ""
+            es_importacion = c.tipo_documento == '12'
+            col_9_internas = format(c.monto_gravado, '.2f') if not es_importacion else "0.00"
+            col_8_import = format(c.monto_gravado, '.2f') if es_importacion else "0.00"
+            cod_1 = map_clasif_1.get(c.clasificacion_1, "1")
+            cod_2 = map_clasif_2.get(c.clasificacion_2, "1")
+            cod_3 = map_clasif_3.get(c.clasificacion_3, "1")
+            
+            fila = [
+                fecha_fmt, clase_doc, tipo_doc, c.codigo_generacion or '', c.nrc_proveedor, nombre_limpio,
+                "0.00", "0.00", col_8_import, col_9_internas, "0.00", "0.00", "0.00",
+                format(c.monto_iva, '.2f'), format(c.monto_total, '.2f'), "", cod_1, cod_2, cod_3, "5", "3"
+            ]
+            writer.writerow(fila)
+        
+        return response
+    except Empresa.DoesNotExist:
+        return HttpResponse("Empresa no encontrada", status=404)
+
+@api_view(['GET'])
+def reporte_pdf_compras_empresa(request):
+    """
+    Genera PDF de compras usando empresa_id.
+    """
+    empresa_id = request.query_params.get('empresa_id')
+    periodo = request.query_params.get('periodo')
+    
+    if not empresa_id or not periodo:
+        return HttpResponse("Faltan empresa_id o periodo", status=400)
+    
+    try:
+        empresa = Empresa.objects.get(id=empresa_id)
+        compras = Compra.objects.filter(empresa=empresa, periodo_aplicado=periodo).order_by('fecha_emision')
+    except Empresa.DoesNotExist:
+        return HttpResponse("Empresa no encontrada", status=404)
+    
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.lib import colors
+    
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="LIBRO_COMPRAS_{empresa.nombre}_{periodo}.pdf"'
+    
+    doc = SimpleDocTemplate(response, pagesize=landscape(letter), rightMargin=15, leftMargin=15, topMargin=30, bottomMargin=20)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    estilo_titulo = ParagraphStyle(name='Titulo', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=14, spaceAfter=2)
+    estilo_sub = ParagraphStyle(name='Sub', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10)
+    
+    elements.append(Paragraph("LIBRO DE COMPRAS", estilo_titulo))
+    elements.append(Paragraph(f"CONTRIBUYENTE: {empresa.nombre}", estilo_sub))
+    elements.append(Paragraph(f"NRC: {empresa.nrc}  |  NIT: {empresa.nit or 'N/A'}", estilo_sub))
+    elements.append(Paragraph(f"PERÍODO: {periodo}  |  MONEDA: USD", estilo_sub))
+    elements.append(Spacer(1, 10))
+    
+    col_widths = [30, 55, 160, 50, 140, 50, 50, 50, 45, 55, 45, 45]
+    headers = ['No.', 'FECHA', 'Nº COMPROBANTE / DTE', 'NRC', 'PROVEEDOR', 'EXENTAS', 'GRAV. LOC', 'GRAV. IMP', 'IVA', 'TOTAL', 'RET 1%', 'RET 13%']
+    data = [headers]
+    
+    t_exenta = 0; t_grav_loc = 0; t_grav_imp = 0; t_iva = 0; t_total = 0; t_ret1 = 0; t_ret13 = 0
+    correlativo = 1
+    
+    estilo_celda = ParagraphStyle(name='Celda', fontSize=7, leading=8, alignment=TA_LEFT)
+    estilo_celda_num = ParagraphStyle(name='CeldaNum', fontSize=7, leading=8, alignment=TA_RIGHT)
+    
+    for c in compras:
+        es_importacion = c.tipo_documento == '12'
+        exenta = 0.00
+        grav_loc = float(c.monto_gravado) if not es_importacion else 0.00
+        grav_imp = float(c.monto_gravado) if es_importacion else 0.00
+        iva = float(c.monto_iva)
+        total = float(c.monto_total)
+        ret1 = 0.00
+        ret13 = 0.00
+        
+        t_exenta += exenta; t_grav_loc += grav_loc; t_grav_imp += grav_imp
+        t_iva += iva; t_total += total; t_ret1 += ret1; t_ret13 += ret13
+        
+        fila = [
+            str(correlativo),
+            c.fecha_emision.strftime("%d/%m/%Y"),
+            Paragraph(c.codigo_generacion or "", estilo_celda),
+            c.nrc_proveedor,
+            Paragraph(c.nombre_proveedor, estilo_celda),
+            Paragraph(f"{exenta:,.2f}", estilo_celda_num),
+            Paragraph(f"{grav_loc:,.2f}", estilo_celda_num),
+            Paragraph(f"{grav_imp:,.2f}", estilo_celda_num),
+            Paragraph(f"{iva:,.2f}", estilo_celda_num),
+            Paragraph(f"{total:,.2f}", estilo_celda_num),
+            Paragraph(f"{ret1:,.2f}", estilo_celda_num),
+            Paragraph(f"{ret13:,.2f}", estilo_celda_num),
+        ]
+        data.append(fila)
+        correlativo += 1
+    
+    data.append(['', '', 'TOTALES:', '', '', f"${t_exenta:,.2f}", f"${t_grav_loc:,.2f}", f"${t_grav_imp:,.2f}", f"${t_iva:,.2f}", f"${t_total:,.2f}", f"${t_ret1:,.2f}", f"${t_ret13:,.2f}"])
+    
+    tabla = Table(data, colWidths=col_widths, repeatRows=1)
+    tabla.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.whitesmoke),
+    ]))
+    elements.append(tabla)
+    
+    elements.append(Spacer(1, 50))
+    data_firmas = [['_________________________', '_________________________'], ['F. CONTADOR', 'F. REPRESENTANTE LEGAL']]
+    tabla_firmas = Table(data_firmas, colWidths=[250, 250])
+    tabla_firmas.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+    elements.append(tabla_firmas)
+    
+    doc.build(elements)
+    return response
+
+@api_view(['GET'])
+def reporte_csv_ventas_ccf_empresa(request):
+    """
+    Genera CSV de ventas a Contribuyentes usando empresa_id.
+    """
+    empresa_id = request.query_params.get('empresa_id')
+    periodo = request.query_params.get('periodo')
+    
+    if not empresa_id or not periodo:
+        return HttpResponse("Faltan empresa_id o periodo", status=400)
+    
+    try:
+        empresa = Empresa.objects.get(id=empresa_id)
+        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CCF').order_by('fecha_emision')
+        
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="LIBRO_VENTAS_CCF_{empresa.nombre}_{periodo}.csv"'
+        writer = csv.writer(response, delimiter=';')
+        
+        for v in ventas:
+            fecha_fmt = v.fecha_emision.strftime("%d/%m/%Y")
+            clase_doc = v.clase_documento
+            tipo_doc = "03"
+            resolucion = v.numero_resolucion if clase_doc != '4' else ""
+            serie = v.serie_documento if clase_doc != '4' else ""
+            num_prin = v.numero_documento or ""
+            num_sec = v.numero_formulario_unico if (clase_doc == '2' and v.numero_formulario_unico) else num_prin
+            nombre_limpio = (v.nombre_receptor or "").replace(";", "")
+            
+            monto_exento = "0.00"
+            monto_gravado = "0.00"
+            monto_nosujeto = "0.00"
+            base = v.venta_gravada
+            
+            if v.clasificacion_venta == "2":
+                monto_exento = format(base, '.2f')
+            elif v.clasificacion_venta == "3":
+                monto_nosujeto = format(base, '.2f')
+            else:
+                monto_gravado = format(base, '.2f')
+            
+            fila = [
+                fecha_fmt, clase_doc, tipo_doc, resolucion, serie, num_prin, num_sec,
+                v.nrc_receptor or "", nombre_limpio, monto_exento, "0.00", monto_gravado, 
+                format(v.debito_fiscal, '.2f'), monto_nosujeto, "0.00", format(v.venta_gravada + v.debito_fiscal, '.2f'),
+                "", v.clasificacion_venta.zfill(2), v.tipo_ingreso.zfill(2), "1"
+            ]
+            writer.writerow(fila)
+        
+        return response
+    except Empresa.DoesNotExist:
+        return HttpResponse("Empresa no encontrada", status=404)
+
+@api_view(['GET'])
+def reporte_pdf_ventas_ccf_empresa(request):
+    """
+    Genera PDF de ventas a Contribuyentes usando empresa_id.
+    Reutiliza la lógica existente.
+    """
+    empresa_id = request.query_params.get('empresa_id')
+    periodo = request.query_params.get('periodo')
+    
+    if not empresa_id or not periodo:
+        return HttpResponse("Faltan empresa_id o periodo", status=400)
+    
+    try:
+        empresa = Empresa.objects.get(id=empresa_id)
+        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CCF').order_by('fecha_emision', 'numero_documento')
+    except Empresa.DoesNotExist:
+        return HttpResponse("Empresa no encontrada", status=404)
+    
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+    from reportlab.lib import colors
+    
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="LIBRO_VENTAS_CCF_{empresa.nombre}_{periodo}.pdf"'
+    
+    doc = SimpleDocTemplate(response, pagesize=landscape(letter), rightMargin=20, leftMargin=20, topMargin=30, bottomMargin=20)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    estilo_titulo = ParagraphStyle(name='Titulo', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=12, spaceAfter=2)
+    estilo_sub = ParagraphStyle(name='Sub', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10)
+    estilo_derecha = ParagraphStyle(name='Der', parent=styles['Normal'], alignment=TA_RIGHT, fontSize=8)
+    
+    elements.append(Paragraph("Art. 85 R.A.C.T.", estilo_derecha))
+    elements.append(Paragraph("LIBRO DE VENTAS A CONTRIBUYENTES", estilo_titulo))
+    elements.append(Paragraph(f"{empresa.nombre}", estilo_sub))
+    elements.append(Paragraph(f"Periodo del: {periodo} | NRC: {empresa.nrc}", estilo_sub))
+    elements.append(Paragraph("(Cifras Expresadas en Dolares de los Estados Unidos de America)", estilo_sub))
+    elements.append(Spacer(1, 15))
+    
+    headers_1 = ['No', 'Día', 'Nº de', 'Nombre del', 'Nº de', 'Ventas Internas', '', '', 'Débito', 'IVA 1%', 'Venta']
+    headers_2 = ['Corr.', '', 'Comprob.', 'Cliente', 'Reg.', 'Exentas', 'Gravadas', '', 'Fiscal', 'Retenido', 'Total']
+    data = [headers_1, headers_2]
+    
+    t_exenta = 0; t_gravada = 0; t_debito = 0; t_ret1 = 0; t_total = 0
+    correlativo = 1
+    
+    estilo_celda = ParagraphStyle(name='Celda', fontSize=7, leading=8, alignment=TA_LEFT)
+    estilo_num = ParagraphStyle(name='Num', fontSize=7, leading=8, alignment=TA_RIGHT)
+    
+    for v in ventas:
+        gravada = float(v.venta_gravada)
+        debito = float(v.debito_fiscal)
+        exenta = 0.00
+        if v.clasificacion_venta == "2":
+            exenta = gravada
+            gravada = 0.00
+            debito = 0.00
+        
+        total = gravada + debito + exenta
+        ret1 = float(v.iva_retenido_1)
+        
+        t_exenta += exenta; t_gravada += gravada; t_debito += debito
+        t_ret1 += ret1; t_total += total
+        
+        dia = v.fecha_emision.strftime("%d/%m")
+        
+        row = [
+            str(correlativo),
+            dia,
+            v.numero_documento or v.codigo_generacion or '',
+            Paragraph((v.nombre_receptor or '')[:35], estilo_celda),
+            v.nrc_receptor or '',
+            f"${exenta:,.2f}" if exenta > 0 else "",
+            f"${gravada:,.2f}",
+            "",
+            f"${debito:,.2f}",
+            f"${ret1:,.2f}" if ret1 > 0 else "",
+            f"${total:,.2f}"
+        ]
+        data.append(row)
+        correlativo += 1
+    
+    data.append([
+        '', '', '', 'TOTALES:', '',
+        f"${t_exenta:,.2f}", f"${t_gravada:,.2f}", '', f"${t_debito:,.2f}", 
+        f"${t_ret1:,.2f}", f"${t_total:,.2f}"
+    ])
+    
+    col_widths = [25, 35, 70, 180, 50, 55, 55, 10, 55, 55, 60]
+    
+    tabla = Table(data, colWidths=col_widths, repeatRows=2)
+    tabla.setStyle(TableStyle([
+        ('SPAN', (0,0), (0,1)), ('SPAN', (1,0), (1,1)), ('SPAN', (2,0), (2,1)), ('SPAN', (3,0), (3,1)), 
+        ('SPAN', (4,0), (4,1)), ('SPAN', (5,0), (7,0)),
+        ('SPAN', (8,0), (8,1)), ('SPAN', (9,0), (9,1)), ('SPAN', (10,0), (10,1)),
+        ('BACKGROUND', (0, 0), (-1, 1), colors.lightgrey),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.whitesmoke),
+        ('ALIGN', (5, 2), (-1, -1), 'RIGHT'),
+    ]))
+    elements.append(tabla)
+    
+    elements.append(Spacer(1, 50))
+    data_firmas = [['_________________________', '_________________________'], ['F. CONTADOR', 'F. REPRESENTANTE LEGAL']]
+    tabla_firmas = Table(data_firmas, colWidths=[250, 250])
+    tabla_firmas.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+    elements.append(tabla_firmas)
+    
+    doc.build(elements)
+    return response
+
+@api_view(['GET'])
+def reporte_csv_ventas_cf_empresa(request):
+    """
+    Genera CSV de ventas a Consumidor Final usando empresa_id.
+    """
+    empresa_id = request.query_params.get('empresa_id')
+    periodo = request.query_params.get('periodo')
+    
+    if not empresa_id or not periodo:
+        return HttpResponse("Faltan empresa_id o periodo", status=400)
+    
+    try:
+        empresa = Empresa.objects.get(id=empresa_id)
+        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CF').order_by('fecha_emision')
+        
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="LIBRO_VENTAS_CF_{empresa.nombre}_{periodo}.csv"'
+        writer = csv.writer(response, delimiter=';')
+        
+        for v in ventas:
+            fecha_fmt = v.fecha_emision.strftime("%d/%m/%Y")
+            clase_doc = v.clase_documento
+            
+            cod_gen_limpio = str(v.codigo_generacion or "").replace("-", "").upper()
+            num_ctrl_limpio = str(v.numero_control or "").replace("-", "").upper()
+            sello_limpio = str(v.sello_recepcion or "").replace("-", "").upper()
+            
+            if clase_doc == '4':
+                tipo_doc_mh = "01"
+                col_3_res = num_ctrl_limpio
+                col_4_ser = sello_limpio
+                col_5_ci_del = cod_gen_limpio
+                col_6_ci_al = cod_gen_limpio
+                col_7_del = cod_gen_limpio
+                col_8_al = cod_gen_limpio
+                col_9_maq = ""
+            else:
+                tipo_doc_mh = "01"
+                col_3_res = v.numero_resolucion or ""
+                col_4_ser = v.serie_documento or ""
+                col_5_ci_del = ""
+                col_6_ci_al = ""
+                col_7_del = v.numero_control_desde or v.numero_documento or ""
+                col_8_al = v.numero_control_hasta or v.numero_documento or ""
+                col_9_maq = ""
+            
+            monto_exento = "0.00"
+            monto_gravado = "0.00"
+            total_venta_dia = v.venta_gravada + v.debito_fiscal
+            
+            if v.clasificacion_venta == "2":
+                monto_exento = format(total_venta_dia, '.2f')
+            else:
+                monto_gravado = format(v.venta_gravada, '.2f')
+            
+            total_fmt = format(total_venta_dia, '.2f')
+            
+            fila = [
+                fecha_fmt, clase_doc, tipo_doc_mh, col_3_res, col_4_ser, col_5_ci_del, col_6_ci_al,
+                col_7_del, col_8_al, col_9_maq, monto_exento, "0.00", "0.00", monto_gravado,
+                "0.00", "0.00", "0.00", "0.00", "0.00", total_fmt,
+                v.clasificacion_venta, v.tipo_ingreso, "2"
+            ]
+            writer.writerow(fila)
+        
+        return response
+    except Empresa.DoesNotExist:
+        return HttpResponse("Empresa no encontrada", status=404)
+
+@api_view(['GET'])
+def reporte_pdf_ventas_cf_empresa(request):
+    """
+    Genera PDF de ventas a Consumidor Final usando empresa_id.
+    """
+    empresa_id = request.query_params.get('empresa_id')
+    periodo = request.query_params.get('periodo')
+    
+    if not empresa_id or not periodo:
+        return HttpResponse("Faltan empresa_id o periodo", status=400)
+    
+    try:
+        empresa = Empresa.objects.get(id=empresa_id)
+        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CF').order_by('fecha_emision', 'numero_control')
+    except Empresa.DoesNotExist:
+        return HttpResponse("Empresa no encontrada", status=404)
+    
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    from reportlab.lib import colors
+    
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="LIBRO_VENTAS_CF_{empresa.nombre}_{periodo}.pdf"'
+    
+    doc = SimpleDocTemplate(response, pagesize=landscape(letter), rightMargin=20, leftMargin=20, topMargin=30, bottomMargin=20)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    estilo_titulo = ParagraphStyle(name='Titulo', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=12, spaceAfter=2)
+    estilo_sub = ParagraphStyle(name='Sub', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10)
+    
+    elements.append(Paragraph("LIBRO DE VENTAS A CONSUMIDOR FINAL", estilo_titulo))
+    elements.append(Paragraph(f"{empresa.nombre}", estilo_sub))
+    elements.append(Paragraph(f"Periodo del: {periodo} | NRC: {empresa.nrc}", estilo_sub))
+    elements.append(Paragraph("(Cifras Expresadas en Dolares de los Estados Unidos de America)", estilo_sub))
+    elements.append(Spacer(1, 15))
+    
+    resumen_diario = {}
+    
+    for v in ventas:
+        fecha = v.fecha_emision.strftime("%d/%m/%Y")
+        
+        if v.clase_documento == '4':
+            raw_val = v.codigo_generacion or v.numero_documento or ""
+            valor_visual = str(raw_val)
+        else:
+            raw_val = v.numero_control_desde or v.numero_documento or ""
+            valor_visual = str(raw_val)
+        
+        if fecha not in resumen_diario:
+            resumen_diario[fecha] = {
+                "caja": "GEN",
+                "del_num": valor_visual,
+                "al_num": valor_visual,
+                "exentas": 0.0, "no_sujetas": 0.0, "gravadas": 0.0, "total": 0.0
+            }
+        
+        resumen_diario[fecha]["al_num"] = valor_visual
+        
+        total_venta = float(v.venta_gravada) + float(v.debito_fiscal)
+        
+        if v.clasificacion_venta == "2":
+            resumen_diario[fecha]["exentas"] += total_venta
+        elif v.clasificacion_venta == "3":
+            resumen_diario[fecha]["no_sujetas"] += total_venta
+        else:
+            resumen_diario[fecha]["gravadas"] += total_venta
+        
+        resumen_diario[fecha]["total"] += total_venta
+    
+    headers_1 = ['Día', 'Nº de CAJA', 'Correlativo', '', 'Ventas', '', '', 'Export.', 'Retención', 'Venta']
+    headers_2 = ['', '', 'Del Nº', 'Al Nº', 'No Sujetas', 'Exentas', 'Gravadas', '', 'IVA 1%', 'Total']
+    data = [headers_1, headers_2]
+    
+    t_no_suj = 0; t_exenta = 0; t_grav = 0; t_total = 0
+    
+    estilo_uuid = ParagraphStyle(name='UUID', fontSize=5, alignment=TA_CENTER, leading=6)
+    estilo_celda = ParagraphStyle(name='Celda', fontSize=8, alignment=TA_CENTER)
+    
+    for fecha, info in resumen_diario.items():
+        t_no_suj += info["no_sujetas"]
+        t_exenta += info["exentas"]
+        t_grav += info["gravadas"]
+        t_total += info["total"]
+        
+        estilo_uso = estilo_uuid if len(info["del_num"]) > 15 else estilo_celda
+        
+        row = [
+            fecha,
+            info["caja"],
+            Paragraph(info["del_num"], estilo_uso),
+            Paragraph(info["al_num"], estilo_uso),
+            f"${info['no_sujetas']:,.2f}" if info['no_sujetas'] > 0 else "",
+            f"${info['exentas']:,.2f}" if info['exentas'] > 0 else "",
+            f"${info['gravadas']:,.2f}",
+            "", "",
+            f"${info['total']:,.2f}"
+        ]
+        data.append(row)
+    
+    data.append(['', '', 'TOTALES:', '', f"${t_no_suj:,.2f}", f"${t_exenta:,.2f}", f"${t_grav:,.2f}", '', '', f"${t_total:,.2f}"])
+    
+    col_widths = [50, 40, 130, 130, 60, 60, 70, 50, 60, 70]
+    
+    tabla = Table(data, colWidths=col_widths, repeatRows=2)
+    tabla.setStyle(TableStyle([
+        ('SPAN', (0,0), (0,1)), ('SPAN', (1,0), (1,1)), ('SPAN', (2,0), (3,0)), ('SPAN', (4,0), (6,0)), ('SPAN', (7,0), (7,1)), ('SPAN', (8,0), (8,1)), ('SPAN', (9,0), (9,1)),
+        ('BACKGROUND', (0, 0), (-1, 1), colors.lightgrey),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.whitesmoke),
+        ('ALIGN', (4, 2), (-1, -1), 'RIGHT'),
+    ]))
+    elements.append(tabla)
+    
+    elements.append(Spacer(1, 40))
+    data_firmas = [['_________________________', '_________________________'], ['F. CONTADOR', 'F. REPRESENTANTE LEGAL']]
+    tabla_firmas = Table(data_firmas, colWidths=[250, 250])
+    tabla_firmas.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+    elements.append(tabla_firmas)
+    
+    doc.build(elements)
     return response
