@@ -21,6 +21,8 @@ services:
       dockerfile: Dockerfile
     restart: always
     env_file: .env
+    environment:
+      MEDIA_ROOT: /app/media
     depends_on:
       db:
         condition: service_healthy
@@ -30,6 +32,7 @@ services:
              gunicorn sistema_contable.wsgi:application --bind 0.0.0.0:8000"
     volumes:
       - static_volume:/app/staticfiles
+      - media_volume:/app/media
     expose:
       - "8000"
 
@@ -42,6 +45,13 @@ services:
     expose:
       - "80"
 
+  firmador:
+    image: ghcr.io/rhernandez-sv/firmador-libre:latest
+    restart: always
+    env_file: .env
+    volumes:
+      - media_volume:/app/certificados:ro
+
   nginx:
     image: nginx:alpine
     restart: always
@@ -53,13 +63,10 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - static_volume:/static:ro
-    env_file: .env
-
-  firmador:
-    image: ${FIRMADOR_IMAGE:-busybox:latest}
-    restart: always
+      - media_volume:/media:ro
     env_file: .env
 
 volumes:
   postgres_data:
   static_volume:
+  media_volume:

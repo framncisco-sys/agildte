@@ -1,6 +1,7 @@
 """
 Django settings for sistema_contable project.
 """
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -111,13 +112,16 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Media files (logos, certificados subidos por usuarios)
+# En Docker: MEDIA_ROOT=/app/media para que certificados queden en /app/media/certificados/
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media')))
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- Ministerio de Hacienda (DTE / Facturación Electrónica) ---
+# URL del firmador (en Docker: FIRMADOR_URL=http://firmador:8113/)
+DTE_FIRMADOR_URL = os.environ.get('FIRMADOR_URL', 'http://localhost:8113/').rstrip('/') + '/firmardocumento/'
 # URL invalidación (Manual MH 4.5). Override solo si necesitas otra URL.
 # DTE_ANULAR_URL = "https://apitest.dtes.mh.gob.sv/fesv/anulardte"
 
