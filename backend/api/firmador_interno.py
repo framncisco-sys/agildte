@@ -66,87 +66,86 @@ def _get_text(elem) -> Optional[str]:
     return elem.text.strip() or None
 
 
+def _extract_encodied_and_clave_from_raw(raw_text: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extrae el contenido de <privateKey><encodied> y <clave> con regex sobre el texto crudo,
+    para no depender del parser XML (que a veces trunca contenido con muchas líneas).
+    """
+    # Buscar <privateKey>...</privateKey> (o PrivateKey) y dentro <encodied>...</encodied>
+    priv_block = re.search(
+        r"<[Pp]rivate[Kk]ey>([\s\S]*?)</[Pp]rivate[Kk]ey>",
+        raw_text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not priv_block:
+        return None, None
+    block = priv_block.group(1)
+    enc = re.search(r"<[Ee]ncodied>([\s\S]*?)</[Ee]ncodied>", block)
+    cla = re.search(r"<[Cc]lave>([^<]+)</[Cc]lave>", block)
+    encodied = (enc.group(1).strip() if enc else None) or None
+    clave_hex = (cla.group(1).strip() if cla else None) or None
+    return encodied, clave_hex
+
+
 def _parse_certificado_mh_xml(path: Path) -> Tuple[Optional[bytes], Optional[str]]:
     """
-    Parsea el XML del certificado MH y devuelve (private_key_bytes, clave_hex).
-    La clave privada está en <privateKey><encodied> (base64). La validación del password
-    es <privateKey><clave> = SHA512(password) en hex.
+    Parsea el certificado MH y devuelve (private_key_bytes, clave_hex).
+    Usa regex sobre el archivo crudo para extraer <encodied> completo (evita truncado del parser XML).
     """
     try:
         with open(path, "rb") as f:
             raw = f.read()
-        # Intentar varios encodings
-        for encoding in ("utf-8", "utf-8-sig", "latin-1"):
-            try:
-                root = ET.fromstring(raw.decode(encoding))
-                break
-            except UnicodeDecodeError:
-                continue
-        else:
-            root = ET.fromstring(raw.decode("utf-8", errors="replace"))
-    except ET.ParseError as e:
-        logger.exception("XML del certificado inválido: %s", e)
-        return None, None
     except Exception as e:
         logger.exception("Error leyendo certificado: %s", e)
         return None, None
 
-    # Buscar bloque privateKey (puede ser privateKey, PrivateKey o con namespace)
-    priv = None
-    for child in root:
-        if _normalize_tag(child.tag) == "privatekey":
-            priv = child
-            break
-    if priv is None:
-        priv = root.find("privateKey") or root.find("PrivateKey")
-    if priv is None:
-        # Último intento: buscar en todo el árbol (por si está anidado)
-        for elem in root.iter():
-            if _normalize_tag(elem.tag) == "privatekey":
-                priv = elem
-                break
-    if priv is None:
-        logger.warning("No se encontró elemento privateKey en el certificado XML")
-        return None, None
-
-    # Buscar encodied (contenido base64 de la clave); reunir todo el texto del nodo
-    encodied_el = _find_element(priv, "encodied", "Encodied")
-    if encodied_el is None:
-        for elem in priv.iter():
-            if _normalize_tag(elem.tag) == "encodied":
-                encodied_el = elem
-                break
-    encodied_text = None
-    if encodied_el is not None:
-        # Reunir todo el texto del nodo (por si el parser parte el contenido)
-        encodied_text = "".join(encodied_el.itertext()) or _get_text(encodied_el) or (encodied_el.text or "")
-        encodied_text = (encodied_text or "").strip().replace("\n", "").replace("\r", "").replace(" ", "").replace("\t", "")
-    if not encodied_text:
-        logger.warning("No se encontró encodied dentro de privateKey")
-        return None, None
-
-    clave_el = _find_element(priv, "clave", "Clave")
-    clave_hex = _get_text(clave_el) if clave_el is not None else None
-
-    try:
-        b64_clean = encodied_text.replace("\n", "").replace("\r", "").replace(" ", "").replace("\t", "")
-        b64_clean = "".join(_B64_RE.findall(b64_clean))
-        # Padding para base64 (longitud múltiplo de 4)
-        pad = 4 - len(b64_clean) % 4
-        if pad != 4:
-            b64_clean += "=" * pad
+    raw_text = None
+    for encoding in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
         try:
-            key_bytes = base64.b64decode(b64_clean)
+            raw_text = raw.decode(encoding)
+            break
+        except (UnicodeDecodeError, LookupError):
+            continue
+    if raw_text is None:
+        raw_text = raw.decode("utf-8", errors="replace")
+
+    # Extracción por regex (más fiable que ET cuando el contenido es largo)
+    encodied_text, clave_hex = _extract_encodied_and_clave_from_raw(raw_text)
+    if not encodied_text:
+        # Fallback: parser XML
+        try:
+            root = ET.fromstring(raw_text.encode("utf-8") if isinstance(raw_text, str) else raw_text)
         except Exception:
-            # Probar base64 URL-safe (- y _ en lugar de + y /)
-            pad = 4 - len(b64_clean) % 4
-            key_bytes = base64.urlsafe_b64decode(b64_clean + ("=" * pad if pad != 4 else ""))
-    except Exception as e:
-        logger.exception("Error decodificando base64 de encodied: %s", e)
-        return None, None
+            root = ET.fromstring(raw)
+        priv = root.find("privateKey") or root.find("PrivateKey")
+        if priv is not None:
+            enc_el = priv.find("encodied") or priv.find("Encodied")
+            if enc_el is not None and (enc_el.text or "".join(enc_el.itertext())):
+                encodied_text = (enc_el.text or "") + "".join(enc_el.itertext())
+            clave_el = priv.find("clave") or priv.find("Clave")
+            if clave_hex is None and clave_el is not None and clave_el.text:
+                clave_hex = clave_el.text.strip()
+        if not encodied_text:
+            logger.warning("No se encontró encodied en el certificado")
+            return None, None
+
+    encodied_text = (encodied_text or "").strip().replace("\n", "").replace("\r", "").replace(" ", "").replace("\t", "")
+    b64_clean = "".join(_B64_RE.findall(encodied_text))
+    pad = 4 - len(b64_clean) % 4
+    if pad != 4:
+        b64_clean += "=" * pad
+    try:
+        key_bytes = base64.b64decode(b64_clean)
+    except Exception:
+        try:
+            key_bytes = base64.urlsafe_b64decode(b64_clean + ("=" * (4 - len(b64_clean) % 4) if len(b64_clean) % 4 else ""))
+        except Exception as e:
+            logger.exception("Error decodificando base64: %s", e)
+            return None, None
 
     if not key_bytes:
         return None, None
+    logger.debug("Clave privada extraída: %d bytes", len(key_bytes))
     return key_bytes, clave_hex
 
 
