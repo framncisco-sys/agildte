@@ -108,6 +108,7 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Media files (logos, certificados subidos por usuarios)
 MEDIA_URL = '/media/'
