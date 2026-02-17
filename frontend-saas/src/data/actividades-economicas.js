@@ -1,0 +1,36 @@
+/**
+ * Catálogo de Actividad Económica (MH - CAT-019 / CLAEES).
+ * Código y nombre para DTE-03 (Crédito Fiscal). Ampliar según catálogo oficial.
+ */
+export const ACTIVIDADES_ECONOMICAS = [
+  { codigo: '45201', nombre: 'Reparación mecánica de automotores' },
+  { codigo: '45202', nombre: 'Reparación de carrocerías' },
+  { codigo: '46100', nombre: 'Comercio al por mayor a cambio de una retribución' },
+  { codigo: '47111', nombre: 'Comercio al por menor en almacenes no especializados' },
+  { codigo: '47191', nombre: 'Comercio al por menor en minimercados' },
+  { codigo: '47210', nombre: 'Comercio al por menor de productos alimenticios' },
+  { codigo: '47520', nombre: 'Comercio al por menor de ferretería y materiales' },
+  { codigo: '47711', nombre: 'Comercio al por menor de productos farmacéuticos' },
+  { codigo: '49110', nombre: 'Transporte de pasajeros por ferrocarril' },
+  { codigo: '49211', nombre: 'Transporte de pasajeros por autobús' },
+  { codigo: '49410', nombre: 'Transporte de carga por carretera' },
+  { codigo: '55110', nombre: 'Hoteles y alojamientos similares' },
+  { codigo: '56101', nombre: 'Restaurantes y puestos de comidas' },
+  { codigo: '56210', nombre: 'Servicios de suministro de comidas por encargo' },
+  { codigo: '62010', nombre: 'Actividades de programación informática' },
+  { codigo: '62020', nombre: 'Actividades de consultoría informática' },
+  { codigo: '70201', nombre: 'Actividades de consultoría de gestión' },
+  { codigo: '70202', nombre: 'Actividades de relaciones públicas' },
+  { codigo: '71110', nombre: 'Actividades de arquitectura e ingeniería' },
+  { codigo: '74100', nombre: 'Actividades de diseño especializado' },
+  { codigo: '74901', nombre: 'Actividades de fotografía' },
+  { codigo: '77291', nombre: 'Alquiler de artículos para el hogar' },
+  { codigo: '85101', nombre: 'Enseñanza preprimaria' },
+  { codigo: '85210', nombre: 'Enseñanza primaria' },
+  { codigo: '85310', nombre: 'Enseñanza secundaria' },
+  { codigo: '86101', nombre: 'Actividades de hospitales y clínicas' },
+  { codigo: '86901', nombre: 'Actividades de odontología' },
+  { codigo: '86902', nombre: 'Actividades de laboratorios clínicos' },
+  { codigo: '96011', nombre: 'Lavado y limpieza de prendas de tela' },
+  { codigo: '96021', nombre: 'Peluquerías y salones de belleza' },
+]

@@ -21,6 +21,12 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio, ventaId = null }) => {
   const [modoCrearCliente, setModoCrearCliente] = useState(false);
   const [modoEdicion, setModoEdicion] = useState(false);
   const [cargandoDatos, setCargandoDatos] = useState(false);
+  const [mostrarModalDTE, setMostrarModalDTE] = useState(false);
+  const [dteJson, setDteJson] = useState(null);
+  const [generandoDTE, setGenerandoDTE] = useState(false);
+  const [ventaGuardadaId, setVentaGuardadaId] = useState(null);
+  const [codigoGeneracion, setCodigoGeneracion] = useState("");
+  const [numeroControl, setNumeroControl] = useState("");
 
   // Montos
   const [montoGravado, setMontoGravado] = useState("");
@@ -40,6 +46,7 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio, ventaId = null }) => {
     if (ventaId) {
       setCargandoDatos(true);
       setModoEdicion(true);
+      setVentaGuardadaId(ventaId); // Guardar ID para generar DTE
       fetch(`http://127.0.0.1:8000/api/ventas/${ventaId}/`)
         .then(res => res.json())
         .then(data => {
@@ -50,6 +57,10 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio, ventaId = null }) => {
           setMontoGravado(data.venta_gravada?.toString() || "");
           setMontoIva(data.debito_fiscal?.toString() || "");
           setMontoTotal((parseFloat(data.venta_gravada || 0) + parseFloat(data.debito_fiscal || 0)).toString());
+          
+          // Cargar datos de DTE si existen
+          setCodigoGeneracion(data.codigo_generacion || "");
+          setNumeroControl(data.numero_control || "");
           
           // Si no es CF, cargar datos del cliente
           if (data.tipo_venta !== 'CF') {
@@ -312,14 +323,31 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio, ventaId = null }) => {
         });
 
         if (respuesta.ok) {
+            const data = await respuesta.json();
+            // Guardar el ID de la venta para poder generar el DTE
+            setVentaGuardadaId(data.id || ventaId);
+            
+            // Actualizar códigos DTE si vienen en la respuesta
+            if (data.codigo_generacion) {
+              setCodigoGeneracion(data.codigo_generacion);
+            }
+            if (data.numero_control) {
+              setNumeroControl(data.numero_control);
+            }
+            
             alert(modoEdicion ? "✅ Venta Actualizada Exitosamente" : "✅ Venta Guardada Exitosamente");
-            setMontoGravado(""); setMontoIva(""); setMontoTotal("");
-            setNumeroDocumento(""); setNrcCliente(""); setNombreCliente("");
-            setExisteCliente(false);
-            setNombreBloqueado(false);
-            setModoCrearCliente(false);
-            setModoEdicion(false);
-            if (terminar) volverAlInicio();
+            
+            if (terminar) {
+                volverAlInicio();
+            } else {
+                // Limpiar campos pero mantener el ID para generar DTE
+                setMontoGravado(""); setMontoIva(""); setMontoTotal("");
+                setNumeroDocumento(""); setNrcCliente(""); setNombreCliente("");
+                setExisteCliente(false);
+                setNombreBloqueado(false);
+                setModoCrearCliente(false);
+                setModoEdicion(false);
+            }
         } else {
             const errorData = await respuesta.json();
             alert(`❌ Error al guardar venta: ${JSON.stringify(errorData)}`);
@@ -329,6 +357,63 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio, ventaId = null }) => {
         console.error(error);
         alert("Error de conexión");
     }
+  };
+
+  // --- GENERAR DTE ---
+  const generarDTE = async () => {
+    const ventaIdParaDTE = ventaId || ventaGuardadaId;
+    
+    if (!ventaIdParaDTE) {
+      alert("⚠️ Debes guardar la venta primero antes de generar el DTE");
+      return;
+    }
+
+    setGenerandoDTE(true);
+    setDteJson(null);
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/ventas/${ventaIdParaDTE}/generar-dte/?ambiente=01`
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errorData.error || `Error ${response.status}`);
+      }
+
+      const data = await response.json();
+      setDteJson(data.dte_json);
+      setMostrarModalDTE(true);
+      
+      // Actualizar número de control y código si se generaron
+      if (data.numero_control) {
+        setNumeroControl(data.numero_control);
+        setNumeroDocumento(data.numero_control);
+      }
+      if (data.codigo_generacion) {
+        setCodigoGeneracion(data.codigo_generacion);
+      }
+    } catch (error) {
+      alert(`❌ Error al generar DTE: ${error.message}`);
+    } finally {
+      setGenerandoDTE(false);
+    }
+  };
+
+  // --- DESCARGAR JSON DTE ---
+  const descargarJsonDTE = () => {
+    if (!dteJson) return;
+
+    const jsonStr = JSON.stringify(dteJson, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `DTE-${ventaId || ventaGuardadaId || 'venta'}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -534,6 +619,170 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio, ventaId = null }) => {
             </div>
         </div>
 
+        {/* SECCIÓN: FACTURACIÓN ELECTRÓNICA (DTE) */}
+        <div style={{
+            marginTop: '30px',
+            marginBottom: '30px',
+            padding: '20px',
+            background: '#f8f9fa',
+            borderRadius: '10px',
+            border: '2px solid #dee2e6',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+        }}>
+            <h3 style={{
+                margin: '0 0 15px 0',
+                color: '#2c3e50',
+                fontSize: '1.2em',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+            }}>
+                🧾 Facturación Electrónica
+                {(codigoGeneracion || numeroControl) && (
+                    <span style={{
+                        padding: '4px 12px',
+                        background: '#27ae60',
+                        color: 'white',
+                        borderRadius: '15px',
+                        fontSize: '0.7em',
+                        fontWeight: 'bold'
+                    }}>
+                        ✓ JSON Generado
+                    </span>
+                )}
+            </h3>
+
+            {!(ventaId || ventaGuardadaId) ? (
+                // Venta no guardada
+                <div style={{
+                    padding: '15px',
+                    background: '#fff3cd',
+                    borderRadius: '5px',
+                    border: '1px solid #ffc107',
+                    color: '#856404'
+                }}>
+                    <strong>ℹ️</strong> Guarde la venta primero para habilitar opciones de facturación electrónica.
+                </div>
+            ) : (
+                // Venta guardada - Mostrar opciones
+                <div>
+                    {/* Campos de información DTE (si existen) */}
+                    {(codigoGeneracion || numeroControl) && (
+                        <div style={{
+                            marginBottom: '15px',
+                            padding: '15px',
+                            background: '#e8f5e9',
+                            borderRadius: '5px',
+                            border: '1px solid #27ae60'
+                        }}>
+                            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '10px'}}>
+                                <div>
+                                    <label style={{
+                                        display: 'block',
+                                        fontSize: '0.85em',
+                                        color: '#7f8c8d',
+                                        marginBottom: '5px',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        Código de Generación (UUID):
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={codigoGeneracion}
+                                        readOnly
+                                        style={{
+                                            width: '100%',
+                                            padding: '10px',
+                                            background: 'white',
+                                            border: '1px solid #27ae60',
+                                            borderRadius: '5px',
+                                            fontSize: '0.9em',
+                                            fontFamily: 'monospace',
+                                            color: '#2c3e50'
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{
+                                        display: 'block',
+                                        fontSize: '0.85em',
+                                        color: '#7f8c8d',
+                                        marginBottom: '5px',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        Número de Control:
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={numeroControl}
+                                        readOnly
+                                        style={{
+                                            width: '100%',
+                                            padding: '10px',
+                                            background: 'white',
+                                            border: '1px solid #27ae60',
+                                            borderRadius: '5px',
+                                            fontSize: '0.9em',
+                                            fontFamily: 'monospace',
+                                            color: '#2c3e50'
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Botón Generar DTE */}
+                    <div style={{display: 'flex', justifyContent: 'center', gap: '10px'}}>
+                        <button 
+                            onClick={generarDTE}
+                            disabled={generandoDTE}
+                            style={{
+                                padding: '15px 30px',
+                                background: generandoDTE ? '#95a5a6' : '#3498db',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontWeight: 'bold',
+                                fontSize: '1em',
+                                cursor: generandoDTE ? 'not-allowed' : 'pointer',
+                                boxShadow: generandoDTE ? 'none' : '0 4px 6px rgba(52, 152, 219, 0.3)',
+                                transition: 'all 0.3s'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!generandoDTE) {
+                                    e.target.style.background = '#2980b9';
+                                    e.target.style.transform = 'translateY(-2px)';
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!generandoDTE) {
+                                    e.target.style.background = '#3498db';
+                                    e.target.style.transform = 'translateY(0)';
+                                }
+                            }}
+                        >
+                            {generandoDTE ? '⏳ Generando DTE...' : '📄 Generar JSON DTE'}
+                        </button>
+                    </div>
+
+                    {/* Mensaje informativo */}
+                    <p style={{
+                        marginTop: '15px',
+                        fontSize: '0.85em',
+                        color: '#7f8c8d',
+                        textAlign: 'center',
+                        fontStyle: 'italic'
+                    }}>
+                        {codigoGeneracion || numeroControl 
+                            ? 'El DTE ya ha sido generado. Puede regenerarlo si necesita actualizar la información.'
+                            : 'Haga clic en el botón para generar el archivo JSON del DTE según el estándar del Ministerio de Hacienda.'}
+                    </p>
+                </div>
+            )}
+        </div>
+
+        {/* BOTONES DE GUARDAR */}
         <div style={{marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px'}}>
             <button onClick={() => guardarVenta(false)} style={{padding: '15px 20px', background: '#34495e', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer'}}>
                 ➕ Guardar y Otra
@@ -542,6 +791,102 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio, ventaId = null }) => {
                 💾 Guardar y Terminar
             </button>
         </div>
+
+        {/* MODAL PARA MOSTRAR JSON DTE */}
+        {mostrarModalDTE && dteJson && (
+            <div
+                style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0,0,0,0.7)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 1000
+                }}
+                onClick={() => setMostrarModalDTE(false)}
+            >
+                <div
+                    style={{
+                        background: 'white',
+                        borderRadius: '10px',
+                        padding: '30px',
+                        maxWidth: '900px',
+                        width: '90%',
+                        maxHeight: '90vh',
+                        overflow: 'auto',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
+                        <h3 style={{margin: 0, color: '#2c3e50'}}>📄 JSON DTE Generado</h3>
+                        <button
+                            onClick={() => setMostrarModalDTE(false)}
+                            style={{
+                                background: '#e74c3c',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '5px',
+                                padding: '8px 15px',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                            }}
+                        >
+                            ✕ Cerrar
+                        </button>
+                    </div>
+
+                    <div style={{marginBottom: '15px', padding: '10px', background: '#e8f5e9', borderRadius: '5px'}}>
+                        <p style={{margin: '5px 0', fontSize: '0.9em'}}>
+                            <strong>Número de Control:</strong> {dteJson.identificacion?.numeroControl || 'N/A'}
+                        </p>
+                        <p style={{margin: '5px 0', fontSize: '0.9em'}}>
+                            <strong>Código de Generación:</strong> {dteJson.identificacion?.codigoGeneracion || 'N/A'}
+                        </p>
+                    </div>
+
+                    <div style={{marginBottom: '15px', display: 'flex', gap: '10px'}}>
+                        <button
+                            onClick={descargarJsonDTE}
+                            style={{
+                                padding: '10px 20px',
+                                background: '#27ae60',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '5px',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                            }}
+                        >
+                            💾 Descargar JSON
+                        </button>
+                    </div>
+
+                    <div style={{
+                        background: '#f8f9fa',
+                        padding: '15px',
+                        borderRadius: '5px',
+                        border: '1px solid #dee2e6',
+                        maxHeight: '500px',
+                        overflow: 'auto'
+                    }}>
+                        <pre style={{
+                            margin: 0,
+                            fontSize: '0.85em',
+                            fontFamily: 'monospace',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word'
+                        }}>
+                            {JSON.stringify(dteJson, null, 2)}
+                        </pre>
+                    </div>
+                </div>
+            </div>
+        )}
     </div>
   );
 };

@@ -1,0 +1,36 @@
+================================================================================
+RESPUESTA DEL MINISTERIO DE HACIENDA - Documento enviado (Venta ID 19)
+================================================================================
+Fecha: 11/02/2026
+Ambiente: 00 (Pruebas)
+URL: https://apitest.dtes.mh.gob.sv/fesv/recepciondte
+================================================================================
+
+ESTADO: RECHAZADO
+HTTP: 400
+
+MENSAJE: DOCUMENTO NO CUMPLE ESQUEMA JSON
+
+OBSERVACIONES:
+- Version/Tipo DTE no es valido
+
+================================================================================
+RESPUESTA JSON COMPLETA DE HACIENDA:
+================================================================================
+{
+  "version": 2,
+  "ambiente": "00",
+  "versionApp": 2,
+  "estado": "RECHAZADO",
+  "codigoGeneracion": "7DCD33B3-11E4-4453-8598-9F837BF136C8",
+  "selloRecibido": null,
+  "fhProcesamiento": "11/02/2026 14:21:48",
+  "clasificaMsg": "98",
+  "codigoMsg": "096",
+  "descripcionMsg": "DOCUMENTO NO CUMPLE ESQUEMA JSON",
+  "observaciones": ["Version/Tipo DTE no es valido"]
+}
+================================================================================
+
+DOCUMENTO ENVIADO (firmado V3): DOCUMENTO_MH_V19_20260211_142306.json
+Este archivo contiene el envelope completo (ambiente, idEnvio, version 2, tipoDte 03, documento JWS, codigoGeneracion).

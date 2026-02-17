@@ -1,0 +1,15 @@
+{
+    "version": 2,
+    "ambiente": "00",
+    "versionApp": 2,
+    "estado": "RECHAZADO",
+    "codigoGeneracion": "E808BF14-4EC1-4A3F-B10E-C1FC559F126A",
+    "selloRecibido": null,
+    "fhProcesamiento": "06/02/2026 11:50:50",
+    "clasificaMsg": "98",
+    "codigoMsg": "096",
+    "descripcionMsg": "DOCUMENTO NO CUMPLE ESQUEMA JSON",
+    "observaciones": [
+        "Version/Tipo DTE no es valido"
+    ]
+}
