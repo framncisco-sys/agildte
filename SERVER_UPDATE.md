@@ -1,0 +1,88 @@
+# Actualizar el servidor (agildte-prod)
+
+Cuando `git pull` falle por cambios locales o por `.env`, ejecuta estos pasos **en el servidor** (SSH).
+
+## Firmador opcional
+
+El servicio **firmador** no se inicia por defecto (las imágenes públicas probadas están denegadas). El resto del stack (db, backend, frontend, nginx) arranca sin él. La firma de DTE fallará hasta que tengas una imagen de firmador válida; entonces en `.env` defines `FIRMADOR_IMAGE=tu-imagen` y levantas con:
+
+```bash
+docker compose -f docker-compose.prod.yml --profile firmador up -d
+```
+
+## Comando rápido (copiar y pegar en el servidor)
+
+```bash
+cd ~/agildte
+cp .env .env.backup
+sed -i '/FIRMADOR_IMAGE/d' .env
+grep -q 'FIRMADOR_URL' .env || echo 'FIRMADOR_URL=http://firmador:8113/' >> .env
+git checkout -- docker-compose.prod.yml
+test -f .env && mv .env .env.mio
+git pull origin main
+test -f .env.mio && mv .env.mio .env
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Si `git pull` sigue fallando por `.env`, ejecuta a mano: `mv .env .env.mio`, luego `git pull origin main`, luego `mv .env.mio .env`.
+
+---
+
+## 1. Guardar tu `.env` actual (tiene las contraseñas reales)
+
+```bash
+cd ~/agildte
+cp .env .env.backup
+```
+
+## 2. Quitar la imagen antigua del firmador del `.env`
+
+```bash
+sed -i '/FIRMADOR_IMAGE/d' .env
+```
+
+(O edita a mano: `nano .env` y borra la línea que diga `FIRMADOR_IMAGE=nitram19/firmador-sv`.)
+
+## 3. Permitir el pull: descartar cambios locales del compose y no sobrescribir `.env`
+
+```bash
+# Descarta cambios locales en docker-compose.prod.yml (se reemplazará con el del repo)
+git checkout -- docker-compose.prod.yml
+
+# Si Git dice que .env sería sobrescrito, quita .env del índice y mantén tu copia
+git update-index --assume-unchanged .env 2>/dev/null || true
+git pull origin main
+```
+
+Si aun así Git reclama por `.env`:
+
+```bash
+# Guardar .env, quitar del árbol, hacer pull, restaurar .env
+mv .env .env.mio
+git pull origin main
+mv .env.mio .env
+```
+
+## 4. Asegurar que `.env` no tenga la imagen que falla
+
+```bash
+grep -q 'FIRMADOR_IMAGE=nitram19' .env && sed -i '/FIRMADOR_IMAGE=nitram19/d' .env || true
+```
+
+Añade la URL del firmador si no está:
+
+```bash
+grep -q 'FIRMADOR_URL' .env || echo 'FIRMADOR_URL=http://firmador:8113/' >> .env
+```
+
+## 5. Levantar de nuevo
+
+```bash
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+---
+
+**Resumen:** El error de "pull access denied for nitram19/firmador-sv" se debe a que en el servidor seguías con el compose y el `.env` viejos. Después de `git pull` (con los pasos de arriba) y de quitar `FIRMADOR_IMAGE=nitram19/firmador-sv` del `.env`, el compose usará por defecto `ghcr.io/rhernandez-sv/firmador-libre:latest`.

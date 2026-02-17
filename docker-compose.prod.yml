@@ -45,10 +45,13 @@ services:
     expose:
       - "80"
 
-  # Firmador MH El Salvador. Imagen por defecto: ghcr.io/rhernandez-sv/firmador-libre:latest
-  # Si en .env pones FIRMADOR_IMAGE=otra-imagen, no debe ser nitram19/firmador-sv (no existe).
+  # Firmador MH El Salvador. OPCIONAL: no se inicia por defecto (la imagen pública no existe/está denegada).
+  # Para usarlo: construye tu imagen o usa una válida, define FIRMADOR_IMAGE en .env y ejecuta:
+  #   docker compose -f docker-compose.prod.yml --profile firmador up -d
   firmador:
-    image: ${FIRMADOR_IMAGE:-ghcr.io/rhernandez-sv/firmador-libre:latest}
+    image: ${FIRMADOR_IMAGE:-busybox:latest}
+    profiles:
+      - firmador
     restart: always
     env_file: .env
     volumes:
