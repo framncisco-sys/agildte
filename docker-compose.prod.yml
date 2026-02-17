@@ -45,8 +45,10 @@ services:
     expose:
       - "80"
 
+  # Firmador MH El Salvador. Imagen por defecto: ghcr.io/rhernandez-sv/firmador-libre:latest
+  # Si en .env pones FIRMADOR_IMAGE=otra-imagen, no debe ser nitram19/firmador-sv (no existe).
   firmador:
-    image: ghcr.io/rhernandez-sv/firmador-libre:latest
+    image: ${FIRMADOR_IMAGE:-ghcr.io/rhernandez-sv/firmador-libre:latest}
     restart: always
     env_file: .env
     volumes:
