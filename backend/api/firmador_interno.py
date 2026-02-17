@@ -167,8 +167,10 @@ def _key_bytes_to_jwk_rsa(key_bytes: bytes, password: Optional[str] = None) -> O
     if not CRYPTO_AVAILABLE:
         return None
     backend = default_backend()
-    key_bytes = key_bytes.strip()
-    if key_bytes.startswith(b"\xef\xbb\xbf"):
+    # No hacer .strip() en bytes DER: puede quitar bytes válidos y causar "short data"
+    if key_bytes.startswith(b"-----BEGIN"):
+        key_bytes = key_bytes.strip()
+    elif key_bytes.startswith(b"\xef\xbb\xbf"):
         key_bytes = key_bytes[3:]
     key = None
     password_bytes = password.encode("utf-8") if password else None
@@ -190,6 +192,16 @@ def _key_bytes_to_jwk_rsa(key_bytes: bytes, password: Optional[str] = None) -> O
                 logger.debug("Carga sin contraseña falló: %s", e1)
             else:
                 logger.warning("Carga con contraseña falló: %s", e1)
+    # Cryptography 45+ rechaza DER con bytes nulos al final; intentar sin ellos
+    if key is None and not key_bytes.startswith(b"-----") and key_bytes.rstrip(b"\x00") != key_bytes:
+        der_trim = key_bytes.rstrip(b"\x00")
+        for pwd in (None, password_bytes):
+            try:
+                key = load_der_private_key(der_trim, password=pwd, backend=backend)
+                if key is not None:
+                    break
+            except Exception:
+                pass
     if key is None:
         try:
             key = load_pem_private_key(key_bytes, password=password_bytes, backend=backend)
