@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 try:
     from cryptography.hazmat.primitives.serialization import (
         load_der_private_key,
+        load_pem_private_key,
         Encoding,
         PrivateFormat,
         NoEncryption,
@@ -26,6 +27,7 @@ try:
 except ImportError:
     CRYPTO_AVAILABLE = False
     load_der_private_key = None
+    load_pem_private_key = None
     Encoding = None
     PrivateFormat = None
     NoEncryption = None
@@ -35,42 +37,123 @@ def _sha512_hex(password: str) -> str:
     return hashlib.sha512(password.encode("utf-8")).hexdigest()
 
 
+def _normalize_tag(tag: str) -> str:
+    """Quita namespace XML si existe (ej: '{uri}privateKey' -> 'privatekey')."""
+    if "}" in tag:
+        tag = tag.split("}", 1)[1]
+    return tag.lower()
+
+
+def _find_element(parent, *names: str):
+    """Busca hijo por nombre (sin importar mayúsculas ni namespace)."""
+    for child in parent:
+        if _normalize_tag(child.tag) in [n.lower() for n in names]:
+            return child
+    for name in names:
+        found = parent.find(name)
+        if found is not None:
+            return found
+    return None
+
+
+def _get_text(elem) -> Optional[str]:
+    if elem is None or elem.text is None:
+        return None
+    return elem.text.strip() or None
+
+
 def _parse_certificado_mh_xml(path: Path) -> Tuple[Optional[bytes], Optional[str]]:
     """
-    Parsea el XML del certificado MH y devuelve (private_key_der_bytes, clave_hex).
+    Parsea el XML del certificado MH y devuelve (private_key_bytes, clave_hex).
     La clave privada está en <privateKey><encodied> (base64). La validación del password
     es <privateKey><clave> = SHA512(password) en hex.
     """
     try:
-        tree = ET.parse(path)
-        root = tree.getroot()
+        with open(path, "rb") as f:
+            raw = f.read()
+        # Intentar varios encodings
+        for encoding in ("utf-8", "utf-8-sig", "latin-1"):
+            try:
+                root = ET.fromstring(raw.decode(encoding))
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            root = ET.fromstring(raw.decode("utf-8", errors="replace"))
+    except ET.ParseError as e:
+        logger.exception("XML del certificado inválido: %s", e)
+        return None, None
     except Exception as e:
-        logger.exception("Error parseando XML del certificado: %s", e)
+        logger.exception("Error leyendo certificado: %s", e)
         return None, None
 
-    # Nombres pueden variar (PrivateKey vs privateKey)
-    for tag in ("privateKey", "PrivateKey"):
-        priv = root.find(tag)
-        if priv is not None:
-            encodied = priv.find("encodied") or priv.find("Encodied")
-            clave = priv.find("clave") or priv.find("Clave")
-            if encodied is not None and encodied.text:
-                try:
-                    key_bytes = base64.b64decode(encodied.text.strip().replace("\n", ""))
-                    clave_hex = clave.text.strip() if clave is not None and clave.text else None
-                    return key_bytes, clave_hex
-                except Exception as e:
-                    logger.exception("Error decodificando encodied: %s", e)
-                    return None, None
-    return None, None
+    # Buscar bloque privateKey (puede ser privateKey, PrivateKey o con namespace)
+    priv = None
+    for child in root:
+        if _normalize_tag(child.tag) == "privatekey":
+            priv = child
+            break
+    if priv is None:
+        priv = root.find("privateKey") or root.find("PrivateKey")
+    if priv is None:
+        # Último intento: buscar en todo el árbol (por si está anidado)
+        for elem in root.iter():
+            if _normalize_tag(elem.tag) == "privatekey":
+                priv = elem
+                break
+    if priv is None:
+        logger.warning("No se encontró elemento privateKey en el certificado XML")
+        return None, None
+
+    # Buscar encodied (contenido base64 de la clave); reunir todo el texto del nodo
+    encodied_el = _find_element(priv, "encodied", "Encodied")
+    if encodied_el is None:
+        for elem in priv.iter():
+            if _normalize_tag(elem.tag) == "encodied":
+                encodied_el = elem
+                break
+    encodied_text = None
+    if encodied_el is not None:
+        encodied_text = _get_text(encodied_el) or ""
+        if not encodied_text and encodied_el.text is not None:
+            encodied_text = (encodied_el.text or "") + "".join(encodied_el.itertext())
+        encodied_text = (encodied_text or "").strip().replace("\n", "").replace("\r", "").replace(" ", "")
+    if not encodied_text:
+        logger.warning("No se encontró encodied dentro de privateKey")
+        return None, None
+
+    clave_el = _find_element(priv, "clave", "Clave")
+    clave_hex = _get_text(clave_el) if clave_el is not None else None
+
+    try:
+        b64_clean = encodied_text.replace("\n", "").replace("\r", "").replace(" ", "")
+        key_bytes = base64.b64decode(b64_clean)
+    except Exception as e:
+        logger.exception("Error decodificando base64 de encodied: %s", e)
+        return None, None
+
+    if not key_bytes:
+        return None, None
+    return key_bytes, clave_hex
 
 
-def _der_to_jwk_rsa(der_bytes: bytes) -> Optional[jwk.JWK]:
-    """Convierte clave privada DER a JWK para usar con jwcrypto."""
+def _key_bytes_to_jwk_rsa(key_bytes: bytes) -> Optional[jwk.JWK]:
+    """Convierte clave privada (DER o PEM) a JWK para usar con jwcrypto."""
     if not CRYPTO_AVAILABLE:
         return None
+    backend = default_backend()
+    key = None
     try:
-        key = load_der_private_key(der_bytes, password=None, backend=default_backend())
+        if key_bytes.strip().startswith(b"-----BEGIN"):
+            key = load_pem_private_key(key_bytes, password=None, backend=backend)
+        else:
+            key = load_der_private_key(key_bytes, password=None, backend=backend)
+    except Exception as e:
+        logger.exception("Error cargando clave privada (DER/PEM): %s", e)
+        return None
+    if key is None:
+        return None
+    try:
         pem = key.private_bytes(
             encoding=Encoding.PEM,
             format=PrivateFormat.PKCS8,
@@ -78,7 +161,7 @@ def _der_to_jwk_rsa(der_bytes: bytes) -> Optional[jwk.JWK]:
         )
         return jwk.JWK.from_pem(pem)
     except Exception as e:
-        logger.exception("Error cargando clave DER: %s", e)
+        logger.exception("Error convirtiendo clave a JWK: %s", e)
         return None
 
 
@@ -107,14 +190,20 @@ def firmar_dte_interno(
         )
     if not path_certificado.exists():
         raise FileNotFoundError(f"Certificado no encontrado: {path_certificado}")
-    key_der, clave_hex = _parse_certificado_mh_xml(path_certificado)
-    if not key_der:
-        raise ValueError("No se pudo extraer la clave privada del certificado XML")
+    key_bytes, clave_hex = _parse_certificado_mh_xml(path_certificado)
+    if not key_bytes:
+        raise ValueError(
+            "No se pudo extraer la clave privada del certificado XML. "
+            "Verifica que el archivo sea un certificado MH en formato XML (.crt con etiquetas privateKey/encodied)."
+        )
     if validar_password and clave_hex and _sha512_hex(password) != clave_hex:
         raise ValueError("Password del certificado no válido")
-    jwk_key = _der_to_jwk_rsa(key_der)
+    jwk_key = _key_bytes_to_jwk_rsa(key_bytes)
     if not jwk_key:
-        raise ValueError("No se pudo cargar la clave RSA desde el certificado")
+        raise ValueError(
+            "No se pudo cargar la clave RSA desde el certificado. "
+            "El contenido de <encodied> debe ser base64 de una clave PKCS#8 (DER) o PEM."
+        )
     # Payload: el JSON tal cual (string). JWS compacto con RS512.
     payload_bytes = dte_json.encode("utf-8") if isinstance(dte_json, str) else dte_json
     jws_obj = jws.JWS(payload_bytes)
