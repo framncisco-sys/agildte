@@ -68,21 +68,28 @@ def _get_text(elem) -> Optional[str]:
 
 def _extract_encodied_and_clave_from_raw(raw_text: str) -> Tuple[Optional[str], Optional[str]]:
     """
-    Extrae el contenido de <privateKey><encodied> y <clave> con regex sobre el texto crudo,
-    para no depender del parser XML (que a veces trunca contenido con muchas líneas).
+    Extrae el contenido de <privateKey><encodied> y <clave> con regex sobre el texto crudo.
+    Usamos el encodied que va seguido de <format>PKCS#8</format> para no confundir con la clave pública.
     """
-    # Buscar <privateKey>...</privateKey> (o PrivateKey) y dentro <encodied>...</encodied>
+    # Bloque privateKey (solo hay uno; contiene PKCS#8)
     priv_block = re.search(
         r"<[Pp]rivate[Kk]ey>([\s\S]*?)</[Pp]rivate[Kk]ey>",
         raw_text,
-        re.IGNORECASE | re.DOTALL,
+        re.DOTALL,
     )
     if not priv_block:
         return None, None
     block = priv_block.group(1)
-    enc = re.search(r"<[Ee]ncodied>([\s\S]*?)</[Ee]ncodied>", block)
-    cla = re.search(r"<[Cc]lave>([^<]+)</[Cc]lave>", block)
+    # Encodied de la clave PRIVADA: el que va seguido de <format>PKCS#8</format> (no X.509)
+    enc = re.search(
+        r"<[Ee]ncodied>([\s\S]*?)</[Ee]ncodied>\s*<[Ff]ormat>PKCS#8</[Ff]ormat>",
+        block,
+        re.DOTALL,
+    )
+    if not enc:
+        enc = re.search(r"<[Ee]ncodied>([\s\S]*?)</[Ee]ncodied>", block, re.DOTALL)
     encodied = (enc.group(1).strip() if enc else None) or None
+    cla = re.search(r"<[Cc]lave>([^<]+)</[Cc]lave>", block)
     clave_hex = (cla.group(1).strip() if cla else None) or None
     return encodied, clave_hex
 
@@ -145,7 +152,15 @@ def _parse_certificado_mh_xml(path: Path) -> Tuple[Optional[bytes], Optional[str
 
     if not key_bytes:
         return None, None
-    logger.debug("Clave privada extraída: %d bytes", len(key_bytes))
+    # RSA 2048 PKCS#8 DER suele ser ~1217 bytes; si es mucho menor, el archivo pudo truncarse
+    if len(key_bytes) < 500:
+        logger.warning(
+            "Clave privada muy corta (%d bytes). Esperado ~1217 para RSA 2048 PKCS#8. "
+            "Puede que el certificado se haya truncado al subirlo (revisar límites de upload).",
+            len(key_bytes),
+        )
+    else:
+        logger.info("Clave privada extraída: %d bytes", len(key_bytes))
     return key_bytes, clave_hex
 
 
