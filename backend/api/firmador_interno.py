@@ -6,9 +6,13 @@ Compatible con el formato usado por GoFirmadorDTE-SV (encodied en base64, clave 
 import base64
 import hashlib
 import logging
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional, Tuple
+
+# Solo caracteres válidos en base64 estándar
+_B64_RE = re.compile(r"[A-Za-z0-9+/=]+")
 
 logger = logging.getLogger(__name__)
 
@@ -114,10 +118,9 @@ def _parse_certificado_mh_xml(path: Path) -> Tuple[Optional[bytes], Optional[str
                 break
     encodied_text = None
     if encodied_el is not None:
-        encodied_text = _get_text(encodied_el) or ""
-        if not encodied_text and encodied_el.text is not None:
-            encodied_text = (encodied_el.text or "") + "".join(encodied_el.itertext())
-        encodied_text = (encodied_text or "").strip().replace("\n", "").replace("\r", "").replace(" ", "")
+        # Reunir todo el texto del nodo (por si el parser parte el contenido)
+        encodied_text = "".join(encodied_el.itertext()) or _get_text(encodied_el) or (encodied_el.text or "")
+        encodied_text = (encodied_text or "").strip().replace("\n", "").replace("\r", "").replace(" ", "").replace("\t", "")
     if not encodied_text:
         logger.warning("No se encontró encodied dentro de privateKey")
         return None, None
@@ -126,7 +129,9 @@ def _parse_certificado_mh_xml(path: Path) -> Tuple[Optional[bytes], Optional[str
     clave_hex = _get_text(clave_el) if clave_el is not None else None
 
     try:
-        b64_clean = encodied_text.replace("\n", "").replace("\r", "").replace(" ", "")
+        b64_clean = encodied_text.replace("\n", "").replace("\r", "").replace(" ", "").replace("\t", "")
+        # Dejar solo caracteres base64 (por si hay caracteres raros en el XML)
+        b64_clean = "".join(_B64_RE.findall(b64_clean))
         key_bytes = base64.b64decode(b64_clean)
     except Exception as e:
         logger.exception("Error decodificando base64 de encodied: %s", e)
@@ -142,15 +147,29 @@ def _key_bytes_to_jwk_rsa(key_bytes: bytes) -> Optional[jwk.JWK]:
     if not CRYPTO_AVAILABLE:
         return None
     backend = default_backend()
+    key_bytes = key_bytes.strip()
+    # Quitar BOM UTF-8 si existe (no tocar 0x00 dentro del DER)
+    if key_bytes.startswith(b"\xef\xbb\xbf"):
+        key_bytes = key_bytes[3:]
     key = None
     try:
-        if key_bytes.strip().startswith(b"-----BEGIN"):
+        if key_bytes.startswith(b"-----BEGIN"):
             key = load_pem_private_key(key_bytes, password=None, backend=backend)
         else:
+            # DER: si hay basura antes del SEQUENCE (0x30), buscar el inicio real
+            if not key_bytes.startswith(b"\x30"):
+                idx = key_bytes.find(b"\x30")
+                if idx >= 0:
+                    key_bytes = key_bytes[idx:]
             key = load_der_private_key(key_bytes, password=None, backend=backend)
-    except Exception as e:
-        logger.exception("Error cargando clave privada (DER/PEM): %s", e)
-        return None
+    except Exception as e1:
+        logger.warning("Carga DER falló (%s), intentando como PEM...", e1)
+        try:
+            # Algunos certificados MH guardan PEM en base64 dentro de encodied
+            key = load_pem_private_key(key_bytes, password=None, backend=backend)
+        except Exception as e2:
+            logger.exception("Error cargando clave privada (DER/PEM): %s / %s", e1, e2)
+            return None
     if key is None:
         return None
     try:
@@ -194,7 +213,8 @@ def firmar_dte_interno(
     if not key_bytes:
         raise ValueError(
             "No se pudo extraer la clave privada del certificado XML. "
-            "Verifica que el archivo sea un certificado MH en formato XML (.crt con etiquetas privateKey/encodied)."
+            "Verifica que el archivo sea el .crt descargado del portal de MH (formato XML con <CertificadoMH><privateKey><encodied>...). "
+            "Si lo subiste por la app, prueba descargarlo de nuevo de factura.gob.sv y volver a cargarlo."
         )
     if validar_password and clave_hex and _sha512_hex(password) != clave_hex:
         raise ValueError("Password del certificado no válido")
@@ -207,5 +227,5 @@ def firmar_dte_interno(
     # Payload: el JSON tal cual (string). JWS compacto con RS512.
     payload_bytes = dte_json.encode("utf-8") if isinstance(dte_json, str) else dte_json
     jws_obj = jws.JWS(payload_bytes)
-    jws_obj.add_signature(jwk_key, None, json_encode({"alg": "RS512"}), None, None)
+    jws_obj.add_signature(jwk_key, None, json_encode({"alg": "RS512"}), None)
     return jws_obj.serialize(compact=True)
