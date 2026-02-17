@@ -106,6 +106,7 @@ def _parse_certificado_mh_xml(path: Path) -> Tuple[Optional[bytes], Optional[str
         logger.exception("Error leyendo certificado: %s", e)
         return None, None
 
+    logger.warning("[FIRMADOR] Certificado leído: %d bytes, ruta=%s", len(raw), path)
     raw_text = None
     for encoding in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
         try:
@@ -116,9 +117,9 @@ def _parse_certificado_mh_xml(path: Path) -> Tuple[Optional[bytes], Optional[str
     if raw_text is None:
         raw_text = raw.decode("utf-8", errors="replace")
 
-    # Extracción por regex (más fiable que ET cuando el contenido es largo)
     encodied_text, clave_hex = _extract_encodied_and_clave_from_raw(raw_text)
     if not encodied_text:
+        logger.warning("[FIRMADOR] Regex no encontró encodied, usando fallback XML")
         # Fallback: parser XML
         try:
             root = ET.fromstring(raw_text.encode("utf-8") if isinstance(raw_text, str) else raw_text)
@@ -153,14 +154,11 @@ def _parse_certificado_mh_xml(path: Path) -> Tuple[Optional[bytes], Optional[str
     if not key_bytes:
         return None, None
     # RSA 2048 PKCS#8 DER suele ser ~1217 bytes; si es mucho menor, el archivo pudo truncarse
+    logger.warning("[FIRMADOR] Clave privada decodificada: %d bytes (esperado ~1217)", len(key_bytes))
     if len(key_bytes) < 500:
         logger.warning(
-            "Clave privada muy corta (%d bytes). Esperado ~1217 para RSA 2048 PKCS#8. "
-            "Puede que el certificado se haya truncado al subirlo (revisar límites de upload).",
-            len(key_bytes),
+            "[FIRMADOR] Clave muy corta: probable truncado al subir el certificado.",
         )
-    else:
-        logger.info("Clave privada extraída: %d bytes", len(key_bytes))
     return key_bytes, clave_hex
 
 
