@@ -120,7 +120,9 @@ MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media')))
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- Ministerio de Hacienda (DTE / Facturación Electrónica) ---
-# URL del firmador (en Docker: FIRMADOR_URL=http://firmador:8113/)
+# Firma: si True, se firma dentro del backend (no hace falta contenedor firmador).
+USE_INTERNAL_FIRMADOR = os.environ.get('USE_INTERNAL_FIRMADOR', 'true').lower() in ('1', 'true', 'yes')
+# URL del firmador externo (solo si USE_INTERNAL_FIRMADOR=False). En Docker: FIRMADOR_URL=http://firmador:8113/
 DTE_FIRMADOR_URL = os.environ.get('FIRMADOR_URL', 'http://localhost:8113/').rstrip('/') + '/firmardocumento/'
 # URL invalidación (Manual MH 4.5). Override solo si necesitas otra URL.
 # DTE_ANULAR_URL = "https://apitest.dtes.mh.gob.sv/fesv/anulardte"

@@ -2,7 +2,36 @@
 
 Cuando `git pull` falle por cambios locales o por `.env`, ejecuta estos pasos **en el servidor** (SSH).
 
-## Firmador opcional
+---
+
+## Solución inmediata (error del firmador "denied")
+
+Si al hacer `docker compose up -d --build` falla por la imagen del firmador, **levanta solo los otros servicios** (sin el firmador). En el servidor:
+
+```bash
+cd ~/agildte
+docker compose -f docker-compose.prod.yml up -d --build db backend frontend nginx
+```
+
+Así se levantan **db, backend, frontend y nginx**; el firmador no se inicia y no se intenta descargar su imagen. La app funcionará; solo la firma de DTE fallará hasta que tengas una imagen de firmador válida.
+
+(Opcional) Para que en el futuro `docker compose up -d --build` no intente el firmador, edita el compose en el servidor:
+
+```bash
+nano docker-compose.prod.yml
+```
+
+- En el servicio `firmador`, cambia la línea `image:` a: `image: ${FIRMADOR_IMAGE:-busybox:latest}`
+- Justo debajo de `firmador:`, añade (con la misma indentación que el resto del servicio):
+  ```yaml
+    profiles:
+      - firmador
+  ```
+Guarda (Ctrl+O, Enter, Ctrl+X). Después de eso, `docker compose up -d --build` ya no intentará el firmador.
+
+---
+
+## Firmador opcional (cuando el repo esté actualizado)
 
 El servicio **firmador** no se inicia por defecto (las imágenes públicas probadas están denegadas). El resto del stack (db, backend, frontend, nginx) arranca sin él. La firma de DTE fallará hasta que tengas una imagen de firmador válida; entonces en `.env` defines `FIRMADOR_IMAGE=tu-imagen` y levantas con:
 

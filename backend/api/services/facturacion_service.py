@@ -4,10 +4,15 @@ Servicio robusto para facturación electrónica con el Ministerio de Hacienda de
 Este servicio integra la generación de DTE, autenticación, firma digital y envío a MH.
 Reemplaza el script legacy enviar_factura_final.py con una implementación orientada a objetos.
 """
-import requests
+import json
 import logging
+from pathlib import Path
 from typing import Optional, Dict, Any
+
+import requests
 from django.conf import settings
+
+from ..firmador_interno import firmar_dte_interno
 from ..models import Empresa, Venta
 from ..utils.builders import generar_dte
 
@@ -186,18 +191,36 @@ class FacturacionService:
         
         # Obtener NIT sin guiones
         nit_emisor = (self.empresa.nit or self.empresa.nrc or "").replace('-', '').replace(' ', '')
-        
+        use_internal = getattr(settings, 'USE_INTERNAL_FIRMADOR', False)
+
+        if use_internal:
+            # Firma interna: certificado MH (XML) + JWS RS512, sin contenedor firmador
+            try:
+                cert_path = Path(self.empresa.archivo_certificado.path)
+                dte_json_str = json.dumps(json_dte, ensure_ascii=False)
+                logger.info("Firmando documento DTE con firmador interno (Python)...")
+                jws_firmado = firmar_dte_interno(
+                    cert_path,
+                    self.empresa.clave_certificado,
+                    dte_json_str,
+                    validar_password=True,
+                )
+                if jws_firmado:
+                    logger.info("✅ Documento firmado correctamente (firmador interno)")
+                    return jws_firmado
+                raise FirmaDTEError("Firmador interno no devolvió JWS")
+            except Exception as e:
+                logger.exception("Error en firmador interno: %s", e)
+                raise FirmaDTEError(str(e)) from e
+
         payload = {
             "nit": nit_emisor,
             "activo": True,
             "passwordPri": self.empresa.clave_certificado,
             "dteJson": json_dte
         }
-        
-        headers = {
-            'Content-Type': 'application/json'
-        }
-        
+        headers = {'Content-Type': 'application/json'}
+
         try:
             logger.info(f"Firmando documento DTE con firmador en {self.URL_FIRMADOR}...")
             resp = requests.post(self.URL_FIRMADOR, json=payload, headers=headers, timeout=60)

@@ -9,3 +9,5 @@ django-cors-headers
 num2words
 qrcode[pil]
 requests
+cryptography
+jwcrypto
