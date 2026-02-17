@@ -130,9 +130,17 @@ def _parse_certificado_mh_xml(path: Path) -> Tuple[Optional[bytes], Optional[str
 
     try:
         b64_clean = encodied_text.replace("\n", "").replace("\r", "").replace(" ", "").replace("\t", "")
-        # Dejar solo caracteres base64 (por si hay caracteres raros en el XML)
         b64_clean = "".join(_B64_RE.findall(b64_clean))
-        key_bytes = base64.b64decode(b64_clean)
+        # Padding para base64 (longitud múltiplo de 4)
+        pad = 4 - len(b64_clean) % 4
+        if pad != 4:
+            b64_clean += "=" * pad
+        try:
+            key_bytes = base64.b64decode(b64_clean)
+        except Exception:
+            # Probar base64 URL-safe (- y _ en lugar de + y /)
+            pad = 4 - len(b64_clean) % 4
+            key_bytes = base64.urlsafe_b64decode(b64_clean + ("=" * pad if pad != 4 else ""))
     except Exception as e:
         logger.exception("Error decodificando base64 de encodied: %s", e)
         return None, None
@@ -142,34 +150,47 @@ def _parse_certificado_mh_xml(path: Path) -> Tuple[Optional[bytes], Optional[str
     return key_bytes, clave_hex
 
 
-def _key_bytes_to_jwk_rsa(key_bytes: bytes) -> Optional[jwk.JWK]:
-    """Convierte clave privada (DER o PEM) a JWK para usar con jwcrypto."""
+def _key_bytes_to_jwk_rsa(key_bytes: bytes, password: Optional[str] = None) -> Optional[jwk.JWK]:
+    """Convierte clave privada (DER o PEM) a JWK. Prueba con y sin contraseña si viene cifrada."""
     if not CRYPTO_AVAILABLE:
         return None
     backend = default_backend()
     key_bytes = key_bytes.strip()
-    # Quitar BOM UTF-8 si existe (no tocar 0x00 dentro del DER)
     if key_bytes.startswith(b"\xef\xbb\xbf"):
         key_bytes = key_bytes[3:]
     key = None
-    try:
-        if key_bytes.startswith(b"-----BEGIN"):
-            key = load_pem_private_key(key_bytes, password=None, backend=backend)
-        else:
-            # DER: si hay basura antes del SEQUENCE (0x30), buscar el inicio real
-            if not key_bytes.startswith(b"\x30"):
-                idx = key_bytes.find(b"\x30")
-                if idx >= 0:
-                    key_bytes = key_bytes[idx:]
-            key = load_der_private_key(key_bytes, password=None, backend=backend)
-    except Exception as e1:
-        logger.warning("Carga DER falló (%s), intentando como PEM...", e1)
+    password_bytes = password.encode("utf-8") if password else None
+    for pwd in (None, password_bytes):
         try:
-            # Algunos certificados MH guardan PEM en base64 dentro de encodied
-            key = load_pem_private_key(key_bytes, password=None, backend=backend)
+            if key_bytes.startswith(b"-----BEGIN"):
+                key = load_pem_private_key(key_bytes, password=pwd, backend=backend)
+            else:
+                der = key_bytes
+                if not der.startswith(b"\x30"):
+                    idx = der.find(b"\x30")
+                    if idx >= 0:
+                        der = der[idx:]
+                key = load_der_private_key(der, password=pwd, backend=backend)
+            if key is not None:
+                break
+        except Exception as e1:
+            if pwd is None:
+                logger.debug("Carga sin contraseña falló: %s", e1)
+            else:
+                logger.warning("Carga con contraseña falló: %s", e1)
+    if key is None:
+        try:
+            key = load_pem_private_key(key_bytes, password=password_bytes, backend=backend)
         except Exception as e2:
-            logger.exception("Error cargando clave privada (DER/PEM): %s / %s", e1, e2)
-            return None
+            logger.warning("Carga PEM falló: %s", e2)
+    # Último intento: encodied podría ser base64 de una cadena PEM (texto)
+    if key is None and not key_bytes.startswith(b"\x30") and not key_bytes.startswith(b"-----"):
+        try:
+            pem_str = key_bytes.decode("utf-8", errors="ignore").strip()
+            if "BEGIN" in pem_str:
+                key = load_pem_private_key(pem_str.encode(), password=password_bytes, backend=backend)
+        except Exception as e3:
+            logger.debug("Intentar como PEM texto falló: %s", e3)
     if key is None:
         return None
     try:
@@ -218,11 +239,12 @@ def firmar_dte_interno(
         )
     if validar_password and clave_hex and _sha512_hex(password) != clave_hex:
         raise ValueError("Password del certificado no válido")
-    jwk_key = _key_bytes_to_jwk_rsa(key_bytes)
+    jwk_key = _key_bytes_to_jwk_rsa(key_bytes, password=password)
     if not jwk_key:
         raise ValueError(
             "No se pudo cargar la clave RSA desde el certificado. "
-            "El contenido de <encodied> debe ser base64 de una clave PKCS#8 (DER) o PEM."
+            "Asegúrate de usar el archivo .crt tal cual lo descargas del portal de MH (factura.gob.sv), "
+            "sin abrirlo ni guardarlo con otro programa. Vuelve a descargarlo y súbelo de nuevo en la empresa."
         )
     # Payload: el JSON tal cual (string). JWS compacto con RS512.
     payload_bytes = dte_json.encode("utf-8") if isinstance(dte_json, str) else dte_json
