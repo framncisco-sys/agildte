@@ -62,9 +62,9 @@ export function DashboardPage() {
   const hasChartData = chartData.some((d) => Number(d.total) > 0)
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Dashboard</h1>
         <p className="mt-1 text-gray-500 text-sm">Métricas de facturación del mes actual</p>
       </div>
 
@@ -122,20 +122,20 @@ export function DashboardPage() {
       </div>
 
       {/* Sección media: Gráfico de tendencia */}
-      <div className="w-full lg:w-2/3">
+      <div className="w-full lg:w-2/3 min-w-0">
         {loading ? (
           <SkeletonChart />
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-5 overflow-hidden">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-800 mb-4">
               Comportamiento de Ventas (Este Mes)
             </h2>
             {chartData.length === 0 ? (
-              <div className="h-64 flex items-center justify-center text-gray-400 text-sm border border-dashed border-gray-200 rounded-lg">
+              <div className="h-48 sm:h-64 flex items-center justify-center text-gray-400 text-sm border border-dashed border-gray-200 rounded-lg">
                 No hay datos del mes para mostrar
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={280}>
+              <ResponsiveContainer width="100%" height={260} minHeight={220}>
                 <AreaChart
                   data={chartData}
                   margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
@@ -177,24 +177,48 @@ export function DashboardPage() {
       </div>
 
       {/* Sección inferior: Últimos documentos emitidos */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <h2 className="text-lg font-semibold text-gray-800 px-5 py-4 border-b border-gray-100">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden min-w-0">
+        <h2 className="text-base sm:text-lg font-semibold text-gray-800 px-4 sm:px-5 py-4 border-b border-gray-100">
           Últimos Documentos Emitidos
         </h2>
         {loading ? (
-          <div className="p-5 space-y-3">
+          <div className="p-4 sm:p-5 space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />
             ))}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Móvil: cards */}
+            {stats?.ultimas_ventas?.length > 0 && (
+              <div className="md:hidden divide-y divide-gray-100">
+                {stats.ultimas_ventas.map((v) => (
+                  <div key={v.id} className="p-4 space-y-1">
+                    <p className="font-medium text-gray-800">{v.numero_control}</p>
+                    <p className="text-sm text-gray-600 truncate">{v.cliente}</p>
+                    <p className="text-sm font-medium text-gray-900">{formatCurrency(v.total)}</p>
+                    <span
+                      className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
+                        v.estado === 'AceptadoMH' ? 'bg-green-100 text-green-800'
+                          : v.estado === 'Enviado' ? 'bg-blue-100 text-blue-800'
+                          : v.estado === 'Borrador' ? 'bg-gray-100 text-gray-700'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {v.estado}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Escritorio: tabla con scroll horizontal */}
+            <div className="overflow-x-auto">
             {(!stats?.ultimas_ventas || stats.ultimas_ventas.length === 0) ? (
-              <p className="text-gray-500 text-sm px-5 py-8 text-center">
+              <p className="text-gray-500 text-sm px-4 sm:px-5 py-8 text-center">
                 No hay documentos recientes
               </p>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[400px] hidden md:table">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th className="px-5 py-3 text-left font-semibold text-gray-600">Nº Control</th>
@@ -234,7 +258,8 @@ export function DashboardPage() {
                 </tbody>
               </table>
             )}
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>

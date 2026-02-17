@@ -120,8 +120,8 @@ export function ListaFacturas() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <h1 className="text-xl font-semibold text-gray-800 mb-6">Historial de Documentos</h1>
+    <div className="max-w-6xl mx-auto px-2 sm:px-0">
+      <h1 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4 sm:mb-6">Historial de Documentos</h1>
 
       {/* Filtros Acordeón */}
       <div className="mb-6 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
@@ -226,17 +226,54 @@ export function ListaFacturas() {
         </button>
       </div>
 
-      {/* Tabla */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Tabla / Cards */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden min-w-0">
         {cargando ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : ventas.length === 0 ? (
-          <div className="py-16 text-center text-gray-500">No hay documentos que coincidan con los filtros.</div>
+          <div className="py-16 text-center text-gray-500 px-4">No hay documentos que coincidan con los filtros.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <>
+            {/* Móvil: cards */}
+            <div className="md:hidden divide-y divide-gray-100">
+              {ventas.map((v) => {
+                const total = Number(v.venta_gravada || 0) + Number(v.venta_exenta || 0) + Number(v.venta_no_sujeta || 0) + Number(v.debito_fiscal || 0)
+                const cliente = v.nombre_receptor || 'Consumidor Final'
+                const correlativo = v.numero_control || `Venta #${v.id}`
+                const estado = v.estado || 'PENDIENTE'
+                const badge = estadoInfo(estado)
+                const esProcesado = estado === 'PROCESADO'
+                const esRechazado = estado === 'RECHAZADO'
+                return (
+                  <div key={v.id} className="p-4 space-y-2">
+                    <p className="font-medium text-gray-800">{correlativo}</p>
+                    <p className="text-sm text-gray-600">{formatFecha(v)}</p>
+                    <p className="text-sm text-gray-700 truncate" title={cliente}>{cliente}</p>
+                    <p className="text-sm font-semibold text-gray-900">{formatMoneda(total)}</p>
+                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${badge.color}`}>
+                      {badge.icon} {badge.label}
+                    </span>
+                    <div className="flex gap-2 pt-2">
+                      {esProcesado && (
+                        <>
+                          <button onClick={() => handleDownloadPDF(v)} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100" title="PDF"><FileText className="w-4 h-4" /></button>
+                          <button onClick={() => handleDownloadJSON(v)} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100" title="JSON"><Braces className="w-4 h-4" /></button>
+                          <button onClick={() => setModalInvalidacion(v)} className="p-2 rounded-lg text-red-600 hover:bg-red-50" title="Anular"><CircleX className="w-4 h-4" /></button>
+                        </>
+                      )}
+                      {esRechazado && (
+                        <button onClick={() => setModalRechazo(v)} className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-700 bg-red-50 rounded-lg"><Eye className="w-4 h-4" /> Ver Error</button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {/* Escritorio: tabla con scroll */}
+            <div className="overflow-x-auto hidden md:block">
+            <table className="w-full min-w-[600px]">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Fecha</th>
@@ -320,7 +357,8 @@ export function ListaFacturas() {
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
 

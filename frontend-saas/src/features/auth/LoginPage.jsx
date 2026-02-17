@@ -54,19 +54,15 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4">
       <div className="w-full max-w-md">
-        {/* Logo centrado arriba */}
+        {/* Logo oficial AgilDTE */}
         <div className="flex justify-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-white/10 text-white border border-white/20">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
+          <img src="/agildte-logo.png" alt="AgilDTE" className="h-14 w-auto object-contain drop-shadow-sm" />
         </div>
 
         {/* Card blanca con shadow-lg */}
         <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
           <div className="px-8 py-6 border-b border-slate-100">
-            <h1 className="text-xl font-bold text-slate-800 text-center">Facturación SaaS</h1>
+            <h1 className="text-xl font-bold text-slate-800 text-center">AgilDTE</h1>
             <p className="text-slate-500 text-sm text-center mt-1">Inicie sesión en su cuenta</p>
           </div>
           <form onSubmit={handleSubmit} className="p-8 space-y-5">
