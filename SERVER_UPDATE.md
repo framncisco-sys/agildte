@@ -4,6 +4,56 @@ Cuando `git pull` falle por cambios locales o por `.env`, ejecuta estos pasos **
 
 ---
 
+## Actualizar sin afectar la base de datos de los usuarios
+
+La base de datos está en el volumen Docker `postgres_data`. Al actualizar código (git pull + build + up) **los datos no se borran**. Las migraciones que se ejecutan al arrancar el backend solo **añaden** tablas o columnas con valores por defecto; no eliminan datos de usuarios.
+
+### Opción recomendada: respaldo rápido antes de actualizar
+
+En el servidor (SSH), **antes** de hacer `git pull` y `up`:
+
+```bash
+cd ~/agildte
+docker compose -f docker-compose.prod.yml exec -T db pg_dump -U sistema_user sistema_contable > backup_$(date +%Y%m%d_%H%M).sql
+```
+
+Eso deja un archivo `backup_YYYYMMDD_HHMM.sql` en `~/agildte`. Si algo fallara, podrías restaurar con:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db psql -U sistema_user sistema_contable < backup_YYYYMMDD_HHMM.sql
+```
+
+### Pasos para actualizar (sin tocar datos)
+
+**1. En tu PC:** subir cambios al repo (si aplica).
+
+```bash
+git add .
+git commit -m "Actualización"
+git push origin main
+```
+
+**2. En el servidor (SSH):**
+
+```bash
+cd ~/agildte
+# Opcional: respaldo de .env por si Git lo pisa
+cp .env .env.backup
+
+# Si Git se queja por .env, quítalo del camino y restáuralo después
+mv .env .env.mio 2>/dev/null || true
+git pull origin main
+mv .env.mio .env 2>/dev/null || true
+
+# Reconstruir y levantar (la BD sigue en el volumen; migrate solo aplica cambios nuevos)
+docker compose -f docker-compose.prod.yml build --no-cache backend frontend
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Al arrancar, el backend ejecuta `migrate --noinput` y aplica solo las migraciones pendientes (por ejemplo, nueva columna `tipo_impuesto` en Producto). Los datos existentes se mantienen.
+
+---
+
 ## Solución inmediata (error del firmador "denied")
 
 Si al hacer `docker compose up -d --build` falla por la imagen del firmador, **levanta solo los otros servicios** (sin el firmador). En el servidor:

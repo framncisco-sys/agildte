@@ -1027,13 +1027,76 @@ def crear_venta_con_detalles(request):
 
 @api_view(['GET'])
 def listar_productos(request):
-    """Lista productos de una empresa"""
+    """Lista/busca productos de la empresa. GET: empresa_id (requerido para multi-tenant), q (búsqueda por descripción/código)."""
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return Response({"detail": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
     empresa_id = request.query_params.get('empresa_id')
-    productos = Producto.objects.filter(activo=True)
     if empresa_id:
-        productos = productos.filter(empresa_id=empresa_id)
+        r = require_empresa_allowed(request, int(empresa_id))
+        if r is not None:
+            return r
+        productos = Producto.objects.filter(empresa_id=empresa_id)
+    else:
+        productos = Producto.objects.filter(empresa_id__in=empresa_ids)
+    productos = productos.filter(activo=True)
+    q = (request.query_params.get('q') or '').strip()
+    if q:
+        productos = productos.filter(
+            Q(descripcion__icontains=q) | Q(codigo__icontains=q)
+        )
+    productos = productos.order_by('descripcion')
     serializer = ProductoSerializer(productos, many=True)
     return Response(serializer.data)
+
+
+@api_view(['POST'])
+def crear_producto(request):
+    """Crea un producto/ítem para la empresa."""
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return Response({"detail": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
+    empresa_id = request.data.get('empresa_id')
+    if not empresa_id:
+        return Response({"detail": "empresa_id es requerido"}, status=status.HTTP_400_BAD_REQUEST)
+    r = require_empresa_allowed(request, int(empresa_id))
+    if r is not None:
+        return r
+    serializer = ProductoSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.save()
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+def producto_detalle(request, pk):
+    """Obtiene, actualiza o elimina un producto (soft-delete: activo=False)."""
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return Response({"detail": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
+    try:
+        producto = Producto.objects.get(pk=pk)
+    except Producto.DoesNotExist:
+        return Response({"detail": "Producto no encontrado"}, status=status.HTTP_404_NOT_FOUND)
+    if producto.empresa_id not in empresa_ids:
+        return Response({"detail": "No tiene permiso para este producto"}, status=status.HTTP_403_FORBIDDEN)
+    if request.method == 'GET':
+        serializer = ProductoSerializer(producto)
+        return Response(serializer.data)
+    if request.method == 'DELETE':
+        producto.activo = False
+        producto.save(update_fields=['activo'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    if request.method in ('PUT', 'PATCH'):
+        serializer = ProductoSerializer(producto, data=request.data, partial=(request.method == 'PATCH'))
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data)
+    return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
 @api_view(['GET'])
 def listar_ventas(request):
     """Lista ventas con filtros opcionales.

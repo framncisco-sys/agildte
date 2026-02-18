@@ -36,8 +36,10 @@ urlpatterns = [
     path('ventas/borrar/<int:pk>/', views.borrar_venta),
     path('ventas/actualizar/<int:pk>/', views.actualizar_venta),
     
-    # PRODUCTOS
+    # PRODUCTOS / ÍTEMS (CRUD por empresa)
     path('productos/', views.listar_productos),
+    path('productos/crear/', views.crear_producto),
+    path('productos/<int:pk>/', views.producto_detalle),
     
     # RETENCIONES
     path('retenciones/crear/', views.crear_retencion),

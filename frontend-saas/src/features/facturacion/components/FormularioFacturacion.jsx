@@ -7,6 +7,7 @@ import { Trash2, Loader2, Search, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ModalBuscadorCliente } from './ModalBuscadorCliente'
 import { BuscarDocumentoModal } from './BuscarDocumentoModal'
+import { ItemDescripcionCombobox } from './ItemDescripcionCombobox'
 import { DEPARTAMENTOS, MUNICIPIOS_POR_DEPARTAMENTO } from '../../../data/departamentos-municipios'
 import { crearVenta } from '../../../api/facturas'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
@@ -409,9 +410,9 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
         </section>
 
         {/* Sección 3: Detalle de Productos */}
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium text-gray-800">Detalle de Productos</h2>
+        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+            <h2 className="text-base sm:text-lg font-medium text-gray-800">Detalle de Productos</h2>
             <button
               type="button"
               onClick={() => append({ cantidad: 1, descripcion: '', precioUnitario: 0 })}
@@ -420,15 +421,15 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
               + Agregar Ítem
             </button>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full text-sm min-w-[320px]">
               <thead>
                 <tr className="bg-gray-100 text-left text-gray-600">
-                  <th className="py-2 px-3 w-24">Cantidad</th>
-                  <th className="py-2 px-3">Descripción</th>
-                  <th className="py-2 px-3 w-32">Precio Unit.</th>
-                  <th className="py-2 px-3 w-36 text-right">Ventas Gravadas</th>
-                  <th className="py-2 px-3 w-12"></th>
+                  <th className="py-2 px-2 sm:px-3 w-20 sm:w-24">Cant.</th>
+                  <th className="py-2 px-2 sm:px-3 min-w-[140px]">Descripción</th>
+                  <th className="py-2 px-2 sm:px-3 w-24 sm:w-32">P. Unit.</th>
+                  <th className="py-2 px-2 sm:px-3 w-28 sm:w-36 text-right">V. Gravadas</th>
+                  <th className="py-2 px-2 sm:px-3 w-10"></th>
                 </tr>
               </thead>
               <tbody>
@@ -449,24 +450,25 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
                           className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
-                      <td className="py-2 px-3">
-                        <input
-                          {...register(`items.${index}.descripcion`)}
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                          placeholder="Descripción"
+                      <td className="py-2 px-3 min-w-0">
+                        <ItemDescripcionCombobox
+                          value={items?.[index]?.descripcion ?? ''}
+                          onChange={(val) => setValue(`items.${index}.descripcion`, val)}
+                          onSelectItem={({ descripcion, precio_unitario }) => {
+                            setValue(`items.${index}.descripcion`, descripcion)
+                            setValue(`items.${index}.precioUnitario`, precio_unitario)
+                          }}
+                          empresaId={empresaId}
+                          placeholder="Buscar ítem o escribir..."
+                          error={errors.items?.[index]?.descripcion?.message}
                         />
-                        {(errors.items?.[index]?.descripcion) && (
-                          <p className="text-xs text-red-600 mt-0.5">
-                            {errors.items[index].descripcion.message}
-                          </p>
-                        )}
                       </td>
                       <td className="py-2 px-3">
                         <input
                           type="number"
                           step="0.01"
                           {...register(`items.${index}.precioUnitario`)}
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-w-[4rem]"
                         />
                       </td>
                       <td className="py-2 px-3 text-right font-medium">

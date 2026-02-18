@@ -9,6 +9,7 @@ const allNavItems = [
   { to: '/facturacion/lista', label: 'Lista Facturas' },
   { to: '/contabilidad/libros-iva', label: 'Libros de IVA', roles: ['ADMIN', 'CONTADOR'] },
   { to: '/configuracion', label: 'Configuración', roles: ['ADMIN'] },
+  { to: '/items', label: 'Administración de Ítems' },
 ]
 
 export function Sidebar({ open = false, onClose }) {

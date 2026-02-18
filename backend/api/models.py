@@ -426,28 +426,35 @@ class Venta(models.Model):
     def __str__(self):
         return f"{self.fecha_emision} - {self.tipo_venta} - ${self.venta_gravada}"
 
-# --- TABLA 3.1: PRODUCTOS ---
+# --- TABLA 3.1: PRODUCTOS / ÍTEMS (catálogo por empresa) ---
 class Producto(models.Model):
     empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='productos', null=True)
-    
-    codigo = models.CharField(max_length=50)
+    codigo = models.CharField(max_length=50, blank=True, default='')
     descripcion = models.CharField(max_length=200)
     precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
-    
-    TIPO_ITEM_CHOICES = [
-        (1, 'Bien'),
-        (2, 'Servicio'),
-    ]
+    TIPO_ITEM_CHOICES = [(1, 'Bien'), (2, 'Servicio')]
     tipo_item = models.IntegerField(choices=TIPO_ITEM_CHOICES, default=1)
-    
+    TIPO_IMPUESTO_CHOICES = [
+        ('20', 'Gravado 13% (IVA)'),
+        ('exento', 'Exento'),
+    ]
+    tipo_impuesto = models.CharField(
+        max_length=10, choices=TIPO_IMPUESTO_CHOICES, default='20'
+    )
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
-        unique_together = ['empresa', 'codigo']
-    
+        constraints = [
+            models.UniqueConstraint(
+                fields=['empresa', 'codigo'],
+                condition=models.Q(codigo__isnull=False) & ~models.Q(codigo=''),
+                name='producto_empresa_codigo_uniq',
+            )
+        ]
+
     def __str__(self):
-        return f"{self.codigo} - {self.descripcion}"
+        return f"{self.codigo or 'N/A'} - {self.descripcion}"
 
 # --- TABLA 3.2: DETALLE DE VENTA ---
 class DetalleVenta(models.Model):

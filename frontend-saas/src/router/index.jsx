@@ -10,6 +10,7 @@ import { ListaFacturas } from '../features/facturacion/pages/ListaFacturas'
 import Clientes from '../features/clientes/pages/Clientes'
 import LibrosIva from '../features/contabilidad/pages/LibrosIva'
 import ConfiguracionPage from '../features/configuracion/pages/ConfiguracionPage'
+import ItemsPage from '../features/items/pages/ItemsPage'
 
 export const router = {
   routes: [
@@ -36,6 +37,7 @@ export const router = {
             </RequireAuth>
           ),
         },
+        { path: 'items', element: <ItemsPage /> },
         {
           path: 'contabilidad/libros-iva',
           element: (
