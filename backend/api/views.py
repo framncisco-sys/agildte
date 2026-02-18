@@ -1027,7 +1027,7 @@ def crear_venta_con_detalles(request):
 
 @api_view(['GET'])
 def listar_productos(request):
-    """Lista/busca productos de la empresa. GET: empresa_id (requerido para multi-tenant), q (búsqueda por descripción/código)."""
+    """Lista/busca productos de la empresa. GET: empresa_id (opcional; si no se envía y el usuario tiene una sola empresa, se usa esa), q (búsqueda)."""
     empresa_ids = get_empresa_ids_allowlist(request)
     if not empresa_ids:
         return Response({"detail": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
@@ -1039,6 +1039,8 @@ def listar_productos(request):
         productos = Producto.objects.filter(empresa_id=empresa_id)
     else:
         productos = Producto.objects.filter(empresa_id__in=empresa_ids)
+        if len(empresa_ids) == 1:
+            productos = productos.filter(empresa_id=empresa_ids[0])
     productos = productos.filter(activo=True)
     q = (request.query_params.get('q') or '').strip()
     if q:
