@@ -189,6 +189,17 @@ export async function downloadBatch(filters = {}, format = 'pdf') {
 }
 
 /**
+ * Reenvía una factura pendiente de forma síncrona.
+ * Espera la respuesta de MH para mostrar errores (contraseña, rechazo, etc.).
+ * @param {number} id - ID de la venta
+ * @returns {Promise<{data}>} - { mensaje, exito, estado, ... } o error con mensaje
+ */
+export async function reenviarVenta(id) {
+  const { data } = await apiClient.post(`ventas/${id}/reenviar/`, {}, { timeout: 60000 })
+  return data
+}
+
+/**
  * Invalida (anula) un DTE ya procesado por MH.
  * @param {number} id - ID de la venta
  * @param {Object} datos - { motivoInvalidacion, tipoInvalidacion, nombreResponsable, tipoDocResponsable, numeroDocResponsable, nombreSolicitante, tipoDocSolicitante, numeroDocSolicitante }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronUp, Search, FileText, Braces, Eye, Loader2, CircleX, FileDown, FolderDown } from 'lucide-react'
+import { ChevronDown, ChevronUp, Search, FileText, Braces, Eye, Loader2, CircleX, FileDown, FolderDown, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { getVentas, downloadPDF, downloadJSON, downloadBatch } from '../../../api/facturas'
+import { getVentas, downloadPDF, downloadJSON, downloadBatch, reenviarVenta } from '../../../api/facturas'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 import { DetalleRechazoModal } from '../components/DetalleRechazoModal'
 import { InvalidacionModal } from '../components/InvalidacionModal'
@@ -43,6 +43,7 @@ export function ListaFacturas() {
   const [modalRechazo, setModalRechazo] = useState(null)
   const [modalInvalidacion, setModalInvalidacion] = useState(null)
   const [descargandoLote, setDescargandoLote] = useState(null)
+  const [reenviandoId, setReenviandoId] = useState(null)
 
   const [filtros, setFiltros] = useState({
     fecha_inicio: '',
@@ -104,6 +105,30 @@ export function ListaFacturas() {
     setVentas((prev) =>
       prev.map((v) => (v.id === ventaActualizada.id ? { ...v, estado_dte: 'Anulado', estado: 'ANULADO' } : v))
     )
+  }
+
+  const handleReenviar = async (v) => {
+    setReenviandoId(v.id)
+    try {
+      const data = await reenviarVenta(v.id)
+      setVentas((prev) =>
+        prev.map((item) => (item.id === v.id ? { ...item, ...data, estado: data.estado || 'PROCESADO' } : item))
+      )
+      toast.success(data.mensaje || 'Factura enviada correctamente')
+    } catch (err) {
+      const resp = err.response
+      const msg = resp?.data?.mensaje || resp?.data?.error || err.message || 'Error al reenviar'
+      const sugerencia = resp?.data?.sugerencia
+      toast.error(sugerencia ? `${msg}\n${sugerencia}` : msg, { duration: 6000 })
+      // Si MH rechazó, el backend devuelve 400 con la venta actualizada
+      if (resp?.status === 400 && resp?.data?.id === v.id && resp?.data?.estado) {
+        setVentas((prev) =>
+          prev.map((item) => (item.id === v.id ? { ...item, ...resp.data } : item))
+        )
+      }
+    } finally {
+      setReenviandoId(null)
+    }
   }
 
   const handleDownloadBatch = async (format) => {
@@ -246,6 +271,8 @@ export function ListaFacturas() {
                 const badge = estadoInfo(estado)
                 const esProcesado = estado === 'PROCESADO'
                 const esRechazado = estado === 'RECHAZADO'
+                const esPendiente = estado === 'PENDIENTE'
+                const reenviando = reenviandoId === v.id
                 return (
                   <div key={v.id} className="p-4 space-y-2">
                     <p className="font-medium text-gray-800">{correlativo}</p>
@@ -255,6 +282,17 @@ export function ListaFacturas() {
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${badge.color}`}>
                       {badge.icon} {badge.label}
                     </span>
+                    {esPendiente && (
+                      <button
+                        onClick={() => handleReenviar(v)}
+                        disabled={reenviando}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-800 bg-amber-100 rounded-lg hover:bg-amber-200 disabled:opacity-60"
+                        title="Reenviar a Hacienda (espera respuesta para ver errores)"
+                      >
+                        {reenviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        Reenviar
+                      </button>
+                    )}
                     <div className="flex gap-2 pt-2">
                       {esProcesado && (
                         <>
@@ -293,6 +331,8 @@ export function ListaFacturas() {
                   const badge = estadoInfo(estado)
                   const esProcesado = estado === 'PROCESADO'
                   const esRechazado = estado === 'RECHAZADO'
+                  const esPendiente = estado === 'PENDIENTE'
+                  const reenviando = reenviandoId === v.id
                   return (
                     <tr
                       key={v.id}
@@ -312,6 +352,17 @@ export function ListaFacturas() {
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${badge.color}`}>
                           {badge.icon} {badge.label}
                         </span>
+                        {esPendiente && (
+                          <button
+                            onClick={() => handleReenviar(v)}
+                            disabled={reenviando}
+                            className="ml-2 inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-amber-800 bg-amber-100 rounded-lg hover:bg-amber-200 disabled:opacity-60"
+                            title="Reenviar a Hacienda (espera respuesta para ver errores)"
+                          >
+                            {reenviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                            Reenviar
+                          </button>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">

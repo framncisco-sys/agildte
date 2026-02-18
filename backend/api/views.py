@@ -359,6 +359,126 @@ class VentaViewSet(viewsets.ModelViewSet):
                 "venta_id": venta.id
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['post'], url_path='reenviar')
+    def reenviar(self, request, pk=None):
+        """
+        Reenvía una factura pendiente de forma SÍNCRONA.
+        Espera la respuesta de MH para mostrar errores (contraseña, rechazo, etc.).
+        Solo para ventas en Borrador, Generado, PendienteEnvio o ErrorEnvio.
+        """
+        from .models import TareaFacturacion
+
+        try:
+            venta = self.get_object()
+        except Venta.DoesNotExist:
+            return Response({
+                "error": "Venta no encontrada",
+                "mensaje": f"No existe una venta con el ID {pk}"
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        r = require_object_empresa_allowed(request, venta)
+        if r is not None:
+            return r
+
+        # Solo reenviar si está pendiente
+        estados_reenviables = ('Borrador', 'Generado', 'PendienteEnvio', 'ErrorEnvio')
+        if venta.estado_dte not in estados_reenviables:
+            return Response({
+                "error": "No se puede reenviar",
+                "mensaje": f"La factura está en estado '{venta.estado_dte}'. Solo se puede reenviar cuando está pendiente de envío.",
+                "estado_dte": venta.estado_dte
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not venta.empresa:
+            return Response({
+                "error": "La venta no tiene empresa asociada",
+                "mensaje": "Debes asociar una empresa a la venta antes de reenviar"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        empresa = venta.empresa
+        if not empresa.user_api_mh or not empresa.clave_api_mh:
+            return Response({
+                "error": "La empresa no tiene credenciales de MH configuradas",
+                "mensaje": "Configura user_api_mh y clave_api_mh en la empresa",
+                "empresa_id": empresa.id
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not empresa.archivo_certificado or not empresa.clave_certificado:
+            return Response({
+                "error": "La empresa no tiene certificado digital configurado",
+                "mensaje": "Configura archivo_certificado y clave_certificado en la empresa",
+                "empresa_id": empresa.id
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Marcar tarea de fondo como completada para evitar doble procesamiento
+        TareaFacturacion.objects.filter(venta=venta).update(estado='Completada')
+
+        try:
+            servicio = FacturacionService(empresa)
+        except ValueError as e:
+            return Response({
+                "error": "Error al inicializar el servicio",
+                "mensaje": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            resultado = servicio.procesar_factura(venta)
+            venta.refresh_from_db()
+            data = VentaSerializer(venta).data
+            data['procesamiento'] = 'sincrono'
+            if resultado.get('exito'):
+                data['mensaje'] = 'Factura enviada a Hacienda correctamente.'
+                data['exito'] = True
+                return Response(data, status=status.HTTP_200_OK)
+            else:
+                data['mensaje'] = resultado.get('mensaje') or resultado.get('observaciones') or 'Rechazado por Hacienda'
+                data['exito'] = False
+                data['observaciones'] = resultado.get('observaciones')
+                return Response(data, status=status.HTTP_400_BAD_REQUEST)
+        except AutenticacionMHError as e:
+            venta.refresh_from_db()
+            return Response({
+                "error": "Error de autenticación con Hacienda",
+                "mensaje": str(e),
+                "tipo_error": "AutenticacionMHError",
+                "venta_id": venta.id,
+                "sugerencia": "Revisa el usuario y contraseña de la API MH en la configuración de la empresa."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except FirmaDTEError as e:
+            venta.refresh_from_db()
+            return Response({
+                "error": "Error al firmar el documento",
+                "mensaje": str(e),
+                "tipo_error": "FirmaDTEError",
+                "venta_id": venta.id,
+                "sugerencia": "Revisa el certificado digital y su contraseña."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except EnvioMHError as e:
+            venta.refresh_from_db()
+            return Response({
+                "error": "Error al enviar a Hacienda",
+                "mensaje": str(e),
+                "tipo_error": "EnvioMHError",
+                "venta_id": venta.id,
+                "reintentar": True
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except FacturacionServiceError as e:
+            venta.refresh_from_db()
+            return Response({
+                "error": "Error en facturación",
+                "mensaje": str(e),
+                "tipo_error": "FacturacionServiceError",
+                "venta_id": venta.id
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            venta.refresh_from_db()
+            logger.error(f"Error inesperado al reenviar venta {venta.id}: {str(e)}", exc_info=True)
+            return Response({
+                "error": "Error inesperado",
+                "mensaje": str(e),
+                "venta_id": venta.id
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=True, methods=['post'], url_path='invalidar')
     def invalidar(self, request, pk=None):
         """
