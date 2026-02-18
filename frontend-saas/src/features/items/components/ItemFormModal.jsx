@@ -66,9 +66,10 @@ export function ItemFormModal({ isOpen, onClose, onSaved, itemEdit = null, empre
     }
     setSaving(true)
     try {
+      const codigoVal = (form.codigo || '').trim()
       const payload = {
         descripcion: desc,
-        codigo: (form.codigo || '').trim() || undefined,
+        codigo: codigoVal,
         precio_unitario: precio,
         tipo_impuesto: form.tipo_impuesto,
         tipo_item: form.tipo_item,
@@ -82,7 +83,7 @@ export function ItemFormModal({ isOpen, onClose, onSaved, itemEdit = null, empre
           setSaving(false)
           return
         }
-        await createItem({ ...payload, empresa_id: empresaId })
+        await createItem({ ...payload, empresa_id: Number(empresaId) })
         toast.success('Ítem creado.')
       }
       onSaved()

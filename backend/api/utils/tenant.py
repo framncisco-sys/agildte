@@ -100,3 +100,28 @@ def require_object_empresa_allowed(request: HttpRequest, obj) -> Optional[Respon
     if eid not in allowlist:
         return Response({"error": "No encontrado"}, status=status.HTTP_404_NOT_FOUND)
     return None
+
+
+def get_and_validate_empresa(request: HttpRequest, from_body: bool = False, required: bool = True):
+    """
+    Obtiene empresa_id de query_params o body, valida tenant y devuelve Empresa.
+    Returns: (Empresa, None) si ok, o (None, Response) si hay error.
+    """
+    if from_body:
+        empresa_id = request.data.get('empresa_id')
+    else:
+        empresa_id = request.query_params.get('empresa_id') or request.data.get('empresa_id')
+    if not empresa_id and required:
+        return None, Response({"error": "empresa_id requerido"}, status=status.HTTP_400_BAD_REQUEST)
+    if not empresa_id:
+        return None, None
+    r = require_empresa_allowed(request, empresa_id)
+    if r is not None:
+        return None, r
+    try:
+        from ..models import Empresa
+        return Empresa.objects.get(id=int(empresa_id)), None
+    except (ValueError, TypeError):
+        return None, Response({"error": "empresa_id inválido"}, status=status.HTTP_400_BAD_REQUEST)
+    except Empresa.DoesNotExist:
+        return None, Response({"error": "Empresa no encontrada"}, status=status.HTTP_404_NOT_FOUND)

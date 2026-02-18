@@ -39,6 +39,11 @@ class EnvioMHError(FacturacionServiceError):
     pass
 
 
+class EnvioMHTransitorioError(EnvioMHError):
+    """Error transitorio (timeout, 5xx, conexión) - factura queda PendienteEnvio para reintento"""
+    pass
+
+
 class FacturacionService:
     """
     Servicio para procesar facturas electrónicas con el Ministerio de Hacienda.
@@ -53,21 +58,19 @@ class FacturacionService:
         empresa: Instancia del modelo Empresa con credenciales configuradas
     """
     
-    # URLs base según ambiente
-    # IMPORTANTE: El mapeo es:
-    # '00' → URL de PRUEBAS (apitest.dtes.mh.gob.sv)
-    # '01' → URL de PRODUCCIÓN (api.dtes.mh.gob.sv)
+    # URLs base según ambiente (alineado con modelo Empresa.AMBIENTE_CHOICES)
+    # '00' = PRODUCCIÓN (api.dtes.mh.gob.sv)
+    # '01' = PRUEBAS (apitest.dtes.mh.gob.sv)
     URLS_MH = {
-        '00': {  # Pruebas
-            'auth': 'https://apitest.dtes.mh.gob.sv/seguridad/auth',
-            'recepcion': 'https://apitest.dtes.mh.gob.sv/fesv/recepciondte',
-            # Servicio de Invalidación (Manual MH 4.5)
-            'anulardte': 'https://apitest.dtes.mh.gob.sv/fesv/anulardte',
-        },
-        '01': {  # Producción
+        '00': {  # Producción
             'auth': 'https://api.dtes.mh.gob.sv/seguridad/auth',
             'recepcion': 'https://api.dtes.mh.gob.sv/fesv/recepciondte',
             'anulardte': 'https://api.dtes.mh.gob.sv/fesv/anulardte',
+        },
+        '01': {  # Pruebas
+            'auth': 'https://apitest.dtes.mh.gob.sv/seguridad/auth',
+            'recepcion': 'https://apitest.dtes.mh.gob.sv/fesv/recepciondte',
+            'anulardte': 'https://apitest.dtes.mh.gob.sv/fesv/anulardte',
         }
     }
     
@@ -96,14 +99,11 @@ class FacturacionService:
         if not self.empresa.clave_api_mh:
             raise ValueError("La empresa no tiene configurado clave_api_mh")
         
-        # Obtener URLs según el ambiente
-        # IMPORTANTE: El mapeo es:
-        # '00' → URL de PRUEBAS (apitest.dtes.mh.gob.sv)
-        # '01' → URL de PRODUCCIÓN (api.dtes.mh.gob.sv)
-        ambiente = self.empresa.ambiente or '00'  # Default a Pruebas ('00')
+        # Obtener URLs según el ambiente (00=Producción, 01=Pruebas)
+        ambiente = self.empresa.ambiente or '01'  # Default a Pruebas ('01') por seguridad
         if ambiente not in self.URLS_MH:
-            logger.warning(f"Ambiente '{ambiente}' no reconocido, usando '00' (Pruebas)")
-            ambiente = '00'
+            logger.warning(f"Ambiente '{ambiente}' no reconocido, usando '01' (Pruebas)")
+            ambiente = '01'
         
         self.ambiente = ambiente
         self.url_auth = self.URLS_MH[ambiente]['auth']
@@ -113,7 +113,7 @@ class FacturacionService:
         # El código de ambiente MH es el mismo que el valor del campo (ya viene como '00' o '01')
         self.codigo_ambiente_mh = ambiente
         
-        ambiente_nombre = 'Pruebas' if ambiente == '00' else 'Producción'
+        ambiente_nombre = 'Producción' if ambiente == '00' else 'Pruebas'
         logger.info(f"FacturacionService inicializado para empresa: {empresa.nombre} (Ambiente: {ambiente} - {ambiente_nombre})")
         logger.info(f"   🔗 URL Auth: {self.url_auth}")
         logger.info(f"   🔗 URL Recepción: {self.url_recepcion}")
@@ -128,8 +128,9 @@ class FacturacionService:
         Raises:
             AutenticacionMHError: Si hay un error en la autenticación
         """
-        # pwd = self.empresa.clave_api_mh  # Puede traer espacios/caracteres invisibles del .env
-        pwd = "2Caballo.azul"  # Forzando contraseña correcta para prueba
+        pwd = (self.empresa.clave_api_mh or '').strip()
+        if not pwd:
+            raise AutenticacionMHError("La empresa no tiene configurada clave_api_mh")
         payload = {
             "user": self.empresa.user_api_mh,
             "pwd": pwd
@@ -296,10 +297,7 @@ class FacturacionService:
         }
         
         try:
-            # Print temporal para confirmar URL y ambiente
-            print(f"🌍 ENVIANDO A URL: {self.url_recepcion} con AMBIENTE: {self.empresa.ambiente}")
-            logger.info(f"Enviando DTE a MH en {self.url_recepcion}...")
-            logger.info(f"🌍 ENVIANDO A URL: {self.url_recepcion} con AMBIENTE: {self.empresa.ambiente}")
+            logger.info(f"Enviando DTE a MH en {self.url_recepcion} (ambiente: {self.empresa.ambiente})...")
             resp = requests.post(self.url_recepcion, json=envio_mh, headers=headers_mh, timeout=60)
             
             logger.info(f"📡 Respuesta Servidor: {resp.status_code}")
@@ -333,12 +331,15 @@ class FacturacionService:
             else:
                 error_msg = f"Error HTTP {resp.status_code}: {resp.text}"
                 logger.error(f"❌ Error en el envío: {error_msg}")
+                # 5xx = error transitorio del servidor MH
+                if resp.status_code >= 500:
+                    raise EnvioMHTransitorioError(error_msg) from None
                 raise EnvioMHError(error_msg)
                 
         except requests.exceptions.RequestException as e:
             error_msg = f"Error de conexión enviando a MH: {str(e)}"
             logger.error(f"❌ Error Conexión MH: {error_msg}")
-            raise EnvioMHError(error_msg) from e
+            raise EnvioMHTransitorioError(error_msg) from e
         except Exception as e:
             error_msg = f"Error inesperado enviando a MH: {str(e)}"
             logger.error(f"❌ Error inesperado: {error_msg}")
@@ -394,21 +395,6 @@ class FacturacionService:
             ambiente_codigo = self.codigo_ambiente_mh
             json_dte = generar_dte(venta, ambiente=ambiente_codigo)
             
-            # DEBUG: Imprimir valores de identificación y receptor para diagnóstico
-            ident = json_dte.get('identificacion', {})
-            receptor = json_dte.get('receptor', {})
-            print(f"🔍 DEBUG - Identificación DTE:")
-            print(f"   version: {ident.get('version')} (tipo: {type(ident.get('version'))})")
-            print(f"   tipoDte: {ident.get('tipoDte')} (tipo: {type(ident.get('tipoDte'))})")
-            print(f"   ambiente: {ident.get('ambiente')}")
-            print(f"   numeroControl: {ident.get('numeroControl')}")
-            print(f"🔍 DEBUG - Receptor DTE-03:")
-            print(f"   nrc: {receptor.get('nrc')}")
-            print(f"   codActividad: {receptor.get('codActividad')}")
-            print(f"   descActividad: {receptor.get('descActividad')}")
-            print(f"   nombre: {receptor.get('nombre')}")
-            print(f"   direccion: {receptor.get('direccion')}")
-            
             # Obtener código de generación y número de control (MH exige MAYÚSCULAS)
             codigo_generacion = (venta.codigo_generacion or json_dte['identificacion']['codigoGeneracion'] or '').upper()
             numero_control = venta.numero_control or json_dte['identificacion']['numeroControl']
@@ -418,12 +404,6 @@ class FacturacionService:
             
             logger.info(f"   ✅ DTE generado (UUID: {codigo_generacion}, Control: {numero_control})")
             
-            import json
-            print("\n" + "="*50)
-            print("🔍 JSON GENERADO (Copia desde aquí):")
-            print("="*50)
-            print(json.dumps(json_dte, indent=4, ensure_ascii=False))
-            print("="*50 + "\n")
             # PASO 2: Firmar documento
             logger.info("2. Firmando documento...")
             dte_firmado = self.firmar_dte(json_dte)
@@ -488,6 +468,15 @@ class FacturacionService:
             venta.save()
             raise FacturacionServiceError(error_msg) from e
             
+        except EnvioMHTransitorioError as e:
+            error_msg = f"Error transitorio de envío (MH no disponible): {str(e)}"
+            logger.warning(error_msg)
+            resultado["errores"].append(error_msg)
+            resultado["mensaje"] = "MH no disponible. La factura quedó pendiente de envío."
+            venta.estado_dte = 'PendienteEnvio'
+            venta.error_envio_mensaje = str(e)[:500]
+            venta.save()
+            raise FacturacionServiceError(error_msg) from e
         except EnvioMHError as e:
             error_msg = f"Error de envío: {str(e)}"
             logger.error(error_msg)

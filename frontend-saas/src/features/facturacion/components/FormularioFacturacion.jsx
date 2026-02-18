@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { ModalBuscadorCliente } from './ModalBuscadorCliente'
 import { BuscarDocumentoModal } from './BuscarDocumentoModal'
 import { ItemDescripcionCombobox } from './ItemDescripcionCombobox'
+import { ModalCatalogoItems } from './ModalCatalogoItems'
 import { DEPARTAMENTOS, MUNICIPIOS_POR_DEPARTAMENTO } from '../../../data/departamentos-municipios'
 import { crearVenta } from '../../../api/facturas'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
@@ -62,6 +63,7 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
   const [documentoRelacionado, setDocumentoRelacionado] = useState(null)
   const [errorDocumentoRelacionado, setErrorDocumentoRelacionado] = useState('')
   const [modalDocumentoAbierto, setModalDocumentoAbierto] = useState(false)
+  const [catalogRowIndex, setCatalogRowIndex] = useState(null)
   const requiereDocumentoRelacionado = tipoDocumento === '05' || tipoDocumento === '06'
 
   const {
@@ -450,18 +452,31 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
                           className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
-                      <td className="py-2 px-3 min-w-0">
-                        <ItemDescripcionCombobox
-                          value={items?.[index]?.descripcion ?? ''}
-                          onChange={(val) => setValue(`items.${index}.descripcion`, val)}
-                          onSelectItem={({ descripcion, precio_unitario }) => {
-                            setValue(`items.${index}.descripcion`, descripcion)
-                            setValue(`items.${index}.precioUnitario`, precio_unitario)
-                          }}
-                          empresaId={empresaId}
-                          placeholder="Buscar ítem o escribir..."
-                          error={errors.items?.[index]?.descripcion?.message}
-                        />
+                      <td className="py-2 px-2 sm:px-3 min-w-0">
+                        <div className="flex items-center gap-1 w-full min-w-0">
+                          <div className="flex-1 min-w-0">
+                            <ItemDescripcionCombobox
+                              value={items?.[index]?.descripcion ?? ''}
+                              onChange={(val) => setValue(`items.${index}.descripcion`, val)}
+                              onSelectItem={({ descripcion, precio_unitario }) => {
+                                setValue(`items.${index}.descripcion`, descripcion)
+                                setValue(`items.${index}.precioUnitario`, precio_unitario)
+                              }}
+                              empresaId={empresaId}
+                              placeholder="Buscar ítem o escribir..."
+                              error={errors.items?.[index]?.descripcion?.message}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setCatalogRowIndex(index)}
+                            className="flex-shrink-0 p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-400 touch-manipulation inline-flex items-center justify-center"
+                            aria-label="Buscar en catálogo"
+                            title="Buscar en catálogo"
+                          >
+                            <Search size={18} />
+                          </button>
+                        </div>
                       </td>
                       <td className="py-2 px-3">
                         <input
@@ -532,6 +547,19 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
         isOpen={modalAbierto}
         onClose={() => setModalAbierto(false)}
         onSelect={onClienteSeleccionado}
+      />
+
+      <ModalCatalogoItems
+        isOpen={catalogRowIndex !== null}
+        onClose={() => setCatalogRowIndex(null)}
+        onSelect={(item) => {
+          if (catalogRowIndex !== null) {
+            setValue(`items.${catalogRowIndex}.descripcion`, item.descripcion)
+            setValue(`items.${catalogRowIndex}.precioUnitario`, item.precio_unitario)
+          }
+          setCatalogRowIndex(null)
+        }}
+        empresaId={empresaId}
       />
     </div>
   )

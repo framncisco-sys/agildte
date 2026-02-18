@@ -22,7 +22,7 @@ from .models import Cliente, Compra, Venta, Retencion, Empresa, Liquidacion, Ret
 from .serializers import ClienteSerializer, CompraSerializer, VentaSerializer, RetencionSerializer, EmpresaSerializer, LiquidacionSerializer, RetencionRecibidaSerializer, ProductoSerializer, VentaConDetallesSerializer, ActividadEconomicaSerializer
 from .dte_generator import DTEGenerator
 from .utils.pdf_generator import generar_pdf_venta
-from .utils.tenant import get_empresa_ids_allowlist, require_empresa_allowed, require_object_empresa_allowed
+from .utils.tenant import get_empresa_ids_allowlist, require_empresa_allowed, require_object_empresa_allowed, get_and_validate_empresa
 from .services import FacturacionService, FacturacionServiceError, AutenticacionMHError, FirmaDTEError, EnvioMHError
 
 logger = logging.getLogger(__name__)
@@ -225,141 +225,139 @@ class VentaViewSet(viewsets.ModelViewSet):
     def emitir_factura(self, request, pk=None):
         """
         Emite una factura electrónica procesándola con el Ministerio de Hacienda.
-        
-        Esta acción:
-        1. Obtiene la instancia de la venta
-        2. Obtiene la empresa asociada
-        3. Instancia FacturacionService
-        4. Procesa la factura completa (genera DTE, firma y envía a MH)
+        Con USE_ASYNC_FACTURACION=True, encola la tarea y responde de inmediato.
         
         Endpoint: POST /api/ventas/{id}/emitir-factura/
-        
-        Returns:
-            - 200 OK: Si la factura fue procesada exitosamente
-            - 400 Bad Request: Si hay errores en el procesamiento
-            - 404 Not Found: Si la venta no existe
         """
+        from django.conf import settings
+        from .models import TareaFacturacion
+
         try:
-            # Obtener la instancia de la venta
             venta = self.get_object()
-            
-            # Obtener la empresa asociada a la venta
-            if not venta.empresa:
-                return Response({
-                    "error": "La venta no tiene una empresa asociada",
-                    "mensaje": "Debes asociar una empresa a la venta antes de emitir la factura"
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            empresa = venta.empresa
-            
-            # Validar que la empresa tenga credenciales configuradas
-            if not empresa.user_api_mh or not empresa.clave_api_mh:
-                return Response({
-                    "error": "La empresa no tiene credenciales de MH configuradas",
-                    "mensaje": "Debes configurar user_api_mh y clave_api_mh en la empresa",
-                    "empresa_id": empresa.id,
-                    "empresa_nombre": empresa.nombre
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            if not empresa.archivo_certificado or not empresa.clave_certificado:
-                return Response({
-                    "error": "La empresa no tiene certificado digital configurado",
-                    "mensaje": "Debes configurar archivo_certificado y clave_certificado en la empresa",
-                    "empresa_id": empresa.id,
-                    "empresa_nombre": empresa.nombre
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Instanciar FacturacionService
-            try:
-                servicio = FacturacionService(empresa)
-            except ValueError as e:
-                return Response({
-                    "error": "Error al inicializar el servicio de facturación",
-                    "mensaje": str(e)
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Procesar la factura
-            try:
-                resultado = servicio.procesar_factura(venta)
-                
-                # Si fue exitoso, retornar respuesta 200
-                if resultado.get('exito'):
-                    return Response({
-                        "mensaje": "Factura emitida exitosamente",
-                        "venta_id": resultado['venta_id'],
-                        "codigo_generacion": resultado['codigo_generacion'],
-                        "numero_control": resultado['numero_control'],
-                        "sello_recibido": resultado['sello_recibido'],
-                        "estado": resultado['estado'],
-                        "datos_completos": resultado
-                    }, status=status.HTTP_200_OK)
-                else:
-                    # Si fue rechazada por MH, retornar 400 con detalles
-                    return Response({
-                        "error": "La factura fue rechazada por el Ministerio de Hacienda",
-                        "mensaje": resultado.get('mensaje', 'Sin mensaje'),
-                        "observaciones": resultado.get('observaciones', 'Sin observaciones'),
-                        "estado": resultado.get('estado'),
-                        "venta_id": resultado['venta_id'],
-                        "codigo_generacion": resultado.get('codigo_generacion'),
-                        "numero_control": resultado.get('numero_control')
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                    
-            except AutenticacionMHError as e:
-                logger.error(f"Error de autenticación MH para venta {venta.id}: {str(e)}")
-                return Response({
-                    "error": "Error de autenticación con el Ministerio de Hacienda",
-                    "mensaje": str(e),
-                    "tipo_error": "AutenticacionMHError",
-                    "venta_id": venta.id
-                }, status=status.HTTP_400_BAD_REQUEST)
-                
-            except FirmaDTEError as e:
-                logger.error(f"Error de firma DTE para venta {venta.id}: {str(e)}")
-                return Response({
-                    "error": "Error al firmar el documento DTE",
-                    "mensaje": str(e),
-                    "tipo_error": "FirmaDTEError",
-                    "venta_id": venta.id
-                }, status=status.HTTP_400_BAD_REQUEST)
-                
-            except EnvioMHError as e:
-                logger.error(f"Error de envío a MH para venta {venta.id}: {str(e)}")
-                venta.estado_dte = 'ErrorEnvio'
-                venta.error_envio_mensaje = str(e)[:500] if str(e) else None
-                venta.save(update_fields=['estado_dte', 'error_envio_mensaje'])
-                return Response({
-                    "exito": False,
-                    "error": "Error al enviar el DTE al Ministerio de Hacienda",
-                    "mensaje": str(e),
-                    "reintentar": True,
-                    "venta_id": venta.id,
-                    "estado_dte": "ErrorEnvio"
-                }, status=status.HTTP_200_OK)
-                
-            except FacturacionServiceError as e:
-                logger.error(f"Error en servicio de facturación para venta {venta.id}: {str(e)}")
-                return Response({
-                    "error": "Error en el proceso de facturación",
-                    "mensaje": str(e),
-                    "tipo_error": "FacturacionServiceError",
-                    "venta_id": venta.id
-                }, status=status.HTTP_400_BAD_REQUEST)
-                
-            except Exception as e:
-                logger.error(f"Error inesperado al emitir factura {venta.id}: {str(e)}", exc_info=True)
-                return Response({
-                    "error": "Error inesperado al procesar la factura",
-                    "mensaje": str(e),
-                    "tipo_error": "Exception",
-                    "venta_id": venta.id
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                
         except Venta.DoesNotExist:
             return Response({
                 "error": "Venta no encontrada",
                 "mensaje": f"No existe una venta con el ID {pk}"
             }, status=status.HTTP_404_NOT_FOUND)
+
+        r = require_object_empresa_allowed(request, venta)
+        if r is not None:
+            return r
+
+        # Procesamiento asíncrono
+        if getattr(settings, 'USE_ASYNC_FACTURACION', True):
+            TareaFacturacion.objects.get_or_create(
+                venta=venta,
+                defaults={'estado': 'Pendiente'}
+            )
+            return Response({
+                "mensaje": "Factura en cola. Se procesará en breve (firma, envío a Hacienda y correo).",
+                "venta_id": venta.id,
+                "procesamiento": "asincrono",
+                "estado_dte": venta.estado_dte or 'Borrador',
+            }, status=status.HTTP_200_OK)
+
+        # Procesamiento síncrono (legacy)
+        if not venta.empresa:
+            return Response({
+                "error": "La venta no tiene una empresa asociada",
+                "mensaje": "Debes asociar una empresa a la venta antes de emitir la factura"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        empresa = venta.empresa
+
+        # Validar que la empresa tenga credenciales configuradas
+        if not empresa.user_api_mh or not empresa.clave_api_mh:
+            return Response({
+                "error": "La empresa no tiene credenciales de MH configuradas",
+                "mensaje": "Debes configurar user_api_mh y clave_api_mh en la empresa",
+                "empresa_id": empresa.id,
+                "empresa_nombre": empresa.nombre
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not empresa.archivo_certificado or not empresa.clave_certificado:
+            return Response({
+                "error": "La empresa no tiene certificado digital configurado",
+                "mensaje": "Debes configurar archivo_certificado y clave_certificado en la empresa",
+                "empresa_id": empresa.id,
+                "empresa_nombre": empresa.nombre
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            servicio = FacturacionService(empresa)
+        except ValueError as e:
+            return Response({
+                "error": "Error al inicializar el servicio de facturación",
+                "mensaje": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            resultado = servicio.procesar_factura(venta)
+            if resultado.get('exito'):
+                return Response({
+                    "mensaje": "Factura emitida exitosamente",
+                    "venta_id": resultado['venta_id'],
+                    "codigo_generacion": resultado['codigo_generacion'],
+                    "numero_control": resultado['numero_control'],
+                    "sello_recibido": resultado['sello_recibido'],
+                    "estado": resultado['estado'],
+                    "datos_completos": resultado
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    "error": "La factura fue rechazada por el Ministerio de Hacienda",
+                    "mensaje": resultado.get('mensaje', 'Sin mensaje'),
+                    "observaciones": resultado.get('observaciones', 'Sin observaciones'),
+                    "estado": resultado.get('estado'),
+                    "venta_id": resultado['venta_id'],
+                    "codigo_generacion": resultado.get('codigo_generacion'),
+                    "numero_control": resultado.get('numero_control')
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except AutenticacionMHError as e:
+            logger.error(f"Error de autenticación MH para venta {venta.id}: {str(e)}")
+            return Response({
+                "error": "Error de autenticación con el Ministerio de Hacienda",
+                "mensaje": str(e),
+                "tipo_error": "AutenticacionMHError",
+                "venta_id": venta.id
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except FirmaDTEError as e:
+            logger.error(f"Error de firma DTE para venta {venta.id}: {str(e)}")
+            return Response({
+                "error": "Error al firmar el documento DTE",
+                "mensaje": str(e),
+                "tipo_error": "FirmaDTEError",
+                "venta_id": venta.id
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except EnvioMHError as e:
+            logger.error(f"Error de envío a MH para venta {venta.id}: {str(e)}")
+            venta.estado_dte = 'ErrorEnvio'
+            venta.error_envio_mensaje = str(e)[:500] if str(e) else None
+            venta.save(update_fields=['estado_dte', 'error_envio_mensaje'])
+            return Response({
+                "exito": False,
+                "error": "Error al enviar el DTE al Ministerio de Hacienda",
+                "mensaje": str(e),
+                "reintentar": True,
+                "venta_id": venta.id,
+                "estado_dte": "ErrorEnvio"
+            }, status=status.HTTP_200_OK)
+        except FacturacionServiceError as e:
+            logger.error(f"Error en servicio de facturación para venta {venta.id}: {str(e)}")
+            return Response({
+                "error": "Error en el proceso de facturación",
+                "mensaje": str(e),
+                "tipo_error": "FacturacionServiceError",
+                "venta_id": venta.id
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"Error inesperado al emitir factura {venta.id}: {str(e)}", exc_info=True)
+            return Response({
+                "error": "Error inesperado al procesar la factura",
+                "mensaje": str(e),
+                "tipo_error": "Exception",
+                "venta_id": venta.id
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['post'], url_path='invalidar')
     def invalidar(self, request, pk=None):
@@ -522,21 +520,32 @@ def _total_pagar_venta(venta):
 def dashboard_stats_api(request):
     """
     KPIs y datos para el dashboard: ventas del mes actual (estado AceptadoMH/Enviado = procesado),
-    tendencia por día y últimas 5 ventas.
+    tendencia por día y últimas 5 ventas. Requiere empresa_id o filtra por empresas permitidas.
     """
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return Response({"error": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    empresa_id = request.query_params.get('empresa_id')
+    if empresa_id:
+        r = require_empresa_allowed(request, int(empresa_id))
+        if r is not None:
+            return r
+        empresa_ids = [int(empresa_id)]
+
     now = timezone.now().date()
     year, month = now.year, now.month
     first_day = timezone.datetime(year, month, 1).date()
     _, last_day_num = calendar.monthrange(year, month)
     last_day = timezone.datetime(year, month, last_day_num).date()
 
-    # Ventas "procesadas" = aceptadas por MH o enviadas (equivalente a PROCESADO en negocio)
+    filtro_tenant = Q(empresa_id__in=empresa_ids)
     filtro_procesado = Q(estado_dte__in=['AceptadoMH', 'Enviado'])
     filtro_mes = Q(fecha_emision__gte=first_day, fecha_emision__lte=last_day)
     filtro_hoy = Q(fecha_emision=now)
 
-    base_mes = Venta.objects.filter(filtro_procesado, filtro_mes)
-    base_hoy = Venta.objects.filter(filtro_procesado, filtro_hoy)
+    base_mes = Venta.objects.filter(filtro_tenant, filtro_procesado, filtro_mes)
+    base_hoy = Venta.objects.filter(filtro_tenant, filtro_procesado, filtro_hoy)
 
     # total_ventas_mes: suma de total_pagar
     total_ventas_mes = Decimal('0.00')
@@ -555,7 +564,7 @@ def dashboard_stats_api(request):
     ventas_por_dia_map = {}
     for d in range(1, last_day_num + 1):
         ventas_por_dia_map[d] = 0.0
-    ventas_mes = Venta.objects.filter(filtro_procesado, filtro_mes).only(
+    ventas_mes = Venta.objects.filter(filtro_tenant, filtro_procesado, filtro_mes).only(
         'fecha_emision', 'venta_gravada', 'venta_exenta', 'venta_no_sujeta', 'debito_fiscal', 'iva_retenido_1', 'iva_retenido_2'
     )
     for v in ventas_mes:
@@ -567,7 +576,7 @@ def dashboard_stats_api(request):
     ]
 
     # ultimas_ventas: últimos 5 (cualquier estado), serializado simple
-    ultimas = Venta.objects.select_related('cliente').order_by('-fecha_emision', '-id')[:5]
+    ultimas = Venta.objects.filter(filtro_tenant).select_related('cliente').order_by('-fecha_emision', '-id')[:5]
     ultimas_ventas = []
     for v in ultimas:
         cliente_nombre = v.nombre_receptor or (v.cliente.nombre if v.cliente else '') or 'N/A'
@@ -701,15 +710,12 @@ def procesar_json_dte(request):
     - DTE-07 (Retención) -> Modelo RetencionRecibida
     - DTE-03/14 (CCF/Factura) -> Modelo Compra
     """
-    empresa_id = request.data.get('empresa_id')
-    if not empresa_id:
+    empresa, err = get_and_validate_empresa(request, from_body=True)
+    if err is not None:
+        return err
+    if empresa is None:
         return Response({"error": "Falta empresa_id"}, status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-    except Empresa.DoesNotExist:
-        return Response({"error": "Empresa no encontrada"}, status=404)
-    
+
     archivos = request.FILES.getlist('archivos')
     if not archivos:
         return Response({"error": "No se proporcionaron archivos"}, status=400)
@@ -959,53 +965,122 @@ def procesar_json_dte(request):
 # --- CRUD INDIVIDUAL ---
 @api_view(['POST'])
 def crear_compra(request):
+    empresa_id = request.data.get('empresa_id')
+    if empresa_id is not None:
+        r = require_empresa_allowed(request, empresa_id)
+        if r is not None:
+            return r
     serializer = CompraSerializer(data=request.data)
-    if serializer.is_valid(): serializer.save(); return Response(serializer.data, status=201)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=201)
     return Response(serializer.errors, status=400)
 @api_view(['GET'])
 def listar_compras(request):
-    cliente_id = request.query_params.get('nrc'); periodo = request.query_params.get('periodo')
-    compras = Compra.objects.filter(cliente__nrc=cliente_id, periodo_aplicado=periodo).order_by('fecha_emision')
-    serializer = CompraSerializer(compras, many=True); return Response(serializer.data)
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return Response({"error": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
+    empresa_id = request.query_params.get('empresa_id')
+    if empresa_id:
+        r = require_empresa_allowed(request, int(empresa_id))
+        if r is not None:
+            return r
+        compras = Compra.objects.filter(empresa_id=empresa_id)
+    else:
+        compras = Compra.objects.filter(empresa_id__in=empresa_ids)
+    nrc = request.query_params.get('nrc')
+    periodo = request.query_params.get('periodo')
+    if nrc:
+        compras = compras.filter(proveedor__nrc=nrc)
+    if periodo:
+        compras = compras.filter(periodo_aplicado=periodo)
+    compras = compras.order_by('fecha_emision')
+    serializer = CompraSerializer(compras, many=True)
+    return Response(serializer.data)
 
 @api_view(['GET'])
 def obtener_compra(request, pk):
     """Obtiene una compra específica por ID para edición"""
     try:
         compra = Compra.objects.get(pk=pk)
-        serializer = CompraSerializer(compra)
-        return Response(serializer.data)
     except Compra.DoesNotExist:
         return Response({"error": "Compra no encontrada"}, status=404)
+    r = require_object_empresa_allowed(request, compra)
+    if r is not None:
+        return r
+    serializer = CompraSerializer(compra)
+    return Response(serializer.data)
 @api_view(['DELETE'])
 def borrar_compra(request, pk):
-    try: Compra.objects.get(pk=pk).delete(); return Response(status=204)
-    except: return Response(status=404)
+    try:
+        compra = Compra.objects.get(pk=pk)
+    except Compra.DoesNotExist:
+        return Response(status=404)
+    r = require_object_empresa_allowed(request, compra)
+    if r is not None:
+        return r
+    compra.delete()
+    return Response(status=204)
 @api_view(['PUT'])
 def actualizar_compra(request, pk):
-    try: compra = Compra.objects.get(pk=pk)
-    except: return Response(status=404)
-    serializer = CompraSerializer(compra, data=request.data); 
-    if serializer.is_valid(): serializer.save(); return Response(serializer.data)
+    try:
+        compra = Compra.objects.get(pk=pk)
+    except Compra.DoesNotExist:
+        return Response(status=404)
+    r = require_object_empresa_allowed(request, compra)
+    if r is not None:
+        return r
+    serializer = CompraSerializer(compra, data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
     return Response(serializer.errors, status=400)
 @api_view(['POST'])
 def crear_venta(request):
-    serializer = VentaSerializer(data=request.data); 
-    if serializer.is_valid(): serializer.save(); return Response(serializer.data, status=201)
+    empresa_id = request.data.get('empresa_id')
+    if empresa_id is not None:
+        r = require_empresa_allowed(request, empresa_id)
+        if r is not None:
+            return r
+    serializer = VentaSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=201)
     return Response(serializer.errors, status=400)
 
 @api_view(['POST'])
 def crear_venta_con_detalles(request):
-    """Crea una venta con sus detalles y envía automáticamente a Hacienda."""
+    """Crea una venta con sus detalles y envía a Hacienda (síncrono o asíncrono según USE_ASYNC_FACTURACION)."""
+    from django.conf import settings
+    from .models import TareaFacturacion
     from .services.facturacion_service import FacturacionService, FacturacionServiceError
+
+    # Validar tenant: empresa_id del body debe estar permitida para el usuario
+    empresa_id = request.data.get('empresa_id')
+    if empresa_id is not None:
+        r = require_empresa_allowed(request, empresa_id)
+        if r is not None:
+            return r
 
     serializer = VentaConDetallesSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=400)
 
     venta = serializer.save()
-    mensaje = None
 
+    if getattr(settings, 'USE_ASYNC_FACTURACION', True):
+        # Procesamiento asíncrono: encolar y responder de inmediato
+        TareaFacturacion.objects.get_or_create(
+            venta=venta,
+            defaults={'estado': 'Pendiente'}
+        )
+        data = VentaSerializer(venta).data
+        data['mensaje'] = 'Factura registrada. Se procesará en breve (firma, envío a Hacienda y correo).'
+        data['procesamiento'] = 'asincrono'
+        return Response(data, status=201)
+
+    # Procesamiento síncrono (legacy)
+    mensaje = None
     try:
         servicio = FacturacionService(venta.empresa)
         resultado = servicio.procesar_factura(venta)
@@ -1023,6 +1098,7 @@ def crear_venta_con_detalles(request):
 
     data = VentaSerializer(venta).data
     data['mensaje'] = mensaje
+    data['procesamiento'] = 'sincrono'
     return Response(data, status=201)
 
 @api_view(['GET'])
@@ -1215,11 +1291,21 @@ def download_batch_ventas(request):
     Genera archivos dinámicamente (no usa rutas de disco). Si un documento falla,
     agrega error_factura_X.txt en lugar de romper el ciclo.
     """
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return JsonResponse({'error': 'Autenticación requerida'}, status=401)
+    empresa_id = request.GET.get('empresa_id')
+    if empresa_id:
+        r = require_empresa_allowed(request, int(empresa_id))
+        if r is not None:
+            return r
+        empresa_ids = [int(empresa_id)]
+
     format_type = (request.GET.get('format') or 'pdf').lower()
     if format_type not in ('pdf', 'json'):
         return JsonResponse({'error': 'format debe ser pdf o json'}, status=400)
 
-    ventas_qs = Venta.objects.select_related('empresa', 'cliente').prefetch_related('detalles__producto')
+    ventas_qs = Venta.objects.filter(empresa_id__in=empresa_ids).select_related('empresa', 'cliente').prefetch_related('detalles__producto')
     ventas_qs = _aplicar_filtros_ventas(ventas_qs, request)
     ventas = list(ventas_qs[:100])  # Límite razonable
 
@@ -1387,15 +1473,20 @@ def listar_retenciones(request):
 # --- LIQUIDACIONES ---
 @api_view(['GET'])
 def listar_liquidaciones(request):
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return Response({"error": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
     empresa_id = request.query_params.get('empresa_id')
-    periodo = request.query_params.get('periodo')
-    
-    liquidaciones = Liquidacion.objects.all()
     if empresa_id:
-        liquidaciones = liquidaciones.filter(empresa_id=empresa_id)
+        r = require_empresa_allowed(request, int(empresa_id))
+        if r is not None:
+            return r
+        liquidaciones = Liquidacion.objects.filter(empresa_id=empresa_id)
+    else:
+        liquidaciones = Liquidacion.objects.filter(empresa_id__in=empresa_ids)
+    periodo = request.query_params.get('periodo')
     if periodo:
         liquidaciones = liquidaciones.filter(periodo_aplicado=periodo)
-    
     liquidaciones = liquidaciones.order_by('-fecha_documento')
     serializer = LiquidacionSerializer(liquidaciones, many=True)
     return Response(serializer.data)
@@ -1403,13 +1494,19 @@ def listar_liquidaciones(request):
 # --- RETENCIONES RECIBIDAS ---
 @api_view(['GET'])
 def listar_retenciones_recibidas(request):
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return Response({"error": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
     empresa_id = request.query_params.get('empresa_id')
+    if empresa_id:
+        r = require_empresa_allowed(request, int(empresa_id))
+        if r is not None:
+            return r
+        retenciones = RetencionRecibida.objects.filter(empresa_id=empresa_id)
+    else:
+        retenciones = RetencionRecibida.objects.filter(empresa_id__in=empresa_ids)
     periodo = request.query_params.get('periodo')
     estado = request.query_params.get('estado')
-    
-    retenciones = RetencionRecibida.objects.all()
-    if empresa_id:
-        retenciones = retenciones.filter(empresa_id=empresa_id)
     if periodo:
         retenciones = retenciones.filter(periodo_aplicado=periodo)
     if estado:
@@ -1424,10 +1521,13 @@ def obtener_retencion_recibida(request, pk):
     """Obtiene una retención recibida específica por ID"""
     try:
         retencion = RetencionRecibida.objects.get(pk=pk)
-        serializer = RetencionRecibidaSerializer(retencion)
-        return Response(serializer.data)
     except RetencionRecibida.DoesNotExist:
         return Response({"error": "Retención no encontrada"}, status=404)
+    r = require_object_empresa_allowed(request, retencion)
+    if r is not None:
+        return r
+    serializer = RetencionRecibidaSerializer(retencion)
+    return Response(serializer.data)
 
 @api_view(['PUT'])
 def aplicar_retencion(request, pk):
@@ -1439,7 +1539,9 @@ def aplicar_retencion(request, pk):
         retencion = RetencionRecibida.objects.get(pk=pk)
     except RetencionRecibida.DoesNotExist:
         return Response({"error": "Retención no encontrada"}, status=404)
-    
+    r = require_object_empresa_allowed(request, retencion)
+    if r is not None:
+        return r
     if retencion.estado == 'Aplicada':
         return Response({"error": "Esta retención ya fue aplicada"}, status=400)
     
@@ -1693,16 +1795,12 @@ def generar_csv_161(request):
     CSV 161: Liquidaciones (DTE-09)
     Formato: NIT;Fecha;Sello;CodGen;MontoOp;Retencion2%;[Vacio];6
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return HttpResponse("Faltan empresa_id o periodo", status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-    except Empresa.DoesNotExist:
-        return HttpResponse("Empresa no encontrada", status=404)
+    if not periodo:
+        return HttpResponse("Falta periodo", status=400)
     
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="ANEXO_161_{periodo}.csv"'
@@ -1737,16 +1835,12 @@ def generar_csv_162(request):
     CSV 162: Retenciones Recibidas (DTE-07)
     Formato: NIT;Fecha;07;Sello;CodGen;MontoSujeto;Retencion1%;[Vacio];7
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return HttpResponse("Faltan empresa_id o periodo", status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-    except Empresa.DoesNotExist:
-        return HttpResponse("Empresa no encontrada", status=404)
+    if not periodo:
+        return HttpResponse("Falta periodo", status=400)
     
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="ANEXO_162_{periodo}.csv"'
@@ -2146,16 +2240,12 @@ def generar_csv_163(request):
     Formato: NIT;Fecha;03;CodGen;NumDoc;MontoGrav;Percepcion;[Vacio];8
     Filtra solo compras con percepción > 0
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return HttpResponse("Faltan empresa_id o periodo", status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-    except Empresa.DoesNotExist:
-        return HttpResponse("Empresa no encontrada", status=404)
+    if not periodo:
+        return HttpResponse("Falta periodo", status=400)
     
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="ANEXO_163_{periodo}.csv"'
@@ -2197,18 +2287,14 @@ def obtener_ventas_para_conciliacion(request):
     Obtiene ventas de un cliente/empresa en un rango de fechas para conciliación de retenciones.
     Parámetros: empresa_id, fecha_desde, fecha_hasta, tipo_doc (opcional: CCF/CF)
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     fecha_desde = request.query_params.get('fecha_desde')
     fecha_hasta = request.query_params.get('fecha_hasta')
     tipo_doc = request.query_params.get('tipo_doc')  # CCF o CF
-    
-    if not empresa_id or not fecha_desde or not fecha_hasta:
-        return Response({"error": "Faltan empresa_id, fecha_desde o fecha_hasta"}, status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-    except Empresa.DoesNotExist:
-        return Response({"error": "Empresa no encontrada"}, status=404)
+    if not fecha_desde or not fecha_hasta:
+        return Response({"error": "Faltan fecha_desde o fecha_hasta"}, status=400)
     
     from datetime import datetime
     try:
@@ -2266,148 +2352,130 @@ def vista_previa_compras(request):
     Devuelve las compras de una empresa en formato JSON para vista previa.
     Parámetros: empresa_id, periodo (YYYY-MM)
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return Response({"error": "Faltan empresa_id o periodo"}, status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-        compras = Compra.objects.filter(empresa=empresa, periodo_aplicado=periodo).order_by('fecha_emision')
-        
-        datos = []
-        for c in compras:
-            datos.append({
-                'id': c.id,
-                'fecha_emision': c.fecha_emision.strftime('%Y-%m-%d'),
-                'tipo_documento': c.tipo_documento,
-                'codigo_generacion': c.codigo_generacion or '',
-                'nrc_proveedor': c.nrc_proveedor,
-                'nombre_proveedor': c.nombre_proveedor,
-                'monto_gravado': float(c.monto_gravado),
-                'monto_iva': float(c.monto_iva),
-                'monto_total': float(c.monto_total),
-                'clasificacion_1': c.clasificacion_1,
-                'clasificacion_2': c.clasificacion_2,
-                'clasificacion_3': c.clasificacion_3,
-            })
-        
-        # Totales
-        totales = compras.aggregate(
-            total_gravado=Sum('monto_gravado'),
-            total_iva=Sum('monto_iva'),
-            total_general=Sum('monto_total')
-        )
-        
-        return Response({
-            'empresa': empresa.nombre,
-            'periodo': periodo,
-            'total_registros': len(datos),
-            'totales': {
-                'gravado': float(totales['total_gravado'] or 0),
-                'iva': float(totales['total_iva'] or 0),
-                'total': float(totales['total_general'] or 0),
-            },
-            'datos': datos
+    if not periodo:
+        return Response({"error": "Falta periodo"}, status=400)
+    compras = Compra.objects.filter(empresa=empresa, periodo_aplicado=periodo).order_by('fecha_emision')
+    datos = []
+    for c in compras:
+        datos.append({
+            'id': c.id,
+            'fecha_emision': c.fecha_emision.strftime('%Y-%m-%d'),
+            'tipo_documento': c.tipo_documento,
+            'codigo_generacion': c.codigo_generacion or '',
+            'nrc_proveedor': c.nrc_proveedor,
+            'nombre_proveedor': c.nombre_proveedor,
+            'monto_gravado': float(c.monto_gravado),
+            'monto_iva': float(c.monto_iva),
+            'monto_total': float(c.monto_total),
+            'clasificacion_1': c.clasificacion_1,
+            'clasificacion_2': c.clasificacion_2,
+            'clasificacion_3': c.clasificacion_3,
         })
-    except Empresa.DoesNotExist:
-        return Response({"error": "Empresa no encontrada"}, status=404)
+    totales = compras.aggregate(
+        total_gravado=Sum('monto_gravado'),
+        total_iva=Sum('monto_iva'),
+        total_general=Sum('monto_total')
+    )
+    return Response({
+        'empresa': empresa.nombre,
+        'periodo': periodo,
+        'total_registros': len(datos),
+        'totales': {
+            'gravado': float(totales['total_gravado'] or 0),
+            'iva': float(totales['total_iva'] or 0),
+            'total': float(totales['total_general'] or 0),
+        },
+        'datos': datos
+    })
 
 @api_view(['GET'])
 def vista_previa_ventas_ccf(request):
     """
     Devuelve las ventas a Contribuyentes de una empresa en formato JSON.
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return Response({"error": "Faltan empresa_id o periodo"}, status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CCF').order_by('fecha_emision')
-        
-        datos = []
-        for v in ventas:
-            datos.append({
-                'id': v.id,
-                'fecha_emision': v.fecha_emision.strftime('%Y-%m-%d'),
-                'numero_documento': v.numero_documento or '',
-                'codigo_generacion': v.codigo_generacion or '',
-                'nombre_receptor': v.nombre_receptor or '',
-                'nrc_receptor': v.nrc_receptor or '',
-                'venta_gravada': float(v.venta_gravada),
-                'debito_fiscal': float(v.debito_fiscal),
-                'total': float(v.venta_gravada + v.debito_fiscal),
-            })
-        
-        totales = ventas.aggregate(
-            total_gravado=Sum('venta_gravada'),
-            total_iva=Sum('debito_fiscal')
-        )
-        
-        return Response({
-            'empresa': empresa.nombre,
-            'periodo': periodo,
-            'total_registros': len(datos),
-            'totales': {
-                'gravado': float(totales['total_gravado'] or 0),
-                'iva': float(totales['total_iva'] or 0),
-                'total': float((totales['total_gravado'] or 0) + (totales['total_iva'] or 0)),
-            },
-            'datos': datos
+    if not periodo:
+        return Response({"error": "Falta periodo"}, status=400)
+    ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CCF').order_by('fecha_emision')
+    datos = []
+    for v in ventas:
+        datos.append({
+            'id': v.id,
+            'fecha_emision': v.fecha_emision.strftime('%Y-%m-%d'),
+            'numero_documento': v.numero_documento or '',
+            'codigo_generacion': v.codigo_generacion or '',
+            'nombre_receptor': v.nombre_receptor or '',
+            'nrc_receptor': v.nrc_receptor or '',
+            'venta_gravada': float(v.venta_gravada),
+            'debito_fiscal': float(v.debito_fiscal),
+            'total': float(v.venta_gravada + v.debito_fiscal),
         })
-    except Empresa.DoesNotExist:
-        return Response({"error": "Empresa no encontrada"}, status=404)
+
+    totales = ventas.aggregate(
+        total_gravado=Sum('venta_gravada'),
+        total_iva=Sum('debito_fiscal')
+    )
+
+    return Response({
+        'empresa': empresa.nombre,
+        'periodo': periodo,
+        'total_registros': len(datos),
+        'totales': {
+            'gravado': float(totales['total_gravado'] or 0),
+            'iva': float(totales['total_iva'] or 0),
+            'total': float((totales['total_gravado'] or 0) + (totales['total_iva'] or 0)),
+        },
+        'datos': datos
+    })
 
 @api_view(['GET'])
 def vista_previa_ventas_cf(request):
     """
     Devuelve las ventas a Consumidor Final de una empresa en formato JSON.
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return Response({"error": "Faltan empresa_id o periodo"}, status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CF').order_by('fecha_emision')
-        
-        datos = []
-        for v in ventas:
-            datos.append({
-                'id': v.id,
-                'fecha_emision': v.fecha_emision.strftime('%Y-%m-%d'),
-                'numero_documento': v.numero_documento or '',
-                'codigo_generacion': v.codigo_generacion or '',
-                'numero_control': v.numero_control or '',
-                'venta_gravada': float(v.venta_gravada),
-                'debito_fiscal': float(v.debito_fiscal),
-                'total': float(v.venta_gravada + v.debito_fiscal),
-            })
-        
-        totales = ventas.aggregate(
-            total_gravado=Sum('venta_gravada'),
-            total_iva=Sum('debito_fiscal')
-        )
-        
-        return Response({
-            'empresa': empresa.nombre,
-            'periodo': periodo,
-            'total_registros': len(datos),
-            'totales': {
-                'gravado': float(totales['total_gravado'] or 0),
-                'iva': float(totales['total_iva'] or 0),
-                'total': float((totales['total_gravado'] or 0) + (totales['total_iva'] or 0)),
-            },
-            'datos': datos
+    if not periodo:
+        return Response({"error": "Falta periodo"}, status=400)
+    ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CF').order_by('fecha_emision')
+    datos = []
+    for v in ventas:
+        datos.append({
+            'id': v.id,
+            'fecha_emision': v.fecha_emision.strftime('%Y-%m-%d'),
+            'numero_documento': v.numero_documento or '',
+            'codigo_generacion': v.codigo_generacion or '',
+            'numero_control': v.numero_control or '',
+            'venta_gravada': float(v.venta_gravada),
+            'debito_fiscal': float(v.debito_fiscal),
+            'total': float(v.venta_gravada + v.debito_fiscal),
         })
-    except Empresa.DoesNotExist:
-        return Response({"error": "Empresa no encontrada"}, status=404)
+
+    totales = ventas.aggregate(
+        total_gravado=Sum('venta_gravada'),
+        total_iva=Sum('debito_fiscal')
+    )
+
+    return Response({
+        'empresa': empresa.nombre,
+        'periodo': periodo,
+        'total_registros': len(datos),
+        'totales': {
+            'gravado': float(totales['total_gravado'] or 0),
+            'iva': float(totales['total_iva'] or 0),
+            'total': float((totales['total_gravado'] or 0) + (totales['total_iva'] or 0)),
+        },
+        'datos': datos
+    })
 
 # --- REPORTES CSV/PDF ADAPTADOS PARA EMPRESA ---
 @api_view(['GET'])
@@ -2415,69 +2483,54 @@ def reporte_csv_compras_empresa(request):
     """
     Genera CSV de compras usando empresa_id.
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return HttpResponse("Faltan empresa_id o periodo", status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-        compras = Compra.objects.filter(empresa=empresa, periodo_aplicado=periodo).order_by('fecha_emision')
-        
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="LIBRO_COMPRAS_{empresa.nombre}_{periodo}.csv"'
-        writer = csv.writer(response, delimiter=';')
-        
-        # Encabezados (formato MH)
-        writer.writerow(['FECHA', 'CLASE', 'TIPO', 'CODIGO', 'NRC', 'PROVEEDOR', 'EXENTAS', 'NO_SUJETAS', 
-                         'IMPORT', 'INTERNAS', 'SERV_EXENTOS', 'SERV_GRAVADOS', 'OTROS', 'IVA', 'TOTAL', 
-                         'OBSERV', 'CLASIF1', 'CLASIF2', 'CLASIF3', 'TIPO_OP', 'TIPO_ING'])
-        
-        map_clasif_1 = {"Gravada": "1", "Exenta": "2", "No Sujeta": "3"}
-        map_clasif_2 = {"Costo": "1", "Gasto": "2"}
-        map_clasif_3 = {"Industria": "1", "Comercio": "2", "Servicios": "3", "Agropecuario": "4", 
-                        "Administración": "1", "Ventas": "2", "Financiero": "3"}
-        
-        for c in compras:
-            fecha_fmt = c.fecha_emision.strftime("%d/%m/%Y")
-            clase_doc = "4" if c.codigo_generacion and len(str(c.codigo_generacion)) > 20 else "1"
-            tipo_doc = c.tipo_documento.zfill(2)
-            nombre_limpio = c.nombre_proveedor.replace(";", "") if c.nombre_proveedor else ""
-            es_importacion = c.tipo_documento == '12'
-            col_9_internas = format(c.monto_gravado, '.2f') if not es_importacion else "0.00"
-            col_8_import = format(c.monto_gravado, '.2f') if es_importacion else "0.00"
-            cod_1 = map_clasif_1.get(c.clasificacion_1, "1")
-            cod_2 = map_clasif_2.get(c.clasificacion_2, "1")
-            cod_3 = map_clasif_3.get(c.clasificacion_3, "1")
-            
-            fila = [
-                fecha_fmt, clase_doc, tipo_doc, c.codigo_generacion or '', c.nrc_proveedor, nombre_limpio,
-                "0.00", "0.00", col_8_import, col_9_internas, "0.00", "0.00", "0.00",
-                format(c.monto_iva, '.2f'), format(c.monto_total, '.2f'), "", cod_1, cod_2, cod_3, "5", "3"
-            ]
-            writer.writerow(fila)
-        
-        return response
-    except Empresa.DoesNotExist:
-        return HttpResponse("Empresa no encontrada", status=404)
+    if not periodo:
+        return HttpResponse("Falta periodo", status=400)
+    compras = Compra.objects.filter(empresa=empresa, periodo_aplicado=periodo).order_by('fecha_emision')
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="LIBRO_COMPRAS_{empresa.nombre}_{periodo}.csv"'
+    writer = csv.writer(response, delimiter=';')
+    writer.writerow(['FECHA', 'CLASE', 'TIPO', 'CODIGO', 'NRC', 'PROVEEDOR', 'EXENTAS', 'NO_SUJETAS', 
+                     'IMPORT', 'INTERNAS', 'SERV_EXENTOS', 'SERV_GRAVADOS', 'OTROS', 'IVA', 'TOTAL', 
+                     'OBSERV', 'CLASIF1', 'CLASIF2', 'CLASIF3', 'TIPO_OP', 'TIPO_ING'])
+    map_clasif_1 = {"Gravada": "1", "Exenta": "2", "No Sujeta": "3"}
+    map_clasif_2 = {"Costo": "1", "Gasto": "2"}
+    map_clasif_3 = {"Industria": "1", "Comercio": "2", "Servicios": "3", "Agropecuario": "4", 
+                    "Administración": "1", "Ventas": "2", "Financiero": "3"}
+    for c in compras:
+        fecha_fmt = c.fecha_emision.strftime("%d/%m/%Y")
+        clase_doc = "4" if c.codigo_generacion and len(str(c.codigo_generacion)) > 20 else "1"
+        tipo_doc = c.tipo_documento.zfill(2)
+        nombre_limpio = c.nombre_proveedor.replace(";", "") if c.nombre_proveedor else ""
+        es_importacion = c.tipo_documento == '12'
+        col_9_internas = format(c.monto_gravado, '.2f') if not es_importacion else "0.00"
+        col_8_import = format(c.monto_gravado, '.2f') if es_importacion else "0.00"
+        cod_1 = map_clasif_1.get(c.clasificacion_1, "1")
+        cod_2 = map_clasif_2.get(c.clasificacion_2, "1")
+        cod_3 = map_clasif_3.get(c.clasificacion_3, "1")
+        fila = [
+            fecha_fmt, clase_doc, tipo_doc, c.codigo_generacion or '', c.nrc_proveedor, nombre_limpio,
+            "0.00", "0.00", col_8_import, col_9_internas, "0.00", "0.00", "0.00",
+            format(c.monto_iva, '.2f'), format(c.monto_total, '.2f'), "", cod_1, cod_2, cod_3, "5", "3"
+        ]
+        writer.writerow(fila)
+    return response
 
 @api_view(['GET'])
 def reporte_pdf_compras_empresa(request):
     """
     Genera PDF de compras usando empresa_id.
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return HttpResponse("Faltan empresa_id o periodo", status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-        compras = Compra.objects.filter(empresa=empresa, periodo_aplicado=periodo).order_by('fecha_emision')
-    except Empresa.DoesNotExist:
-        return HttpResponse("Empresa no encontrada", status=404)
+    if not periodo:
+        return HttpResponse("Falta periodo", status=400)
+    compras = Compra.objects.filter(empresa=empresa, periodo_aplicado=periodo).order_by('fecha_emision')
     
     from reportlab.lib.pagesizes import letter, landscape
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -2570,71 +2623,56 @@ def reporte_csv_ventas_ccf_empresa(request):
     """
     Genera CSV de ventas a Contribuyentes usando empresa_id.
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return HttpResponse("Faltan empresa_id o periodo", status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CCF').order_by('fecha_emision')
-        
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="LIBRO_VENTAS_CCF_{empresa.nombre}_{periodo}.csv"'
-        writer = csv.writer(response, delimiter=';')
-        
-        for v in ventas:
-            fecha_fmt = v.fecha_emision.strftime("%d/%m/%Y")
-            clase_doc = v.clase_documento
-            tipo_doc = "03"
-            resolucion = v.numero_resolucion if clase_doc != '4' else ""
-            serie = v.serie_documento if clase_doc != '4' else ""
-            num_prin = v.numero_documento or ""
-            num_sec = v.numero_formulario_unico if (clase_doc == '2' and v.numero_formulario_unico) else num_prin
-            nombre_limpio = (v.nombre_receptor or "").replace(";", "")
-            
-            monto_exento = "0.00"
-            monto_gravado = "0.00"
-            monto_nosujeto = "0.00"
-            base = v.venta_gravada
-            
-            if v.clasificacion_venta == "2":
-                monto_exento = format(base, '.2f')
-            elif v.clasificacion_venta == "3":
-                monto_nosujeto = format(base, '.2f')
-            else:
-                monto_gravado = format(base, '.2f')
-            
-            fila = [
-                fecha_fmt, clase_doc, tipo_doc, resolucion, serie, num_prin, num_sec,
-                v.nrc_receptor or "", nombre_limpio, monto_exento, "0.00", monto_gravado, 
-                format(v.debito_fiscal, '.2f'), monto_nosujeto, "0.00", format(v.venta_gravada + v.debito_fiscal, '.2f'),
-                "", v.clasificacion_venta.zfill(2), v.tipo_ingreso.zfill(2), "1"
-            ]
-            writer.writerow(fila)
-        
-        return response
-    except Empresa.DoesNotExist:
-        return HttpResponse("Empresa no encontrada", status=404)
+    if not periodo:
+        return HttpResponse("Falta periodo", status=400)
+    ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CCF').order_by('fecha_emision')
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="LIBRO_VENTAS_CCF_{empresa.nombre}_{periodo}.csv"'
+    writer = csv.writer(response, delimiter=';')
+    for v in ventas:
+        fecha_fmt = v.fecha_emision.strftime("%d/%m/%Y")
+        clase_doc = v.clase_documento
+        tipo_doc = "03"
+        resolucion = v.numero_resolucion if clase_doc != '4' else ""
+        serie = v.serie_documento if clase_doc != '4' else ""
+        num_prin = v.numero_documento or ""
+        num_sec = v.numero_formulario_unico if (clase_doc == '2' and v.numero_formulario_unico) else num_prin
+        nombre_limpio = (v.nombre_receptor or "").replace(";", "")
+        monto_exento = "0.00"
+        monto_gravado = "0.00"
+        monto_nosujeto = "0.00"
+        base = v.venta_gravada
+        if v.clasificacion_venta == "2":
+            monto_exento = format(base, '.2f')
+        elif v.clasificacion_venta == "3":
+            monto_nosujeto = format(base, '.2f')
+        else:
+            monto_gravado = format(base, '.2f')
+        fila = [
+            fecha_fmt, clase_doc, tipo_doc, resolucion, serie, num_prin, num_sec,
+            v.nrc_receptor or "", nombre_limpio, monto_exento, "0.00", monto_gravado,
+            format(v.debito_fiscal, '.2f'), monto_nosujeto, "0.00", format(v.venta_gravada + v.debito_fiscal, '.2f'),
+            "", v.clasificacion_venta.zfill(2), v.tipo_ingreso.zfill(2), "1"
+        ]
+        writer.writerow(fila)
+    return response
 
 @api_view(['GET'])
 def reporte_pdf_ventas_ccf_empresa(request):
     """
     Genera PDF de ventas a Contribuyentes usando empresa_id.
-    Reutiliza la lógica existente.
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return HttpResponse("Faltan empresa_id o periodo", status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CCF').order_by('fecha_emision', 'numero_documento')
-    except Empresa.DoesNotExist:
-        return HttpResponse("Empresa no encontrada", status=404)
+    if not periodo:
+        return HttpResponse("Falta periodo", status=400)
+    ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CCF').order_by('fecha_emision', 'numero_documento')
     
     from reportlab.lib.pagesizes import letter, landscape
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -2742,86 +2780,69 @@ def reporte_csv_ventas_cf_empresa(request):
     """
     Genera CSV de ventas a Consumidor Final usando empresa_id.
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return HttpResponse("Faltan empresa_id o periodo", status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CF').order_by('fecha_emision')
-        
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="LIBRO_VENTAS_CF_{empresa.nombre}_{periodo}.csv"'
-        writer = csv.writer(response, delimiter=';')
-        
-        for v in ventas:
-            fecha_fmt = v.fecha_emision.strftime("%d/%m/%Y")
-            clase_doc = v.clase_documento
-            
-            cod_gen_limpio = str(v.codigo_generacion or "").replace("-", "").upper()
-            num_ctrl_limpio = str(v.numero_control or "").replace("-", "").upper()
-            sello_limpio = str(v.sello_recepcion or "").replace("-", "").upper()
-            
-            if clase_doc == '4':
-                tipo_doc_mh = "01"
-                col_3_res = num_ctrl_limpio
-                col_4_ser = sello_limpio
-                col_5_ci_del = cod_gen_limpio
-                col_6_ci_al = cod_gen_limpio
-                col_7_del = cod_gen_limpio
-                col_8_al = cod_gen_limpio
-                col_9_maq = ""
-            else:
-                tipo_doc_mh = "01"
-                col_3_res = v.numero_resolucion or ""
-                col_4_ser = v.serie_documento or ""
-                col_5_ci_del = ""
-                col_6_ci_al = ""
-                col_7_del = v.numero_control_desde or v.numero_documento or ""
-                col_8_al = v.numero_control_hasta or v.numero_documento or ""
-                col_9_maq = ""
-            
-            monto_exento = "0.00"
-            monto_gravado = "0.00"
-            total_venta_dia = v.venta_gravada + v.debito_fiscal
-            
-            if v.clasificacion_venta == "2":
-                monto_exento = format(total_venta_dia, '.2f')
-            else:
-                monto_gravado = format(v.venta_gravada, '.2f')
-            
-            total_fmt = format(total_venta_dia, '.2f')
-            
-            fila = [
-                fecha_fmt, clase_doc, tipo_doc_mh, col_3_res, col_4_ser, col_5_ci_del, col_6_ci_al,
-                col_7_del, col_8_al, col_9_maq, monto_exento, "0.00", "0.00", monto_gravado,
-                "0.00", "0.00", "0.00", "0.00", "0.00", total_fmt,
-                v.clasificacion_venta, v.tipo_ingreso, "2"
-            ]
-            writer.writerow(fila)
-        
-        return response
-    except Empresa.DoesNotExist:
-        return HttpResponse("Empresa no encontrada", status=404)
+    if not periodo:
+        return HttpResponse("Falta periodo", status=400)
+    ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CF').order_by('fecha_emision')
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="LIBRO_VENTAS_CF_{empresa.nombre}_{periodo}.csv"'
+    writer = csv.writer(response, delimiter=';')
+    for v in ventas:
+        fecha_fmt = v.fecha_emision.strftime("%d/%m/%Y")
+        clase_doc = v.clase_documento
+        cod_gen_limpio = str(v.codigo_generacion or "").replace("-", "").upper()
+        num_ctrl_limpio = str(v.numero_control or "").replace("-", "").upper()
+        sello_limpio = str(v.sello_recepcion or "").replace("-", "").upper()
+        if clase_doc == '4':
+            tipo_doc_mh = "01"
+            col_3_res = num_ctrl_limpio
+            col_4_ser = sello_limpio
+            col_5_ci_del = cod_gen_limpio
+            col_6_ci_al = cod_gen_limpio
+            col_7_del = cod_gen_limpio
+            col_8_al = cod_gen_limpio
+            col_9_maq = ""
+        else:
+            tipo_doc_mh = "01"
+            col_3_res = v.numero_resolucion or ""
+            col_4_ser = v.serie_documento or ""
+            col_5_ci_del = ""
+            col_6_ci_al = ""
+            col_7_del = v.numero_control_desde or v.numero_documento or ""
+            col_8_al = v.numero_control_hasta or v.numero_documento or ""
+            col_9_maq = ""
+        monto_exento = "0.00"
+        monto_gravado = "0.00"
+        total_venta_dia = v.venta_gravada + v.debito_fiscal
+        if v.clasificacion_venta == "2":
+            monto_exento = format(total_venta_dia, '.2f')
+        else:
+            monto_gravado = format(v.venta_gravada, '.2f')
+        total_fmt = format(total_venta_dia, '.2f')
+        fila = [
+            fecha_fmt, clase_doc, tipo_doc_mh, col_3_res, col_4_ser, col_5_ci_del, col_6_ci_al,
+            col_7_del, col_8_al, col_9_maq, monto_exento, "0.00", "0.00", monto_gravado,
+            "0.00", "0.00", "0.00", "0.00", "0.00", total_fmt,
+            v.clasificacion_venta, v.tipo_ingreso, "2"
+        ]
+        writer.writerow(fila)
+    return response
 
 @api_view(['GET'])
 def reporte_pdf_ventas_cf_empresa(request):
     """
     Genera PDF de ventas a Consumidor Final usando empresa_id.
     """
-    empresa_id = request.query_params.get('empresa_id')
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
     periodo = request.query_params.get('periodo')
-    
-    if not empresa_id or not periodo:
-        return HttpResponse("Faltan empresa_id o periodo", status=400)
-    
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-        ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CF').order_by('fecha_emision', 'numero_control')
-    except Empresa.DoesNotExist:
-        return HttpResponse("Empresa no encontrada", status=404)
+    if not periodo:
+        return HttpResponse("Falta periodo", status=400)
+    ventas = Venta.objects.filter(empresa=empresa, periodo_aplicado=periodo, tipo_venta='CF').order_by('fecha_emision', 'numero_control')
     
     from reportlab.lib.pagesizes import letter, landscape
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -2958,11 +2979,11 @@ def libros_iva_reporte_api(request):
     mes = request.query_params.get('mes')
     anio = request.query_params.get('anio')
     tipo_libro = (request.query_params.get('tipo_libro') or '').strip().lower()
-    empresa_id = request.query_params.get('empresa_id')
-    # Usar 'export' en lugar de 'format' para evitar que DRF haga content negotiation y devuelva 404
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
+    empresa_id = empresa.id
     fmt = (request.query_params.get('export') or request.query_params.get('format') or '').strip().lower()
-    if not empresa_id:
-        return Response({"error": "Falta empresa_id"}, status=400)
     try:
         mes = int(mes)
         anio = int(anio)
@@ -2972,10 +2993,6 @@ def libros_iva_reporte_api(request):
         return Response({"error": "mes debe estar entre 1 y 12"}, status=400)
     if tipo_libro not in ('consumidor', 'contribuyente'):
         return Response({"error": "tipo_libro debe ser 'consumidor' o 'contribuyente'"}, status=400)
-    try:
-        empresa = Empresa.objects.get(id=empresa_id)
-    except Empresa.DoesNotExist:
-        return Response({"error": "Empresa no encontrada"}, status=404)
     if tipo_libro == 'consumidor':
         resultado = get_datos_libro_consumidor(empresa_id, mes, anio)
     else:

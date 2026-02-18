@@ -2,6 +2,8 @@ from django.db import models
 from django.contrib.auth.models import User
 from decimal import Decimal
 
+from .utils.fields import EncryptedCharField, EncryptedTextField
+
 # 1. MODELO EMPRESA (Tus 12 Clientes VIP)
 # Aquí va la configuración pesada: Logos, Correo para leer facturas, Sellos.
 class Empresa(models.Model):
@@ -41,11 +43,11 @@ class Empresa(models.Model):
         help_text="Usuario NIT/DUI para autenticación en el portal MH (sin guiones)"
     )
     
-    clave_api_mh = models.CharField(
-        max_length=200,
+    clave_api_mh = EncryptedCharField(
+        max_length=500,
         blank=True,
         null=True,
-        help_text="Contraseña de la API del Ministerio de Hacienda (almacenada en texto plano - considerar encriptación en producción)"
+        help_text="Contraseña de la API del Ministerio de Hacienda (cifrada en BD)"
     )
     
     archivo_certificado = models.FileField(
@@ -55,11 +57,11 @@ class Empresa(models.Model):
         help_text="Archivo de certificado digital (.crt) para firma de documentos"
     )
     
-    clave_certificado = models.CharField(
-        max_length=200,
+    clave_certificado = EncryptedCharField(
+        max_length=500,
         blank=True,
         null=True,
-        help_text="Contraseña del archivo de certificado digital (almacenada en texto plano - considerar encriptación en producción)"
+        help_text="Contraseña del archivo de certificado digital (cifrada en BD)"
     )
     
     cod_actividad = models.CharField(
@@ -113,6 +115,25 @@ class Empresa(models.Model):
         blank=True,
         null=True,
         help_text="Correo electrónico de contacto de la empresa"
+    )
+
+    # --- CONFIGURACIÓN SMTP PARA ENVÍO DE FACTURAS ---
+    smtp_host = models.CharField(max_length=255, blank=True, null=True, help_text="Host SMTP (ej: smtp.gmail.com)")
+    smtp_port = models.IntegerField(default=587, help_text="Puerto SMTP (587 TLS, 465 SSL)")
+    smtp_user = models.CharField(max_length=255, blank=True, null=True, help_text="Usuario SMTP")
+    smtp_password = EncryptedCharField(max_length=500, blank=True, null=True, help_text="Contraseña SMTP (cifrada)")
+    smtp_use_tls = models.BooleanField(default=True, help_text="Usar TLS para conexión SMTP")
+    email_asunto_default = models.CharField(
+        max_length=255,
+        default="Factura electrónica - {{numero_control}}",
+        blank=True,
+        help_text="Asunto del correo. Variables: {{numero_control}}, {{cliente}}, {{fecha}}"
+    )
+    email_template_html = models.TextField(
+        blank=True,
+        null=True,
+        default='<p>Estimado(a) {{cliente}},</p><p>Adjuntamos su factura electrónica {{numero_control}}.</p><p>Saludos cordiales.</p>',
+        help_text="Plantilla HTML del cuerpo del correo. Variables: {{cliente}}, {{numero_control}}, {{fecha}}, {{total}}"
     )
 
     def __str__(self):
@@ -371,6 +392,7 @@ class Venta(models.Model):
         ('AceptadoMH', 'Aceptado por MH'),
         ('RechazadoMH', 'Rechazado por MH'),
         ('ErrorEnvio', 'Error de envío (reintentar)'),
+        ('PendienteEnvio', 'Pendiente de envío (MH no disponible)'),
         ('Anulado', 'Anulado'),
     ]
     estado_dte = models.CharField(max_length=20, choices=ESTADO_DTE_CHOICES, default='Borrador')
@@ -699,3 +721,37 @@ class Correlativo(models.Model):
     
     def __str__(self):
         return f"{self.empresa.nombre} - DTE-{self.tipo_dte} - Año {self.anio} - Correlativo: {self.ultimo_correlativo}"
+
+
+# --- TABLA 9: TAREA FACTURACIÓN (Cola de envíos asíncronos) ---
+class TareaFacturacion(models.Model):
+    """
+    Cola de tareas de facturación para procesamiento asíncrono.
+    Permite responder al usuario de inmediato y procesar (firma, MH, correo) en segundo plano.
+    """
+    ESTADO_CHOICES = [
+        ('Pendiente', 'Pendiente'),
+        ('Procesando', 'Procesando'),
+        ('Completada', 'Completada'),
+        ('Error', 'Error'),
+    ]
+
+    venta = models.OneToOneField(
+        Venta,
+        on_delete=models.CASCADE,
+        related_name='tarea_facturacion'
+    )
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='Pendiente')
+    intentos = models.IntegerField(default=0, help_text="Número de intentos de procesamiento")
+    proximo_reintento = models.DateTimeField(null=True, blank=True, help_text="Cuándo reintentar (exponential backoff)")
+    error_mensaje = models.TextField(blank=True, null=True)
+    creada_at = models.DateTimeField(auto_now_add=True)
+    actualizada_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tarea de Facturación"
+        verbose_name_plural = "Tareas de Facturación"
+        ordering = ['proximo_reintento', 'creada_at']
+
+    def __str__(self):
+        return f"Tarea venta #{self.venta_id} - {self.estado}"

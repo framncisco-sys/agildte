@@ -164,22 +164,26 @@ class CorrelativoDTE:
         # Obtener el año actual
         anio_actual = datetime.now().year
         
-        # Usar transacción para evitar condiciones de carrera
-        with transaction.atomic():
-            # Buscar o crear el registro de correlativo para esta empresa, tipo DTE y año
-            correlativo_obj, creado = Correlativo.objects.get_or_create(
-                empresa_id=empresa_id,
-                tipo_dte=tipo_dte,
-                anio=anio_actual,
-                defaults={'ultimo_correlativo': 0}
-            )
-            
-            # Incrementar el correlativo
-            correlativo_obj.ultimo_correlativo += 1
-            correlativo_obj.save()
-            
-            # Obtener el número correlativo actualizado
-            correlativo = correlativo_obj.ultimo_correlativo
+        # Usar transacción + select_for_update para evitar condiciones de carrera en concurrencia
+        from django.db import IntegrityError
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with transaction.atomic():
+                    correlativo_obj, _ = Correlativo.objects.select_for_update().get_or_create(
+                        empresa_id=empresa_id,
+                        tipo_dte=tipo_dte,
+                        anio=anio_actual,
+                        defaults={'ultimo_correlativo': 0}
+                    )
+                    correlativo_obj.ultimo_correlativo += 1
+                    correlativo_obj.save()
+                    correlativo = correlativo_obj.ultimo_correlativo
+                break
+            except IntegrityError:
+                if attempt == max_retries - 1:
+                    raise
+                continue
         
         # Formatear correlativo con 15 dígitos (parte final del número de control)
         correlativo_formateado = str(correlativo).zfill(15)

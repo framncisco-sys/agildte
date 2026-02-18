@@ -4,6 +4,47 @@ Cuando `git pull` falle por cambios locales o por `.env`, ejecuta estos pasos **
 
 ---
 
+## Error 502 (Bad Gateway) – Diagnóstico
+
+Un **502** suele indicar que nginx no recibe respuesta del backend. En el servidor (SSH) ejecuta:
+
+**1. Ver si los contenedores están arriba**
+```bash
+cd ~/agildte
+docker compose -f docker-compose.prod.yml ps
+```
+Si `backend` está en estado `Restarting` o `Exit`, está fallando al arrancar.
+
+**2. Ver los logs del backend (errores al iniciar o al atender peticiones)**
+```bash
+docker compose -f docker-compose.prod.yml logs backend --tail=100
+```
+Revisa si aparece:
+- Error de **migraciones** (ej. columna ya existe, tabla no existe).
+- Error de **Python** (ImportError, SyntaxError).
+- **Gunicorn** no arranca o se cae.
+
+**3. Reiniciar solo el backend**
+```bash
+docker compose -f docker-compose.prod.yml restart backend
+```
+Espera unos segundos y prueba de nuevo la app.
+
+**4. Si el backend falla en `migrate`**
+Entra al contenedor y ejecuta migrate a mano para ver el error:
+```bash
+docker compose -f docker-compose.prod.yml run --rm backend python manage.py migrate --noinput
+```
+
+**5. Recargar nginx (por si solo nginx tuvo un fallo)**
+```bash
+docker compose -f docker-compose.prod.yml restart nginx
+```
+
+Cuando tengas la salida de `logs backend --tail=100` (o el error de `migrate`), usa ese mensaje para corregir (migración, código o variables de entorno).
+
+---
+
 ## Actualizar sin afectar la base de datos de los usuarios
 
 La base de datos está en el volumen Docker `postgres_data`. Al actualizar código (git pull + build + up) **los datos no se borran**. Las migraciones que se ejecutan al arrancar el backend solo **añaden** tablas o columnas con valores por defecto; no eliminan datos de usuarios.

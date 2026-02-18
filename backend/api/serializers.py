@@ -21,6 +21,7 @@ class EmpresaSerializer(serializers.ModelSerializer):
             'clave_api_mh': {'write_only': True},
             'clave_certificado': {'write_only': True},
             'clave_correo': {'write_only': True},
+            'smtp_password': {'write_only': True},
         }
 
     def get_logo_url(self, obj):

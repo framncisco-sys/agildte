@@ -7,13 +7,15 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-!(2sc4w)13(5ev2szrmeg7c*k85pp2d5h&xoj7fnoanmti_9*-'
+# SECURITY: Usar variables de entorno en producción
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-dev-only-!(2sc4w)13(5ev2szrmeg7c*k85pp2d5h&xoj7fnoanmti_9*-'
+)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() in ('1', 'true', 'yes')
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if not DEBUG else ['*']
 
 # Application definition
 INSTALLED_APPS = [
@@ -118,6 +120,10 @@ MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media')))
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# --- Facturación Asíncrona ---
+# Si True, las facturas se procesan en segundo plano (colade tareas). Respuesta inmediata al usuario.
+USE_ASYNC_FACTURACION = os.environ.get('USE_ASYNC_FACTURACION', 'true').lower() in ('1', 'true', 'yes')
 
 # --- Ministerio de Hacienda (DTE / Facturación Electrónica) ---
 # Firma: si True, se firma dentro del backend (no hace falta contenedor firmador).
