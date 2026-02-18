@@ -1052,20 +1052,28 @@ def listar_productos(request):
 
 @api_view(['POST'])
 def crear_producto(request):
-    """Crea un producto/ítem para la empresa."""
+    """Crea un producto/ítem para la empresa. Asigna empresa_id explícitamente como owner."""
     empresa_ids = get_empresa_ids_allowlist(request)
     if not empresa_ids:
         return Response({"detail": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
-    empresa_id = request.data.get('empresa_id')
-    if not empresa_id:
+    raw_empresa = request.data.get('empresa_id')
+    if raw_empresa is None or raw_empresa == '':
         return Response({"detail": "empresa_id es requerido"}, status=status.HTTP_400_BAD_REQUEST)
-    r = require_empresa_allowed(request, int(empresa_id))
+    try:
+        empresa_id = int(raw_empresa)
+    except (TypeError, ValueError):
+        return Response({"detail": "empresa_id debe ser un número"}, status=status.HTTP_400_BAD_REQUEST)
+    r = require_empresa_allowed(request, empresa_id)
     if r is not None:
         return r
-    serializer = ProductoSerializer(data=request.data)
+    data = dict(request.data)
+    data['empresa_id'] = empresa_id
+    if data.get('codigo') is None:
+        data['codigo'] = ''
+    serializer = ProductoSerializer(data=data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    serializer.save()
+    serializer.save(empresa_id=empresa_id)
     return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
