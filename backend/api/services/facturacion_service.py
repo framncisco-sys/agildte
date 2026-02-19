@@ -128,11 +128,12 @@ class FacturacionService:
         Raises:
             AutenticacionMHError: Si hay un error en la autenticación
         """
+        user = (self.empresa.user_api_mh or '').strip()
         pwd = (self.empresa.clave_api_mh or '').strip()
-        if not pwd:
-            raise AutenticacionMHError("La empresa no tiene configurada clave_api_mh")
+        if not user or not pwd:
+            raise AutenticacionMHError("La empresa no tiene configuradas credenciales MH (user_api_mh y clave_api_mh)")
         payload = {
-            "user": self.empresa.user_api_mh,
+            "user": user,
             "pwd": pwd
         }
         
@@ -200,9 +201,10 @@ class FacturacionService:
                 cert_path = Path(self.empresa.archivo_certificado.path)
                 dte_json_str = json.dumps(json_dte, ensure_ascii=False)
                 logger.info("Firmando documento DTE con firmador interno (Python)...")
+                clave_cert = (self.empresa.clave_certificado or '').strip()
                 jws_firmado = firmar_dte_interno(
                     cert_path,
-                    self.empresa.clave_certificado,
+                    clave_cert,
                     dte_json_str,
                     validar_password=True,
                 )
@@ -214,10 +216,11 @@ class FacturacionService:
                 logger.exception("Error en firmador interno: %s", e)
                 raise FirmaDTEError(str(e)) from e
 
+        clave_cert = (self.empresa.clave_certificado or '').strip()
         payload = {
             "nit": nit_emisor,
             "activo": True,
-            "passwordPri": self.empresa.clave_certificado,
+            "passwordPri": clave_cert,
             "dteJson": json_dte
         }
         headers = {'Content-Type': 'application/json'}

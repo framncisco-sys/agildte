@@ -136,6 +136,15 @@ class Empresa(models.Model):
         help_text="Plantilla HTML del cuerpo del correo. Variables: {{cliente}}, {{numero_control}}, {{fecha}}, {{total}}"
     )
 
+    def save(self, *args, **kwargs):
+        # Limpiar espacios al inicio/final en credenciales (evitar rechazo MH "CREDENCIALES INVÁLIDAS")
+        for field in ('user_api_mh', 'clave_api_mh', 'clave_certificado', 'smtp_user', 'smtp_password', 'clave_correo'):
+            val = getattr(self, field, None)
+            if val is not None and isinstance(val, str):
+                cleaned = val.strip()
+                setattr(self, field, cleaned if cleaned else None)
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.nombre
 

@@ -42,6 +42,18 @@ class EmpresaSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('El NRC es obligatorio.')
         return str(value).strip()
 
+    def validate_user_api_mh(self, value):
+        return (value or '').strip() or None
+
+    def validate_clave_api_mh(self, value):
+        return (value or '').strip() or None
+
+    def validate_clave_certificado(self, value):
+        return (value or '').strip() or None
+
+    def validate_smtp_password(self, value):
+        return (value or '').strip() or None
+
 class ClienteSerializer(serializers.ModelSerializer):
     # Campos opcionales: permitir null y no requerirlos
     nrc = serializers.CharField(required=False, allow_null=True, allow_blank=True)
