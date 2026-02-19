@@ -12,14 +12,31 @@ django.setup()
 
 from api.models import Empresa
 
+CAMPOS_CREDENCIALES = (
+    'user_api_mh', 'clave_api_mh', 'clave_certificado',
+    'smtp_user', 'smtp_password', 'clave_correo'
+)
+
+
 def limpiar_espacios_todas():
-    """Recorre todas las empresas y guarda (el save() del modelo aplica strip a credenciales)."""
+    """Recorre todas las empresas, aplica strip() a credenciales y guarda."""
     print("🧹 Limpiando espacios en credenciales de todas las empresas...")
     count = 0
     for emp in Empresa.objects.all():
+        cambiado = False
+        for field in CAMPOS_CREDENCIALES:
+            val = getattr(emp, field, None)
+            if val is not None and isinstance(val, str):
+                cleaned = val.strip()
+                if cleaned != val:
+                    cambiado = True
+                setattr(emp, field, cleaned if cleaned else None)
         emp.save()
         count += 1
-        print(f"   ✅ {emp.nombre} (ID {emp.id})")
+        msg = f"   ✅ {emp.nombre} (ID {emp.id})"
+        if cambiado:
+            msg += " [corregido]"
+        print(msg)
     print(f"✨ {count} empresa(s) actualizada(s).")
 
 def limpiar_datos():
