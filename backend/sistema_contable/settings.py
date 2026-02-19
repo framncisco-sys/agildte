@@ -126,6 +126,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 USE_ASYNC_FACTURACION = os.environ.get('USE_ASYNC_FACTURACION', 'true').lower() in ('1', 'true', 'yes')
 
 # --- Ministerio de Hacienda (DTE / Facturación Electrónica) ---
+# PRUEBA: Si está definido, se usa esta contraseña en lugar de la BD (para validar espacios/caracteres).
+# Ejemplo: MH_PASSWORD_OVERRIDE=2Caballo.Azul  -> quitar después de probar
+MH_PASSWORD_OVERRIDE = os.environ.get('MH_PASSWORD_OVERRIDE') or None
 # Firma: si True, se firma dentro del backend (no hace falta contenedor firmador).
 USE_INTERNAL_FIRMADOR = os.environ.get('USE_INTERNAL_FIRMADOR', 'true').lower() in ('1', 'true', 'yes')
 # URL del firmador externo (solo si USE_INTERNAL_FIRMADOR=False). En Docker: FIRMADOR_URL=http://firmador:8113/

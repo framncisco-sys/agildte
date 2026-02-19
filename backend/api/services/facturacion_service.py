@@ -130,6 +130,11 @@ class FacturacionService:
         """
         user = (self.empresa.user_api_mh or '').strip()
         pwd = (self.empresa.clave_api_mh or '').strip()
+        # PRUEBA: si MH_PASSWORD_OVERRIDE está definido, usa ese valor para validar (ej: espacio en BD)
+        override = getattr(settings, 'MH_PASSWORD_OVERRIDE', None)
+        if override:
+            logger.warning(f"⚠️ Usando MH_PASSWORD_OVERRIDE para prueba (pwd BD len={len(pwd)})")
+            pwd = str(override).strip()
         if not user or not pwd:
             raise AutenticacionMHError("La empresa no tiene configuradas credenciales MH (user_api_mh y clave_api_mh)")
         payload = {
