@@ -74,10 +74,10 @@ class FacturacionService:
         }
     }
 
-    # El JSON del DTE (identificacion.ambiente) y el envío a recepciondte usan la convención MH:
-    # empresa.ambiente='01' (PRUEBAS/apitest) → campo DTE ambiente = '00'
-    # empresa.ambiente='00' (PRODUCCION/api)  → campo DTE ambiente = '01'
-    DTE_AMBIENTE_CODE = {'01': '00', '00': '01'}
+    # El campo ambiente del DTE y del envelope usa EXACTAMENTE el mismo valor que empresa.ambiente:
+    # empresa.ambiente='01' → DTE ambiente='01' (PRUEBAS, apitest.dtes.mh.gob.sv)
+    # empresa.ambiente='00' → DTE ambiente='00' (PRODUCCIÓN, api.dtes.mh.gob.sv)
+    # NO hay inversión. El mismo código se usa para URL, DTE y envelope.
     
     # URL del firmador (configurable desde settings)
     URL_FIRMADOR = getattr(settings, 'DTE_FIRMADOR_URL', 'http://localhost:8113/firmardocumento/')
@@ -296,8 +296,8 @@ class FacturacionService:
         version_envio = 1 if tipo_dte == '01' else 3
         # MH exige codigoGeneracion en MAYÚSCULAS
         codigo_upper = (codigo_generacion or "").upper()
-        # El campo ambiente del envelope usa la misma convención que el DTE (invertida vs empresa)
-        ambiente_envio = self.DTE_AMBIENTE_CODE.get(self.codigo_ambiente_mh, self.codigo_ambiente_mh)
+        # El campo ambiente del envelope usa el mismo valor que empresa.ambiente (sin inversión)
+        ambiente_envio = self.codigo_ambiente_mh
         envio_mh = {
             "ambiente": ambiente_envio,
             "idEnvio": 1,
@@ -409,10 +409,9 @@ class FacturacionService:
         try:
             # PASO 1: Generar JSON DTE usando director (Patrón Strategy)
             logger.info("1. Generando JSON DTE...")
-            # DTE_AMBIENTE_CODE invierte la convención: empresa='01'(Pruebas)→DTE='00', empresa='00'(Prod)→DTE='01'
-            ambiente_dte = self.DTE_AMBIENTE_CODE.get(self.codigo_ambiente_mh, self.codigo_ambiente_mh)
+            ambiente_dte = self.codigo_ambiente_mh  # mismo valor para URL, DTE y envelope
             json_dte = generar_dte(venta, ambiente=ambiente_dte)
-            logger.info(f"   🌐 Ambiente empresa={self.codigo_ambiente_mh} → DTE ambiente={ambiente_dte}")
+            logger.info(f"   🌐 Ambiente={self.codigo_ambiente_mh} (URL y DTE usan el mismo código)")
             
             # Obtener código de generación y número de control (MH exige MAYÚSCULAS)
             codigo_generacion = (venta.codigo_generacion or json_dte['identificacion']['codigoGeneracion'] or '').upper()
@@ -631,7 +630,7 @@ class FacturacionService:
             num_doc_sol = num_doc_resp
 
         # Estructura según anulacion-schema-v2.json
-        ambiente_dte = self.DTE_AMBIENTE_CODE.get(self.codigo_ambiente_mh, self.codigo_ambiente_mh)
+        ambiente_dte = self.codigo_ambiente_mh  # mismo valor para URL, DTE y envelope
         evento = {
             "identificacion": {
                 "version": 2,
@@ -688,7 +687,7 @@ class FacturacionService:
 
         # Envelope para recepcionevento (todo minúsculas, requerido por MH)
         payload = {
-            "ambiente": self.DTE_AMBIENTE_CODE.get(self.codigo_ambiente_mh, self.codigo_ambiente_mh),
+            "ambiente": self.codigo_ambiente_mh,  # mismo valor que empresa.ambiente
             "idEnvio": 1,
             "version": 2,
             "tipoDte": tipo_dte,
