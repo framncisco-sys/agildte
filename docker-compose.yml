@@ -1,0 +1,62 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env.dev
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agildte_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-agildte_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agildte_dev_pass}
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"   # 5433 local para no chocar con PostgreSQL instalado
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agildte_user} -d ${POSTGRES_DB:-agildte_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env.dev
+    environment:
+      MEDIA_ROOT: /app/media
+    depends_on:
+      db:
+        condition: service_healthy
+    # runserver con hot-reload automático + setup inicial
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py setup_dev &&
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ./backend:/app          # Hot-reload: cambios en código se reflejan al instante
+      - media_dev:/app/media    # Persistir certificados y archivos subidos
+    ports:
+      - "8000:8000"
+
+  frontend:
+    image: node:18-alpine
+    working_dir: /app
+    restart: unless-stopped
+    env_file: .env.dev
+    environment:
+      # El proxy Vite apunta al backend usando el nombre del servicio Docker
+      VITE_API_URL: http://backend:8000
+    volumes:
+      - ./frontend-saas:/app
+      - frontend_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_dev_data:
+  media_dev:
+  frontend_node_modules:

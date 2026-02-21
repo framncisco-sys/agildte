@@ -1,7 +1,12 @@
 # Entorno y secretos (no subir a Git)
 .env
+.env.dev
 .env.local
 .env.*.local
+
+# Base de datos SQLite local
+*.sqlite3
+backend/db.sqlite3
 
 # Python
 __pycache__/

@@ -1,0 +1,37 @@
+# Base de datos SQLite local (NUNCA debe entrar en la imagen Docker)
+db.sqlite3
+*.sqlite3
+
+# Entornos virtuales Python
+venv/
+.venv/
+env/
+
+# Archivos de caché Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Archivos de desarrollo
+.env
+.env.*
+*.env
+
+# Scripts de diagnóstico/utilidad (no van en producción)
+diagnostico_cifrado.py
+fijar_credenciales_mh.py
+fijar_ambiente_pruebas.py
+test_mh_auth.py
+test_ambiente_mh.py
+corregir_credenciales_db.py
+
+# Archivos estáticos compilados
+staticfiles/
+media/
+
+# Pytest / cobertura
+.pytest_cache/
+htmlcov/
+.coverage
