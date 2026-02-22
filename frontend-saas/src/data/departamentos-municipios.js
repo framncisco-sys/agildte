@@ -1,6 +1,7 @@
 /**
  * Departamentos y municipios de El Salvador (códigos 2 dígitos).
- * Fuente: Códigos estándar MH / Catálogo territorial.
+ * Fuente: Catálogo CAT-013 del Ministerio de Hacienda (MH).
+ * Los municipios se identifican por zona (Norte, Centro, Sur, Este, Oeste, Costa).
  */
 export const DEPARTAMENTOS = [
   { codigo: '01', nombre: 'Ahuachapán' },
@@ -19,74 +20,92 @@ export const DEPARTAMENTOS = [
   { codigo: '14', nombre: 'La Unión' },
 ]
 
-/** Municipios por departamento (principales). */
+/** Municipios por departamento según CAT-013 MH. */
 export const MUNICIPIOS_POR_DEPARTAMENTO = {
+  // Ahuachapán
   '01': [
-    { codigo: '01', nombre: 'Ahuachapán' },
-    { codigo: '02', nombre: 'Apaneca' },
-    { codigo: '03', nombre: 'Atiquizaya' },
+    { codigo: '13', nombre: 'Ahuachapán Norte' },
+    { codigo: '14', nombre: 'Ahuachapán Centro' },
+    { codigo: '15', nombre: 'Ahuachapán Sur' },
   ],
+  // Santa Ana
   '02': [
-    { codigo: '01', nombre: 'Santa Ana' },
-    { codigo: '02', nombre: 'Chalchuapa' },
-    { codigo: '03', nombre: 'Metapán' },
+    { codigo: '14', nombre: 'Santa Ana Norte' },
+    { codigo: '15', nombre: 'Santa Ana Centro' },
+    { codigo: '16', nombre: 'Santa Ana Este' },
+    { codigo: '17', nombre: 'Santa Ana Oeste' },
   ],
+  // Sonsonate
   '03': [
-    { codigo: '01', nombre: 'Sonsonate' },
-    { codigo: '02', nombre: 'Acajutla' },
-    { codigo: '03', nombre: 'Izalco' },
+    { codigo: '17', nombre: 'Sonsonate Norte' },
+    { codigo: '18', nombre: 'Sonsonate Centro' },
+    { codigo: '19', nombre: 'Sonsonate Este' },
+    { codigo: '20', nombre: 'Sonsonate Oeste' },
   ],
+  // Chalatenango
   '04': [
-    { codigo: '01', nombre: 'Chalatenango' },
-    { codigo: '02', nombre: 'La Palma' },
-    { codigo: '03', nombre: 'Nueva Concepción' },
+    { codigo: '34', nombre: 'Chalatenango Norte' },
+    { codigo: '35', nombre: 'Chalatenango Centro' },
+    { codigo: '36', nombre: 'Chalatenango Sur' },
   ],
+  // La Libertad
   '05': [
-    { codigo: '01', nombre: 'Santa Tecla' },
-    { codigo: '02', nombre: 'La Libertad' },
-    { codigo: '03', nombre: 'Zaragoza' },
-    { codigo: '04', nombre: 'Antiguo Cuscatlán' },
+    { codigo: '23', nombre: 'La Libertad Norte' },
+    { codigo: '24', nombre: 'La Libertad Centro' },
+    { codigo: '25', nombre: 'La Libertad Oeste' },
+    { codigo: '26', nombre: 'La Libertad Este' },
+    { codigo: '27', nombre: 'La Libertad Costa' },
+    { codigo: '28', nombre: 'La Libertad Sur' },
   ],
+  // San Salvador
   '06': [
-    { codigo: '01', nombre: 'San Salvador' },
-    { codigo: '02', nombre: 'Soyapango' },
-    { codigo: '03', nombre: 'Mejicanos' },
-    { codigo: '14', nombre: 'San Salvador (capital)' },
+    { codigo: '20', nombre: 'San Salvador Norte' },
+    { codigo: '21', nombre: 'San Salvador Oeste' },
+    { codigo: '22', nombre: 'San Salvador Este' },
+    { codigo: '23', nombre: 'San Salvador Centro' },
+    { codigo: '24', nombre: 'San Salvador Sur' },
   ],
+  // Cuscatlán
   '07': [
-    { codigo: '01', nombre: 'Cojutepeque' },
-    { codigo: '02', nombre: 'Suchitoto' },
+    { codigo: '17', nombre: 'Cuscatlán Norte' },
+    { codigo: '18', nombre: 'Cuscatlán Sur' },
   ],
+  // La Paz
   '08': [
-    { codigo: '01', nombre: 'Zacatecoluca' },
-    { codigo: '02', nombre: 'Olocuilta' },
-    { codigo: '03', nombre: 'San Pedro Masahuat' },
+    { codigo: '23', nombre: 'La Paz Oeste' },
+    { codigo: '24', nombre: 'La Paz Centro' },
+    { codigo: '25', nombre: 'La Paz Este' },
   ],
+  // Cabañas
   '09': [
-    { codigo: '01', nombre: 'Sensuntepeque' },
-    { codigo: '02', nombre: 'Ilobasco' },
+    { codigo: '10', nombre: 'Cabañas Oeste' },
+    { codigo: '11', nombre: 'Cabañas Este' },
   ],
+  // San Vicente
   '10': [
-    { codigo: '01', nombre: 'San Vicente' },
-    { codigo: '02', nombre: 'Tecoluca' },
+    { codigo: '14', nombre: 'San Vicente Norte' },
+    { codigo: '15', nombre: 'San Vicente Sur' },
   ],
+  // Usulután
   '11': [
-    { codigo: '01', nombre: 'Usulután' },
-    { codigo: '02', nombre: 'Santiago de María' },
-    { codigo: '03', nombre: 'Jucuapa' },
+    { codigo: '24', nombre: 'Usulután Norte' },
+    { codigo: '25', nombre: 'Usulután Este' },
+    { codigo: '26', nombre: 'Usulután Oeste' },
   ],
+  // Morazán
   '12': [
-    { codigo: '01', nombre: 'San Francisco Gotera' },
-    { codigo: '02', nombre: 'Perquín' },
+    { codigo: '27', nombre: 'Morazán Norte' },
+    { codigo: '28', nombre: 'Morazán Sur' },
   ],
+  // San Miguel
   '13': [
-    { codigo: '01', nombre: 'San Miguel' },
-    { codigo: '02', nombre: 'Chinameca' },
-    { codigo: '03', nombre: 'Usulután' },
+    { codigo: '21', nombre: 'San Miguel Norte' },
+    { codigo: '22', nombre: 'San Miguel Centro' },
+    { codigo: '23', nombre: 'San Miguel Oeste' },
   ],
+  // La Unión
   '14': [
-    { codigo: '01', nombre: 'La Unión' },
-    { codigo: '02', nombre: 'Santa Rosa de Lima' },
-    { codigo: '03', nombre: 'Conchagua' },
+    { codigo: '19', nombre: 'La Unión Norte' },
+    { codigo: '20', nombre: 'La Unión Sur' },
   ],
 }

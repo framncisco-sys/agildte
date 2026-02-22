@@ -9,7 +9,7 @@ from django.http import HttpResponse, JsonResponse
 from django.db.models import Q, F, Sum
 from django.db.models.functions import TruncDay
 from django.utils import timezone
-from rest_framework.decorators import api_view, action, permission_classes as drf_permission_classes
+from rest_framework.decorators import api_view, action, permission_classes as drf_permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status, viewsets, permissions
 from rest_framework.pagination import LimitOffsetPagination
@@ -44,10 +44,12 @@ def limpiar_nit(valor):
 
 # --- AUTH / LOGIN JWT ---
 from rest_framework_simplejwt.tokens import RefreshToken
+from .throttles import LoginRateThrottle, DTERateThrottle
 
 @csrf_exempt
 @api_view(['POST'])
 @drf_permission_classes([permissions.AllowAny])
+@throttle_classes([LoginRateThrottle])
 def login_api(request):
     """
     Login con JWT. Acepta username+password o email+password.
@@ -83,7 +85,7 @@ def login_api(request):
         perfil = PerfilUsuario.objects.select_related('empresa').get(user=user, activo=True)
         if perfil.empresa:
             empresa_default = {'id': perfil.empresa.id, 'nombre': perfil.empresa.nombre}
-    except PerfilUsuario.DoesNotExist:
+    except Exception:
         if user.is_superuser and Empresa.objects.exists():
             primera = Empresa.objects.first()
             empresa_default = {'id': primera.id, 'nombre': primera.nombre}
@@ -153,7 +155,7 @@ def auth_me_api(request):
         perfil = PerfilUsuario.objects.select_related('empresa').get(user=user, activo=True)
         if perfil.empresa:
             empresa_default = {'id': perfil.empresa.id, 'nombre': perfil.empresa.nombre}
-    except PerfilUsuario.DoesNotExist:
+    except Exception:
         if user.is_superuser and Empresa.objects.exists():
             primera = Empresa.objects.first()
             empresa_default = {'id': primera.id, 'nombre': primera.nombre}
@@ -176,8 +178,19 @@ def auth_me_api(request):
 
 
 class EmpresaViewSet(viewsets.ModelViewSet):
-    queryset = Empresa.objects.all()
     serializer_class = EmpresaSerializer
+
+    def get_queryset(self):
+        """Solo superusuarios ven todas las empresas. Usuarios normales solo las suyas."""
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return Empresa.objects.none()
+        if user.is_superuser:
+            return Empresa.objects.all().order_by('nombre')
+        empresa_ids = get_empresa_ids_allowlist(self.request)
+        if not empresa_ids:
+            return Empresa.objects.none()
+        return Empresa.objects.filter(id__in=empresa_ids).order_by('nombre')
 
 
 class ActividadEconomicaLimitPagination(LimitOffsetPagination):
@@ -221,7 +234,8 @@ class VentaViewSet(viewsets.ModelViewSet):
         """GET ?format=pdf|json - Descarga ZIP de PDFs o JSONs filtrados (generación dinámica en memoria)."""
         return download_batch_ventas(request)
 
-    @action(detail=True, methods=['post'], url_path='emitir-factura')
+    @action(detail=True, methods=['post'], url_path='emitir-factura',
+            throttle_classes=[DTERateThrottle])
     def emitir_factura(self, request, pk=None):
         """
         Emite una factura electrónica procesándola con el Ministerio de Hacienda.
@@ -479,7 +493,8 @@ class VentaViewSet(viewsets.ModelViewSet):
                 "venta_id": venta.id
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @action(detail=True, methods=['post'], url_path='invalidar')
+    @action(detail=True, methods=['post'], url_path='invalidar',
+            throttle_classes=[DTERateThrottle])
     def invalidar(self, request, pk=None):
         """
         Invalida (anula) un DTE ya procesado por MH.
@@ -506,6 +521,27 @@ class VentaViewSet(viewsets.ModelViewSet):
                 "error": "Documento ya anulado",
                 "mensaje": "Este documento ya fue invalidado"
             }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Verificar si existe alguna NC o ND aceptada por MH que referencia este DTE
+        if venta.codigo_generacion:
+            docs_relacionados = Venta.objects.filter(
+                codigo_generacion_referenciado__iexact=venta.codigo_generacion,
+                estado_dte__in=('AceptadoMH', 'Enviado', 'Generado'),
+                tipo_venta__in=('NC', 'ND'),
+            ).values('tipo_venta', 'numero_control', 'estado_dte')
+            if docs_relacionados.exists():
+                doc = docs_relacionados.first()
+                tipo_label = 'Nota de Crédito' if doc['tipo_venta'] == 'NC' else 'Nota de Débito'
+                return Response({
+                    "error": "DTE con documentos relacionados",
+                    "mensaje": (
+                        f"No se puede anular este documento porque ya tiene una {tipo_label} "
+                        f"emitida ({doc['numero_control'] or 'sin número'}, estado: {doc['estado_dte']}). "
+                        "MH rechaza anular DTEs que ya fueron referenciados por una NC o ND. "
+                        "Si necesitas anularlo, primero anula la nota relacionada."
+                    ),
+                    "codigo_mh": "028",
+                }, status=status.HTTP_409_CONFLICT)
 
         if not venta.empresa:
             return Response({
@@ -550,9 +586,16 @@ class VentaViewSet(viewsets.ModelViewSet):
                     "estado_dte": venta.estado_dte,
                 }, status=status.HTTP_200_OK)
             else:
+                mensaje_mh = resultado.get("mensaje", "Sin mensaje")
+                # Código 028: DTE relacionado con otro DTE (NC/ND emitida externamente)
+                if "028" in str(mensaje_mh) or "RELACIONADO CON OTRO DTE" in str(mensaje_mh).upper():
+                    mensaje_mh = (
+                        "MH rechazó la anulación: este DTE ya fue referenciado por una Nota de Crédito "
+                        "o Nota de Débito. Para anularlo primero debes anular el documento relacionado."
+                    )
                 return Response({
                     "error": "Invalidación rechazada por MH",
-                    "mensaje": resultado.get("mensaje", "Sin mensaje"),
+                    "mensaje": mensaje_mh,
                     "observaciones": resultado.get("observaciones", []),
                 }, status=status.HTTP_400_BAD_REQUEST)
         except (FacturacionServiceError, AutenticacionMHError, FirmaDTEError, EnvioMHError) as e:
@@ -574,8 +617,21 @@ from .permissions import IsVendedorUser
 @api_view(['GET', 'POST'])
 @drf_permission_classes([DRFIsAuthenticated, IsVendedorUser])
 def clientes_api(request):
+    empresa_ids = get_empresa_ids_allowlist(request)
+
     if request.method == 'GET':
-        clientes = Cliente.objects.all()
+        empresa_id = request.query_params.get('empresa_id')
+        if empresa_id:
+            r = require_empresa_allowed(request, int(empresa_id))
+            if r is not None:
+                return r
+            clientes = Cliente.objects.filter(empresa_id=int(empresa_id))
+        elif empresa_ids:
+            # Filtrar por todas las empresas del usuario (si tiene varias)
+            clientes = Cliente.objects.filter(empresa_id__in=empresa_ids)
+        else:
+            clientes = Cliente.objects.none()
+
         search = request.query_params.get('search', '').strip()
         nrc = request.query_params.get('nrc', None)
         if search:
@@ -590,10 +646,16 @@ def clientes_api(request):
             clientes = clientes.filter(nrc=nrc)
         serializer = ClienteSerializer(clientes, many=True)
         return Response(serializer.data)
-    
+
     elif request.method == 'POST':
-        # Lógica de crear
-        serializer = ClienteSerializer(data=request.data)
+        empresa_id = request.data.get('empresa_id') or request.data.get('empresa')
+        if not empresa_id:
+            return Response({'error': 'Se requiere empresa_id para crear un cliente.'}, status=400)
+        r = require_empresa_allowed(request, int(empresa_id))
+        if r is not None:
+            return r
+        data = {**request.data, 'empresa': int(empresa_id)}
+        serializer = ClienteSerializer(data=data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=201)
@@ -603,11 +665,17 @@ def clientes_api(request):
 @api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
 @drf_permission_classes([DRFIsAuthenticated, IsVendedorUser])
 def cliente_detail_api(request, pk):
-    """GET, actualizar o eliminar un cliente por ID."""
+    """GET, actualizar o eliminar un cliente por ID. Valida que pertenezca a empresa del usuario."""
+    empresa_ids = get_empresa_ids_allowlist(request)
     try:
         cliente = Cliente.objects.get(pk=pk)
     except Cliente.DoesNotExist:
         return Response({'detail': 'Cliente no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Validar tenancy: el cliente debe pertenecer a una empresa del usuario
+    if cliente.empresa_id and empresa_ids and cliente.empresa_id not in empresa_ids:
+        return Response({'detail': 'No tiene permiso para acceder a este cliente.'}, status=status.HTTP_403_FORBIDDEN)
+
     if request.method == 'GET':
         serializer = ClienteSerializer(cliente)
         return Response(serializer.data)
@@ -1169,6 +1237,7 @@ def crear_venta(request):
     return Response(serializer.errors, status=400)
 
 @api_view(['POST'])
+@throttle_classes([DTERateThrottle])
 def crear_venta_con_detalles(request):
     """Crea una venta con sus detalles y envía a Hacienda (síncrono o asíncrono según USE_ASYNC_FACTURACION)."""
     from django.conf import settings

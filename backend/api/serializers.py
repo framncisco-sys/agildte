@@ -104,24 +104,29 @@ class ClienteSerializer(serializers.ModelSerializer):
         correo = attrs.get('correo') or attrs.get('email_contacto')
         if correo and not self._is_valid_email(correo):
             raise serializers.ValidationError({'correo': 'El correo no tiene un formato válido.'})
-        # Unicidad NIT/documento_identidad: no duplicar cliente con mismo documento
+        # Unicidad NIT/documento_identidad: no duplicar cliente con mismo documento (por empresa)
+        empresa = attrs.get('empresa')
         doc = (attrs.get('documento_identidad') or '').strip() or (attrs.get('nit') or '').strip()
         if doc:
             qs = Cliente.objects.filter(Q(nit=doc) | Q(documento_identidad=doc))
+            if empresa:
+                qs = qs.filter(empresa=empresa)
             if self.instance:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 raise serializers.ValidationError({
-                    'documento_identidad': 'Ya existe un cliente con ese NIT.'
+                    'documento_identidad': 'Ya existe un cliente con ese documento en esta empresa.'
                 })
-        # Unicidad NRC
+        # Unicidad NRC (por empresa)
         nrc_val = (attrs.get('nrc') or '').strip()
         if nrc_val:
             qs = Cliente.objects.filter(nrc=nrc_val)
+            if empresa:
+                qs = qs.filter(empresa=empresa)
             if self.instance:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
-                raise serializers.ValidationError({'nrc': 'Ya existe un cliente con ese NRC.'})
+                raise serializers.ValidationError({'nrc': 'Ya existe un cliente con ese NRC en esta empresa.'})
         return attrs
 
     def _is_valid_email(self, value):
@@ -620,7 +625,17 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             cliente_input_limpio = str(cliente_input).strip()
         
         cliente_obj = None
-        if tipo_venta == 'CF' and not cliente_input_limpio and not cliente_id:
+        if tipo_dte == '14':
+            # CASO FSE: Factura Sujeto Excluido. El "cliente" del form es el PROVEEDOR informal.
+            # No se registra como Cliente BD; se guarda en campos nombre_receptor/documento_receptor.
+            validated_data['tipo_venta'] = 'FSE'
+            validated_data['cliente'] = None
+            validated_data['nombre_receptor'] = nombre_receptor.strip() or 'Proveedor Sujeto Excluido'
+            validated_data['documento_receptor'] = str(documento_receptor).strip() if documento_receptor else None
+            validated_data['tipo_doc_receptor'] = str(tipo_doc_receptor).strip() if tipo_doc_receptor else 'NIT'
+            validated_data['direccion_receptor'] = str(receptor_direccion).strip() if receptor_direccion else None
+            validated_data['correo_receptor'] = str(receptor_correo).strip() if receptor_correo else None
+        elif tipo_venta == 'CF' and not cliente_input_limpio and not cliente_id:
             # CASO C: Consumidor Final (datos manuales del formulario)
             validated_data['cliente'] = None
             validated_data['nombre_receptor'] = nombre_receptor.strip() or 'Consumidor Final'
@@ -731,19 +746,23 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
         
         # 6b. Documento relacionado (NC/ND): atributos para DTE05/06 builder
         if documento_relacionado_id and str(documento_relacionado_id).strip():
-            orig = Venta.objects.filter(codigo_generacion__iexact=str(documento_relacionado_id).strip()).first()
+            doc_rel_id_clean = str(documento_relacionado_id).strip()
+            orig = Venta.objects.filter(codigo_generacion__iexact=doc_rel_id_clean).first()
             if orig:
                 venta.documento_relacionado_codigo = orig.codigo_generacion
-                venta.documento_relacionado_numero_control = orig.numero_control  # MH exige 31 chars (DTE-01-xxx)
+                venta.documento_relacionado_numero_control = orig.numero_control
                 venta.documento_relacionado_fecha_emision = orig.fecha_emision
                 venta.documento_relacionado_tipo = '01' if orig.tipo_venta == 'CF' else '03'
                 venta.documento_relacionado_tipo_generacion = 2
             else:
-                venta.documento_relacionado_codigo = str(documento_relacionado_id).strip()
+                venta.documento_relacionado_codigo = doc_rel_id_clean
                 venta.documento_relacionado_numero_control = None
                 venta.documento_relacionado_fecha_emision = venta.fecha_emision
                 venta.documento_relacionado_tipo = '03'
                 venta.documento_relacionado_tipo_generacion = 2
+            # Persistir la referencia para poder detectar desde el DTE original si tiene NC/ND
+            venta.codigo_generacion_referenciado = doc_rel_id_clean
+            venta.save(update_fields=['codigo_generacion_referenciado'])
         
         # 7. Generar DTE automáticamente si estado es 'Generado'
         if venta.estado_dte == 'Generado':
@@ -756,7 +775,7 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
                     venta.codigo_generacion = str(uuid.uuid4()).upper()
                 
                 if not venta.numero_control:
-                    tmap = {'CF': '01', 'CCF': '03', 'NC': '05', 'ND': '06'}
+                    tmap = {'CF': '01', 'CCF': '03', 'NC': '05', 'ND': '06', 'FSE': '14'}
                     tipo_dte = tmap.get(venta.tipo_venta, '03')
                     venta.numero_control = CorrelativoDTE.obtener_siguiente_correlativo(
                         empresa_id=venta.empresa.id if venta.empresa else None,

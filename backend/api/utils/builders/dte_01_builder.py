@@ -35,7 +35,12 @@ class DTE01Builder(DTE03Builder):
             doc = getattr(self.venta, 'documento_receptor', None) and str(self.venta.documento_receptor).strip()
             tdoc = getattr(self.venta, 'tipo_doc_receptor', None) or 'NIT'
             tipo_doc = "36" if tdoc == 'NIT' and doc else "13" if doc else None
-            num_doc = doc.replace('-', '').replace(' ', '').zfill(14) if doc else None
+            if doc:
+                doc_limpio = doc.replace('-', '').replace(' ', '')
+                # DUI (tipo 13) → 9 dígitos; NIT (tipo 36) → 14 dígitos
+                num_doc = doc_limpio.zfill(9) if tipo_doc == "13" else doc_limpio.zfill(14)
+            else:
+                num_doc = None
             dir_comp = getattr(self.venta, 'direccion_receptor', None) and str(self.venta.direccion_receptor).strip()
             correo = getattr(self.venta, 'correo_receptor', None) and str(self.venta.correo_receptor).strip()
             direccion_obj = {
@@ -63,10 +68,12 @@ class DTE01Builder(DTE03Builder):
         receptor = {}
         if tiene_nit:
             receptor["tipoDocumento"] = "36"
+            # NIT: exactamente 14 dígitos
             receptor["numDocumento"] = cliente.nit.replace('-', '').replace(' ', '').zfill(14)
         elif tiene_dui:
             receptor["tipoDocumento"] = "13"
-            receptor["numDocumento"] = cliente.dui.replace('-', '').replace(' ', '').zfill(14)
+            # DUI: exactamente 9 dígitos (NO zfill(14) — MH rechaza DUI de 14 dígitos)
+            receptor["numDocumento"] = cliente.dui.replace('-', '').replace(' ', '').zfill(9)
         else:
             receptor["tipoDocumento"] = None
             receptor["numDocumento"] = None
@@ -112,12 +119,29 @@ class DTE01Builder(DTE03Builder):
         rete_renta = float(self.venta.rete_renta or 0) if hasattr(self.venta, 'rete_renta') and self.venta.rete_renta is not None else 0.0
         total_pagar = round(monto_total_operacion - iva_retenido_1 - iva_retenido_2, 2)
 
+        condicion_op = int(getattr(self.venta, 'condicion_operacion', 1) or 1)
+        # MH esquema fe-fc-v1 (mismo patrón que CCF):
+        #   plazo  → string "01"|"02"|"03" (Días|Semanas|Meses)
+        #   periodo → number entero (cantidad de unidades)
+        plazo_raw = str(getattr(self.venta, 'plazo_pago', '') or '').strip()
+        periodo_raw = str(getattr(self.venta, 'periodo_pago', '') or '').strip()
+
+        if condicion_op == 2:
+            plazo_val = plazo_raw if plazo_raw in ("01", "02", "03") else "03"
+            try:
+                periodo_val = int(periodo_raw)
+            except (ValueError, TypeError):
+                periodo_val = 30
+        else:
+            plazo_val = None
+            periodo_val = None
+
         pagos = [{
             "codigo": "01",
             "montoPago": round(total_pagar, 2),
             "referencia": None,
-            "periodo": None,
-            "plazo": None,
+            "periodo": periodo_val,
+            "plazo": plazo_val,
         }]
 
         resumen = {
@@ -140,7 +164,7 @@ class DTE01Builder(DTE03Builder):
             "saldoFavor": 0.00,
             "totalPagar": total_pagar,
             "totalLetras": self._numero_a_letras(total_pagar),
-            "condicionOperacion": 1,
+            "condicionOperacion": condicion_op,
             "pagos": pagos,
             "numPagoElectronico": None,
         }

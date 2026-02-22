@@ -118,7 +118,11 @@ def limpiar_nulos(diccionario, campos_requeridos=None):
         elif isinstance(valor, list):
             # Limpiar elementos de listas
             lista_limpia = [limpiar_nulos(item, campos_requeridos) if isinstance(item, dict) else item for item in valor if item is not None]
-            if lista_limpia:  # Solo agregar si la lista no está vacía
+            # Preservar listas vacías si el campo es requerido (ej: tributos:[] en ítems exentos de CCF)
+            if lista_limpia or (
+                ruta_campo in campos_requeridos or
+                any(ruta.endswith(f".{ruta_campo}") for ruta in campos_requeridos)
+            ):
                 resultado[clave] = lista_limpia
         else:
             # Agregar valores no-null
@@ -217,7 +221,7 @@ class DTEGenerator:
         Genera el JSON completo del DTE según el estándar del MH.
         
         Args:
-            ambiente: '00' = Producción, '01' = Pruebas
+            ambiente: código para el JSON del DTE ('00'=Pruebas DTE, '01'=Producción DTE)
             generar_codigo: Si True, genera un nuevo UUID si no existe
             generar_numero_control: Si True, genera un nuevo número de control si no existe
         """
@@ -454,14 +458,14 @@ class DTEGenerator:
         # ============================================
         if tipo_dte == '03':
             # VALIDACIÓN: nrc es OBLIGATORIO para DTE-03
-            # Si es ambiente de pruebas ('00') y no hay NRC, usar genérico de prueba
+            # '00'=Pruebas: si no hay NRC usar genérico. '01'=Producción: exigir NRC.
             ambiente_actual = getattr(self.venta.empresa, 'ambiente', '00') if self.venta.empresa else '00'
             if not cliente.nrc:
                 if ambiente_actual == '00':
-                    # En pruebas, usar NRC genérico
+                    # En pruebas (00), usar NRC genérico
                     nrc_cliente = "0000000"
                 else:
-                    # En producción, lanzar error
+                    # En producción (01), lanzar error
                     raise ValueError(
                         f"Error: El cliente '{cliente.nombre}' no tiene NRC. "
                         "Para emitir un Crédito Fiscal (DTE-03), el cliente debe ser un Contribuyente con NRC."
@@ -531,11 +535,11 @@ class DTEGenerator:
         if tiene_nit or tiene_dui:
             # Cliente tiene documento de identidad
             if tiene_nit:
-                tipo_documento = "36"  # 36 = NIT
+                tipo_documento = "36"  # 36 = NIT → 14 dígitos
                 num_documento = cliente.nit.replace('-', '').replace(' ', '').zfill(14)
             else:  # tiene_dui
-                tipo_documento = "13"  # 13 = DUI
-                num_documento = cliente.dui.replace('-', '').replace(' ', '').zfill(14)
+                tipo_documento = "13"  # 13 = DUI → exactamente 9 dígitos (NO 14)
+                num_documento = cliente.dui.replace('-', '').replace(' ', '').zfill(9)
             
             telefono_receptor = getattr(cliente, 'telefono', None) or "22222222"
             receptor = {
@@ -966,7 +970,7 @@ class DTEGenerator:
             "saldoFavor": round(saldo_favor, 2),  # Saldo a favor
             "totalPagar": round(total_pagar, 2),
             "totalLetras": total_letras,
-            "condicionOperacion": 1,
+            "condicionOperacion": int(getattr(self.venta, 'condicion_operacion', 1) or 1),
             "pagos": pagos,
             "numPagoElectronico": None,  # Requerido por esquema (null si no aplica)
         }

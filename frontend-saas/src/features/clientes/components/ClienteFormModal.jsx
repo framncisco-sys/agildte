@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { createCliente, updateCliente } from '../../../api/clientes'
 import { DEPARTAMENTOS, MUNICIPIOS_POR_DEPARTAMENTO } from '../../../data/departamentos-municipios'
 import { BuscadorActividad } from '../../../components/BuscadorActividad'
+import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 
 const TIPO_DOCUMENTO_OPTIONS = [
   { value: 'NIT', label: 'NIT' },
@@ -14,6 +15,7 @@ const TIPO_DOCUMENTO_OPTIONS = [
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
 
 export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null }) {
+  const empresaId = useEmpresaStore((s) => s.empresaId)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
   const [form, setForm] = useState({
@@ -109,11 +111,16 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
     direccion_departamento: form.direccion_departamento || '06',
     direccion_municipio: form.direccion_municipio || '14',
     direccion_complemento: form.direccion_complemento?.trim() || null,
+    empresa_id: empresaId,
   })
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
+    if (!empresaId) {
+      toast.error('Selecciona una empresa antes de crear un cliente.')
+      return
+    }
     setSaving(true)
     setErrors({})
     try {
@@ -129,11 +136,20 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
       onClose()
     } catch (err) {
       const data = err.response?.data
-      if (data && typeof data === 'object' && !data.detail) {
-        setErrors(data)
-        toast.error('Revisa los campos marcados.')
+      if (data && typeof data === 'object' && !data.detail && !data.error) {
+        // Normalizar: cada valor puede ser string o array
+        const normalized = {}
+        let firstMsg = ''
+        for (const [key, val] of Object.entries(data)) {
+          const msg = Array.isArray(val) ? val[0] : String(val)
+          normalized[key] = msg
+          if (!firstMsg) firstMsg = msg
+        }
+        setErrors(normalized)
+        toast.error(firstMsg || 'Revisa los campos marcados.')
       } else {
-        toast.error(data?.detail ?? data?.documento_identidad?.[0] ?? data?.nrc?.[0] ?? err.message ?? 'Error al guardar.')
+        const msg = data?.detail ?? data?.error ?? data?.documento_identidad?.[0] ?? data?.nrc?.[0] ?? err.message ?? 'Error al guardar.'
+        toast.error(msg)
       }
     } finally {
       setSaving(false)

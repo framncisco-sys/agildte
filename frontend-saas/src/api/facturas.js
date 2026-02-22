@@ -5,20 +5,24 @@ import apiClient from './axios'
  * Backend: POST /api/ventas/crear-con-detalles/
  */
 function mapearPayloadFrontendADjango(payload) {
-  const { cliente, items, tipoDocumento, totalGravadas, iva } = payload
+  const { cliente, items, tipoDocumento, totalGravadas, iva, condicionOperacion, plazoPago, periodoPago } = payload
   const empresaId = payload.empresaId // desde useEmpresaStore
   const hoy = new Date().toISOString().slice(0, 10)
   const periodo = new Date().toISOString().slice(0, 7) // YYYY-MM
 
-  // tipoDocumento: '01'=CF, '03'=CCF, '05'=NC, '06'=ND, '14', '07'
-  const tipoVentaMap = { '01': 'CF', '03': 'CCF', '05': 'NC', '06': 'ND', '14': 'CCF', '07': 'CCF' }
+  // tipoDocumento: '01'=CF, '03'=CCF, '05'=NC, '06'=ND, '14'=FSE, '07'=CCF
+  const tipoVentaMap = { '01': 'CF', '03': 'CCF', '05': 'NC', '06': 'ND', '14': 'FSE', '07': 'CCF' }
   const tipoVenta = tipoVentaMap[tipoDocumento] ?? 'CCF'
-  // CF: usar datos manuales del form (nombreCompleto, documento, direccion, correo)
-  const nombreReceptor = tipoVenta === 'CF'
-    ? (cliente?.nombreCompleto?.trim() || 'Consumidor Final')
+  const esFSE = tipoDocumento === '14'
+
+  // CF y FSE: usar datos manuales del form (nombreCompleto, documento, direccion, correo)
+  const nombreReceptor = (tipoVenta === 'CF' || esFSE)
+    ? (cliente?.nombreCompleto?.trim() || (esFSE ? 'Proveedor Sujeto Excluido' : 'Consumidor Final'))
     : (cliente?.nombreCompleto ?? '')
-  const nrcReceptor = tipoVenta === 'CF' ? null : (cliente?.numeroDocumento ?? '')
-  const documentoReceptor = tipoVenta === 'CF' ? (cliente?.numeroDocumento?.trim() || null) : null
+  const nrcReceptor = (tipoVenta === 'CF' || esFSE) ? null : (cliente?.numeroDocumento ?? '')
+  const documentoReceptor = (tipoVenta === 'CF' || esFSE)
+    ? (cliente?.numeroDocumento?.trim() || null)
+    : null
   const tipoDocReceptor = cliente?.tipoDocCliente ?? 'NIT'
 
   const ventaGravada = Math.round((totalGravadas ?? 0) * 100) / 100
@@ -47,10 +51,12 @@ function mapearPayloadFrontendADjango(payload) {
     }
   })
 
+  // Para CCF: priorizar NRC del formulario (nrc del cliente en form > nrcReceptor derivado del NIT)
+  const nrcFinal = tipoVenta === 'CCF' ? (cliente?.nrc?.trim() || nrcReceptor || null) : null
+
   const body = {
     empresa: empresaId,
     tipo_dte: tipoDocumento,
-    cliente: tipoVenta === 'CF' ? null : nrcReceptor,
     cliente_id: payload.clienteId ?? null,
     nombre_receptor: nombreReceptor,
     documento_receptor: documentoReceptor,
@@ -60,7 +66,7 @@ function mapearPayloadFrontendADjango(payload) {
     fecha_emision: hoy,
     periodo_aplicado: periodo,
     tipo_venta: tipoVenta,
-    nrc_receptor: nrcReceptor,
+    nrc_receptor: nrcFinal,
     venta_gravada: ventaGravada,
     venta_exenta: 0,
     venta_no_sujeta: 0,
@@ -69,6 +75,11 @@ function mapearPayloadFrontendADjango(payload) {
     clase_documento: '4',
     clasificacion_venta: '1',
     tipo_ingreso: '3',
+    condicion_operacion: Number(condicionOperacion ?? cliente?.condicionOperacion ?? 1),
+    plazo_pago: plazoPago ?? null,
+    periodo_pago: periodoPago ?? null,
+    cod_actividad_receptor: cliente?.codActividad?.trim() || null,
+    desc_actividad_receptor: cliente?.descActividad?.trim() || null,
     detalles,
   }
   if (documentoRelacionadoId) {

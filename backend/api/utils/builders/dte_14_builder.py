@@ -1,6 +1,10 @@
 """
 Builder para DTE-14 (Factura de Sujeto Excluido Electrónica).
-Esquema fe-fse-v1. Usa sujetoExcluido en lugar de receptor (compras a informales).
+Esquema fe-fse-v1.
+
+Estructura correcta según MH:
+  emisor        = NUESTRA EMPRESA (quien genera el DTE ante MH, autenticado con nuestras credenciales)
+  sujetoExcluido = el PROVEEDOR INFORMAL (quien vendió sin poder emitir DTE propio)
 """
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -14,54 +18,86 @@ from api.dte_generator import CorrelativoDTE, formatear_decimal, limpiar_nulos
 class DTE14Builder(BaseDocumentoDTEBuilder):
     """
     Builder para Factura de Sujeto Excluido (DTE-14).
-    documento: Compra o dict con proveedor (emisor), empresa como sujetoExcluido,
-               items con compra (no ventaGravada). Para compras a informales.
+    - emisor        = empresa (nuestra compañía registrada en MH)
+    - sujetoExcluido = proveedor informal (vendedor sin DTE propio)
     """
 
     TIPO_DTE = '14'
     VERSION_DTE = 1
 
     def _construir_emisor(self):
-        """Emisor = proveedor informal (quien vende sin DTE propio)."""
-        prov = _val(self.documento, 'proveedor', None)
-        if prov:
-            nit = (_val(prov, 'nit', None) or _val(prov, 'nrc', None) or "").replace('-', '').replace(' ', '')
-            nombre = _val(prov, 'nombre', None) or _val(self.documento, 'nombre_proveedor', "Proveedor")
-        else:
-            nit = (_val(self.documento, 'nit_proveedor', None) or "").replace('-', '').replace(' ', '')
-            nombre = _val(self.documento, 'nombre_proveedor', None) or "Proveedor"
-        dept = str(_val(self.documento, 'departamento_emisor', None) or "06").zfill(2)
-        mun = str(_val(self.documento, 'municipio_emisor', None) or "14").zfill(2)
+        """Emisor = nuestra empresa (autenticada ante MH). NIT del emisor debe coincidir con credenciales."""
+        nit = (_val(self.empresa, 'nit', None) or _val(self.empresa, 'nrc', None) or "").replace('-', '').replace(' ', '')
+        nrc = _val(self.empresa, 'nrc', None)
+        cod_actividad = _val(self.empresa, 'cod_actividad', None) or "62010"
+        desc_actividad = _val(self.empresa, 'desc_actividad', None) or "Servicios"
+        dept = str(_val(self.empresa, 'departamento', None) or "06").strip().zfill(2)
+        mun = str(_val(self.empresa, 'municipio', None) or "14").strip().zfill(2)
         cod_est, cod_pv = self._obtener_codigos_establecimiento()
         return {
-            "nit": nit or "000000000",
-            "nrc": _val(self.documento, 'nrc_proveedor', None) or _val(prov, 'nrc', None),
-            "nombre": nombre,
-            "codActividad": _val(self.documento, 'cod_actividad_emisor', None) or "62010",
-            "descActividad": _val(self.documento, 'desc_actividad_emisor', None) or "Servicios",
-            "direccion": {"departamento": dept, "municipio": mun, "complemento": (_val(self.documento, 'direccion_emisor', None) or "San Salvador")[:200]},
-            "telefono": _val(self.documento, 'telefono_emisor', None) or "22222222",
+            "nit": nit,
+            "nrc": nrc,
+            "nombre": _val(self.empresa, 'nombre', "Empresa"),
+            "codActividad": cod_actividad,
+            "descActividad": desc_actividad,
+            "direccion": {
+                "departamento": dept,
+                "municipio": mun,
+                "complemento": (_val(self.empresa, 'direccion', None) or "San Salvador")[:200]
+            },
+            "telefono": _val(self.empresa, 'telefono', None) or "22222222",
             "codEstableMH": cod_est,
             "codEstable": cod_est,
             "codPuntoVentaMH": cod_pv,
             "codPuntoVenta": cod_pv,
-            "correo": _val(self.documento, 'correo_emisor', None) or "proveedor@ejemplo.com",
+            "correo": _val(self.empresa, 'correo', None) or "info@empresa.com",
         }
 
     def _construir_sujeto_excluido(self):
-        """sujetoExcluido = comprador (nuestra empresa)."""
-        nit = (_val(self.empresa, 'nit', None) or _val(self.empresa, 'nrc', None) or "").replace('-', '').replace(' ', '')
-        dept = str(_val(self.empresa, 'departamento', None) or "06").strip().zfill(2)
-        mun = str(_val(self.empresa, 'municipio', None) or "14").strip().zfill(2)
+        """sujetoExcluido = proveedor informal (quien vendió sin DTE). Datos vienen del formulario.
+
+        Reglas de formato MH (fe-fse-v1):
+          tipoDocumento "13" (DUI)  → numDocumento debe ser exactamente 9 dígitos
+          tipoDocumento "36" (NIT)  → numDocumento debe ser 14 o 9 dígitos
+          Determinar tipo según longitud del número limpio.
+        """
+        doc_raw = (_val(self.documento, 'nit_proveedor', None) or "")
+        # Limpiar: solo dígitos
+        doc_limpio = ''.join(c for c in str(doc_raw) if c.isdigit())
+
+        if len(doc_limpio) == 14:
+            tipo_doc = "36"   # NIT de 14 dígitos
+            num_doc = doc_limpio
+        elif len(doc_limpio) == 9:
+            tipo_doc = "13"   # DUI de 9 dígitos
+            num_doc = doc_limpio
+        elif len(doc_limpio) == 10:
+            # DUI con dígito verificador adicional — usar los primeros 9
+            tipo_doc = "13"
+            num_doc = doc_limpio[:9]
+        else:
+            raise ValueError(
+                f"Número de documento del sujeto excluido inválido: '{doc_raw}'. "
+                f"Debe ser DUI (9 dígitos) o NIT (14 dígitos). "
+                f"Dígitos encontrados: {len(doc_limpio)}."
+            )
+
+        nombre_prov = _val(self.documento, 'nombre_proveedor', None) or "Proveedor Sujeto Excluido"
+        dept = str(_val(self.documento, 'departamento_proveedor', None) or "06").zfill(2)
+        mun = str(_val(self.documento, 'municipio_proveedor', None) or "14").zfill(2)
         return {
-            "tipoDocumento": "36",
-            "numDocumento": nit or "00000000000000",
-            "nombre": _val(self.empresa, 'nombre', "Empresa"),
-            "codActividad": _val(self.empresa, 'cod_actividad', None) or "62010",
-            "descActividad": _val(self.empresa, 'desc_actividad', None) or "Servicios",
-            "direccion": {"departamento": dept, "municipio": mun, "complemento": (_val(self.empresa, 'direccion', None) or "San Salvador")[:200]},
-            "telefono": _val(self.empresa, 'telefono', None) or "22222222",
-            "correo": _val(self.empresa, 'correo', None) or "info@empresa.com",
+            "tipoDocumento": tipo_doc,
+            "numDocumento": num_doc,
+            "nombre": nombre_prov,
+            "codActividad": None,
+            "descActividad": None,
+            "direccion": {
+                "departamento": dept,
+                "municipio": mun,
+                "complemento": (_val(self.documento, 'direccion_proveedor', None) or "San Salvador")[:200]
+            },
+            "telefono": None,
+            "correo": None,
         }
 
     def _construir_cuerpo_documento(self):
@@ -127,27 +163,48 @@ class DTE14Builder(BaseDocumentoDTEBuilder):
         if generar_codigo and not codigo_gen:
             codigo_gen = str(uuid.uuid4()).upper()
         numero_ctrl = _val(self.documento, 'numero_control', None)
-        fecha = _val(self.documento, 'fecha_emision', None) or _val(self.documento, 'fecha_documento', None) or datetime.now(TZ_EL_SALVADOR).date()
-        fecha_str = fecha.strftime('%Y-%m-%d') if hasattr(fecha, 'strftime') else str(fecha)[:10]
-        hora = datetime.now(TZ_EL_SALVADOR).strftime('%H:%M:%S')
+        ahora_sv = datetime.now(TZ_EL_SALVADOR)
+        fecha_str = ahora_sv.strftime('%Y-%m-%d')
+        hora = ahora_sv.strftime('%H:%M:%S')
 
         cuerpo = self._construir_cuerpo_documento()
+        emisor = self._construir_emisor()
+        # Asegurar nrc presente (schema lo requiere aunque sea null)
+        if 'nrc' not in emisor:
+            emisor['nrc'] = None
+
         dte = {
             "identificacion": self._generar_identificacion(ambiente, codigo_gen, numero_ctrl, fecha_str, hora),
-            "emisor": self._construir_emisor(),
+            "emisor": emisor,
             "sujetoExcluido": self._construir_sujeto_excluido(),
             "cuerpoDocumento": cuerpo,
             "resumen": self._construir_resumen(cuerpo),
             "apendice": self._construir_apendice(),
         }
         ident = dte["identificacion"]
-        if "tipoContingencia" not in ident:
-            ident["tipoContingencia"] = None
-        if "motivoContin" not in ident:
-            ident["motivoContin"] = None
+        # tipoContingencia y motivoContin son requeridos por schema (pueden ser null)
+        ident["tipoContingencia"] = None
+        ident["motivoContin"] = None
+
         cod_est, cod_pv = self._obtener_codigos_establecimiento()
         if generar_numero_control and (not numero_ctrl or len(str(numero_ctrl)) != 31):
             ident["numeroControl"] = CorrelativoDTE.obtener_siguiente_correlativo(
                 empresa_id=_val(self.empresa, 'id'), tipo_dte=self.TIPO_DTE, sucursal=cod_est, punto=cod_pv
             )
-        return self._limpiar_dte(dte)
+
+        # Campos requeridos por fe-fse-v1 que pueden ser null — limpiar_nulos no debe eliminarlos
+        campos_requeridos = [
+            "identificacion.tipoContingencia",
+            "identificacion.motivoContin",
+            "emisor.nrc",
+            "sujetoExcluido.codActividad",
+            "sujetoExcluido.descActividad",
+            "sujetoExcluido.telefono",
+            "sujetoExcluido.correo",
+            "resumen.totalDescu",
+            "resumen.observaciones",
+            "resumen.pagos.referencia",
+            "resumen.pagos.plazo",
+            "resumen.pagos.periodo",
+        ]
+        return self._limpiar_dte(dte, campos_requeridos=campos_requeridos)

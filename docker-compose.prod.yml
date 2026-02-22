@@ -29,7 +29,11 @@ services:
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py collectstatic --noinput &&
-             gunicorn sistema_contable.wsgi:application --bind 0.0.0.0:8000"
+             gunicorn sistema_contable.wsgi:application
+               --bind 0.0.0.0:8000
+               --workers 3
+               --timeout 120
+               --access-logfile -"
     volumes:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
@@ -45,9 +49,45 @@ services:
     expose:
       - "80"
 
-  # Firmador MH El Salvador. OPCIONAL: no se inicia por defecto (la imagen pública no existe/está denegada).
-  # Para usarlo: construye tu imagen o usa una válida, define FIRMADOR_IMAGE en .env y ejecuta:
-  #   docker compose -f docker-compose.prod.yml --profile firmador up -d
+  nginx:
+    image: nginx:alpine
+    restart: always
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # nginx.conf definitivo (con HTTPS). Antes de tenerlo, init-ssl.sh usa nginx-init.conf.
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - static_volume:/static:ro
+      - media_volume:/media:ro
+      # Certbot: certificados (rw para renovar) y desafíos ACME
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot:ro
+
+  # ─── CERTBOT ──────────────────────────────────────────────────────────────
+  # Solo se usa para emitir/renovar certificados. No necesita estar siempre activo.
+  # Uso:
+  #   1. Primera vez:
+  #      docker compose -f docker-compose.prod.yml run --rm certbot certonly \
+  #        --webroot -w /var/www/certbot \
+  #        -d tudominio.com -d www.tudominio.com \
+  #        --email tu@email.com --agree-tos --no-eff-email
+  #   2. Renovación (ya está en el cron del servidor, ver scripts/backup.sh):
+  #      docker compose -f docker-compose.prod.yml run --rm certbot renew
+  certbot:
+    image: certbot/certbot:latest
+    profiles:
+      - certbot
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+
+  # ─── FIRMADOR MH ──────────────────────────────────────────────────────────
+  # OPCIONAL. Construye tu imagen o usa una válida, define FIRMADOR_IMAGE en .env.
+  # docker compose -f docker-compose.prod.yml --profile firmador up -d
   firmador:
     image: ${FIRMADOR_IMAGE:-busybox:latest}
     profiles:
@@ -57,21 +97,34 @@ services:
     volumes:
       - media_volume:/app/certificados:ro
 
-  nginx:
-    image: nginx:alpine
+  # ─── BACKUP ───────────────────────────────────────────────────────────────
+  # Contenedor dedicado que ejecuta el cron de backup diario.
+  # Genera dumps en /backups dentro del volumen backup_volume.
+  backup:
+    image: postgres:16-alpine
     restart: always
-    depends_on:
-      - backend
-      - frontend
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - static_volume:/static:ro
-      - media_volume:/media:ro
     env_file: .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sistema_contable}
+      POSTGRES_USER: ${POSTGRES_USER:-sistema_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - backup_volume:/backups
+      - ./scripts/backup.sh:/backup.sh:ro
+    command: >
+      sh -c "chmod +x /backup.sh &&
+             echo '0 2 * * * /backup.sh >> /var/log/backup.log 2>&1' | crontab - &&
+             crond -f -l 8"
 
 volumes:
   postgres_data:
   static_volume:
   media_volume:
+  certbot_certs:
+  certbot_www:
+  backup_volume:

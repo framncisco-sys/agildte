@@ -3,8 +3,11 @@ import { Plus, Pencil, Trash2, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getClientes, deleteCliente } from '../../../api/clientes'
 import { ClienteFormModal } from '../components/ClienteFormModal'
+import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 
 export default function Clientes() {
+  const empresaId = useEmpresaStore((s) => s.empresaId)
+  const empresaNombre = useEmpresaStore((s) => s.empresaNombre)
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -14,7 +17,10 @@ export default function Clientes() {
   const fetchList = async () => {
     setLoading(true)
     try {
-      const data = await getClientes({ search: search.trim() || undefined })
+      const data = await getClientes({
+        search: search.trim() || undefined,
+        empresa_id: empresaId || undefined,
+      })
       setList(data)
     } catch (err) {
       toast.error(err.response?.data?.detail ?? err.message ?? 'Error al cargar clientes')
@@ -26,7 +32,8 @@ export default function Clientes() {
 
   useEffect(() => {
     fetchList()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId])
 
   const filteredList = useMemo(() => {
     if (!search.trim()) return list
@@ -68,7 +75,12 @@ export default function Clientes() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Cartera de Clientes</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Cartera de Clientes</h1>
+          {empresaNombre && (
+            <p className="text-sm text-blue-600 mt-0.5 font-medium">{empresaNombre}</p>
+          )}
+        </div>
         <button
           type="button"
           onClick={handleNew}

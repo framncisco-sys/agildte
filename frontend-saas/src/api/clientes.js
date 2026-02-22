@@ -12,6 +12,9 @@ export async function getClientes(params = {}) {
   if (params.search && params.search.trim()) {
     searchParams.set('search', params.search.trim())
   }
+  if (params.empresa_id) {
+    searchParams.set('empresa_id', params.empresa_id)
+  }
   const query = searchParams.toString()
   const url = query ? `${BASE}/?${query}` : `${BASE}/`
   const { data } = await apiClient.get(url)

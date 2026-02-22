@@ -13,7 +13,10 @@ class DTE03Builder(BaseDTEBuilder):
     VERSION_DTE = 3
 
     def _construir_receptor(self):
-        """Receptor CCF: NRC, Nombre Comercial, codActividad, descActividad obligatorios."""
+        """Receptor CCF: NRC, Nombre Comercial, codActividad, descActividad obligatorios.
+        Prioriza nrc_receptor/cod_actividad_receptor/desc_actividad_receptor de la Venta
+        sobre los campos del cliente en BD (permite editar desde el formulario sin cambiar el cliente).
+        """
         cliente = self.venta.cliente
         if not cliente:
             raise ValueError("DTE-03 (Crédito Fiscal) requiere cliente con NRC.")
@@ -21,8 +24,10 @@ class DTE03Builder(BaseDTEBuilder):
         codigo_departamento = str(getattr(cliente, 'departamento', None) or '06').strip().zfill(2)
         codigo_municipio = str(getattr(cliente, 'municipio', None) or '14').strip().zfill(2)
 
+        # nrc: primero usar el que viene del formulario (nrc_receptor), luego el del cliente en BD
+        nrc_receptor_venta = str(self.venta.nrc_receptor or '').strip()
         ambiente_actual = getattr(self.venta.empresa, 'ambiente', '00') or '00'
-        nrc_cliente = cliente.nrc or ("0000000" if ambiente_actual == '00' else None)
+        nrc_cliente = nrc_receptor_venta or cliente.nrc or ("0000000" if ambiente_actual == '00' else None)
         if not nrc_cliente:
             raise ValueError(f"Cliente '{cliente.nombre}' no tiene NRC. DTE-03 requiere Contribuyente con NRC.")
 
@@ -37,8 +42,9 @@ class DTE03Builder(BaseDTEBuilder):
             getattr(cliente, 'razon_social', None) or
             nombre_receptor
         )
-        cod_actividad = cliente.cod_actividad or "10005"
-        desc_actividad = cliente.desc_actividad or (cliente.giro or "Otros")
+        # Actividad: primero la del formulario, luego la del cliente en BD
+        cod_actividad = str(getattr(self.venta, 'cod_actividad_receptor', '') or '').strip() or cliente.cod_actividad or "10005"
+        desc_actividad = str(getattr(self.venta, 'desc_actividad_receptor', '') or '').strip() or cliente.desc_actividad or (cliente.giro or "Otros")
         telefono = getattr(cliente, 'telefono', None) or "22222222"
 
         receptor = {
@@ -212,12 +218,31 @@ class DTE03Builder(BaseDTEBuilder):
             {"codigo": "20", "descripcion": "Impuesto al Valor Agregado 13%", "valor": round(total_iva, 2)}
         ] if total_iva > 0 else []
 
+        condicion_op = int(getattr(self.venta, 'condicion_operacion', 1) or 1)
+        # MH esquema fe-ccf-v3:
+        #   plazo  → string con patrón ^0[1-3]$ : "01"=Días, "02"=Semanas, "03"=Meses
+        #   periodo → number (entero): cantidad de unidades (ej: 30)
+        plazo_raw = str(getattr(self.venta, 'plazo_pago', '') or '').strip()
+        periodo_raw = str(getattr(self.venta, 'periodo_pago', '') or '').strip()
+
+        if condicion_op == 2:
+            # plazo debe ser "01", "02" o "03"
+            plazo_val = plazo_raw if plazo_raw in ("01", "02", "03") else "03"
+            # periodo debe ser un número entero
+            try:
+                periodo_val = int(periodo_raw)
+            except (ValueError, TypeError):
+                periodo_val = 30
+        else:
+            plazo_val = None
+            periodo_val = None
+
         pagos = [{
             "codigo": "01",
             "montoPago": round(total_pagar, 2),
             "referencia": None,
-            "periodo": None,
-            "plazo": None,
+            "periodo": periodo_val,
+            "plazo": plazo_val,
         }]
 
         resumen = {
@@ -240,7 +265,7 @@ class DTE03Builder(BaseDTEBuilder):
             "saldoFavor": 0.00,
             "totalPagar": total_pagar,
             "totalLetras": self._numero_a_letras(total_pagar),
-            "condicionOperacion": 1,
+            "condicionOperacion": condicion_op,
             "pagos": pagos,
             "numPagoElectronico": None,
         }

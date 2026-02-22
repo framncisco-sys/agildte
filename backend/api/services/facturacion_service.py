@@ -143,8 +143,7 @@ class FacturacionService:
             pwd = str(override).strip()
         if not user or not pwd:
             raise AutenticacionMHError("La empresa no tiene configuradas credenciales MH (user_api_mh y clave_api_mh)")
-        # LOG de diagnóstico: muestra longitud y primeros/últimos 3 chars (NO expone password completa)
-        logger.warning(f"🔑 AUTH MH → user='{user}' (len={len(user)}) | pwd_len={len(pwd)} | pwd_ini={repr(pwd[:3])} | pwd_fin={repr(pwd[-3:])}")
+        logger.info(f"🔑 AUTH MH → empresa='{self.empresa.nombre}' user_len={len(user)} pwd_len={len(pwd)}")
         payload = {
             "user": user,
             "pwd": pwd
@@ -293,8 +292,8 @@ class FacturacionService:
             raise EnvioMHError("No se pudo obtener el token de autenticación")
         
         # Estructura de envío: version del envelope según tipo DTE
-        # DTE-01 (Factura CF) -> version 1 | DTE-03 (CCF) -> version 3
-        version_envio = 1 if tipo_dte == '01' else 3
+        # DTE-01 (Factura CF) -> version 1 | DTE-14 (FSE) -> version 1 | resto -> version 3
+        version_envio = 1 if tipo_dte in ('01', '14') else 3
         # MH exige codigoGeneracion en MAYÚSCULAS
         codigo_upper = (codigo_generacion or "").upper()
         # DTE_AMBIENTE_CODE invierte: empresa='01'(Pruebas)→envelope='00' | empresa='00'(Prod)→'01'
@@ -435,7 +434,7 @@ class FacturacionService:
             
             # PASO 3: Enviar a MH
             logger.info("3. Enviando a Ministerio de Hacienda...")
-            tmap = {'CF': '01', 'CCF': '03', 'NC': '05', 'ND': '06'}
+            tmap = {'CF': '01', 'CCF': '03', 'NC': '05', 'ND': '06', 'FSE': '14'}
             tipo_dte = tmap.get(venta.tipo_venta, '03')
             respuesta_mh = self.enviar_dte(dte_firmado, codigo_generacion, tipo_dte)
             
@@ -449,6 +448,14 @@ class FacturacionService:
                 venta.codigo_generacion = codigo_generacion
                 venta.numero_control = numero_control
                 venta.hora_emision = json_dte.get('identificacion', {}).get('horEmi') or venta.hora_emision
+                # Guardar la fecEmi real del DTE (hora El Salvador) para que NC/ND la referencien correctamente
+                fec_emi_dte = json_dte.get('identificacion', {}).get('fecEmi')
+                if fec_emi_dte:
+                    from datetime import date
+                    try:
+                        venta.fecha_emision = date.fromisoformat(fec_emi_dte)
+                    except (ValueError, TypeError):
+                        pass
                 venta.save()
                 
                 logger.info(f"🎉🎉🎉 ¡ÉXITO TOTAL! FACTURA #{venta.id} ACEPTADA 🎉🎉🎉")
@@ -540,7 +547,9 @@ class FacturacionService:
             raise FacturacionServiceError("La venta no tiene empresa asociada")
 
         empresa = venta.empresa
-        tipo_dte = '01' if venta.tipo_venta == 'CF' else '03'
+        # Mapeo completo de todos los tipos de venta a tipo_dte MH
+        _tmap_invalidar = {'CF': '01', 'CCF': '03', 'NC': '05', 'ND': '06', 'FSE': '14'}
+        tipo_dte = _tmap_invalidar.get(venta.tipo_venta, '03')
         resp = datos_invalidacion.get('responsable', {})
         sol = datos_invalidacion.get('solicitante', {})
         tipo_inv_str = datos_invalidacion.get('tipoInvalidacion', 'Rescisión')
@@ -581,10 +590,12 @@ class FacturacionService:
         correo_emp = (empresa.correo or 'contacto@empresa.sv')[:100]
 
         # Receptor: tipoDocumento y numDocumento deben coincidir EXACTAMENTE con el DTE original (MH)
+        # NIT → 14 dígitos (zfill 14); DUI → 9 dígitos (zfill 9)
         tipo_doc_recep = None
         num_doc_recep = None
         cliente = venta.cliente
-        if tipo_dte == '03' and cliente:
+        if tipo_dte in ('03', '05', '06') and cliente:
+            # CCF / NC / ND: el receptor es siempre un contribuyente con NIT (14 dígitos)
             nit_cli = (cliente.nit or cliente.nrc or "").replace("-", "").replace(" ", "")
             if nit_cli and len(nit_cli) >= 3:
                 tipo_doc_recep = "36"
@@ -596,13 +607,17 @@ class FacturacionService:
                 if nit_cli:
                     tipo_doc_recep, num_doc_recep = "36", nit_cli.zfill(14)[:20]
                 elif dui_cli:
-                    tipo_doc_recep, num_doc_recep = "13", dui_cli.zfill(14)[:20]
-            # CF sin cliente o cliente sin nit/dui: documento_receptor o null (Consumidor genérico)
-            doc_cf = (venta.documento_receptor or venta.nrc_receptor or "").replace("-", "").replace(" ", "").strip()
+                    # DUI: exactamente 9 dígitos (no 14)
+                    tipo_doc_recep, num_doc_recep = "13", dui_cli.zfill(9)[:9]
+            # CF sin cliente o cliente sin nit/dui: documento_receptor o null
+            doc_cf = (venta.documento_receptor or "").replace("-", "").replace(" ", "").strip()
             if doc_cf and len(doc_cf) >= 3 and not num_doc_recep:
                 tdoc = (venta.tipo_doc_receptor or "NIT").upper()
-                tipo_doc_recep = "36" if tdoc == "NIT" else "13"
-                num_doc_recep = doc_cf.zfill(14)[:20]
+                if tdoc == "NIT":
+                    tipo_doc_recep, num_doc_recep = "36", doc_cf.zfill(14)[:20]
+                else:
+                    tipo_doc_recep, num_doc_recep = "13", doc_cf.zfill(9)[:9]
+        # FSE: sujetoExcluido no tiene tipoDocumento en anulación → dejar null
 
         nombre_recep = (venta.nombre_receptor or 'Consumidor Final').strip() or 'Consumidor Final'
         if len(nombre_recep) < 5:

@@ -260,49 +260,78 @@ class CorrelativoAdmin(admin.ModelAdmin):
         }),
     )
 
-# --- PERFIL DE USUARIO (Sistema Multi-Empresa) ---
+# --- PERFIL DE USUARIO ---
+# Solo gestiona la vinculación usuario ↔ empresa.
+# El ROL se asigna en la sección "Grupos" del mismo formulario de Usuario.
 @admin.register(PerfilUsuario)
 class PerfilUsuarioAdmin(admin.ModelAdmin):
-    list_display = ('user', 'empresa', 'rol', 'activo', 'fecha_creacion')
-    list_filter = ('rol', 'activo', 'empresa', 'fecha_creacion')
-    search_fields = ('user__username', 'user__email', 'user__first_name', 'user__last_name', 'empresa__nombre')
-    readonly_fields = ('fecha_creacion', 'fecha_actualizacion')
-    
+    list_display = ('user', 'empresa', 'get_rol', 'activo', 'fecha_creacion')
+    list_filter = ('activo', 'empresa')
+    search_fields = ('user__username', 'user__email', 'user__first_name', 'empresa__nombre')
+    readonly_fields = ('fecha_creacion', 'fecha_actualizacion', 'get_rol')
+
     fieldsets = (
         ('Usuario y Empresa', {
-            'fields': ('user', 'empresa', 'rol')
+            'description': 'El ROL del usuario se asigna en la sección Grupos del formulario de Usuario.',
+            'fields': ('user', 'empresa'),
         }),
         ('Estado', {
-            'fields': ('activo',)
+            'fields': ('activo',),
         }),
         ('Auditoría', {
             'fields': ('fecha_creacion', 'fecha_actualizacion'),
-            'classes': ('collapse',)
+            'classes': ('collapse',),
         }),
     )
-    
-    def get_queryset(self, request):
-        """Optimizar consultas con select_related"""
-        qs = super().get_queryset(request)
-        return qs.select_related('user', 'empresa')
 
-# --- EXTENSIÓN DEL ADMIN DE USER PARA MOSTRAR PERFIL ---
+    @admin.display(description='Rol (Grupo Django)')
+    def get_rol(self, obj):
+        grupos = list(obj.user.groups.values_list('name', flat=True))
+        return ', '.join(grupos) if grupos else '— Sin grupo —'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('user', 'empresa').prefetch_related('user__groups')
+
+
+# --- PERFIL INLINE en el formulario de Usuario ---
 class PerfilUsuarioInline(admin.StackedInline):
-    """Inline para mostrar el perfil en el admin de User"""
     model = PerfilUsuario
     can_delete = False
-    verbose_name_plural = 'Perfil de Usuario'
+    verbose_name_plural = 'Empresa asignada'
     fk_name = 'user'
+    fields = ('empresa', 'activo')
+    extra = 1
 
+
+# --- ADMIN DE USUARIO UNIFICADO ---
+# Desde aquí se gestiona todo: datos, contraseña, GRUPOS (rol) y empresa.
 class UserAdmin(BaseUserAdmin):
-    """Admin personalizado de User que incluye el perfil"""
+    """
+    Admin de Usuario unificado.
+    - Sección 'Grupos' → asigna el rol: Administrador / Contador / Vendedor
+    - Sección 'Empresa asignada' → vincula al usuario con su empresa
+    """
     inlines = (PerfilUsuarioInline,)
-    
+    list_display = ('username', 'email', 'first_name', 'last_name', 'get_grupos', 'get_empresa', 'is_active')
+    list_filter = ('is_active', 'is_superuser', 'groups', 'perfil__empresa')
+
+    @admin.display(description='Rol (Grupo)')
+    def get_grupos(self, obj):
+        grupos = list(obj.groups.values_list('name', flat=True))
+        return ', '.join(grupos) if grupos else '— Sin grupo —'
+
+    @admin.display(description='Empresa')
+    def get_empresa(self, obj):
+        try:
+            return obj.perfil.empresa.nombre if obj.perfil.empresa else 'Todas (global)'
+        except Exception:
+            return '—'
+
     def get_inline_instances(self, request, obj=None):
-        """Solo mostrar inline si el objeto existe (no en creación)"""
         if not obj:
             return []
         return super().get_inline_instances(request, obj)
+
 
 # Desregistrar el admin de User por defecto y registrar el personalizado
 admin.site.unregister(User)

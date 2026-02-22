@@ -170,7 +170,7 @@ class BaseDTEBuilder(ABC):
                 return "CERO DOLARES CON 00/100 USD"
 
     def _campos_requeridos_mh(self):
-        """Campos que MH exige presentes (pueden ser null)."""
+        """Campos que MH exige presentes (pueden ser null o lista vacía)."""
         return [
             "identificacion.tipoContingencia", "identificacion.motivoContin",
             "documentoRelacionado", "otrosDocumentos", "ventaTercero", "extension", "apendice",
@@ -181,6 +181,8 @@ class BaseDTEBuilder(ABC):
             "resumen.numPagoElectronico", "resumen.ivaRete1",
             "resumen.pagos.referencia", "resumen.pagos.periodo", "resumen.pagos.plazo",
             "cuerpoDocumento.numeroDocumento", "cuerpoDocumento.codTributo",
+            # tributos:[] debe preservarse (MH exige [] en ítems exentos de CCF/NC/ND)
+            "cuerpoDocumento.tributos",
         ]
 
     def _limpiar_diccionario_dte(self, dte_json):
@@ -213,10 +215,12 @@ class BaseDTEBuilder(ABC):
         if generar_codigo and not self.venta.codigo_generacion:
             self.venta.codigo_generacion = str(uuid.uuid4()).upper()
 
-        fecha_emision = self.venta.fecha_emision
         ahora_sv = datetime.now(TZ_EL_SALVADOR)
         hora_actual = ahora_sv.strftime('%H:%M:%S')
-        fecha_str = fecha_emision.strftime('%Y-%m-%d')
+        # fecEmi SIEMPRE es la fecha actual: MH exige que coincida con la fecha de envío.
+        # Para NC/ND la venta puede tener fecha_emision del documento original, pero el DTE
+        # que se genera y envía AHORA debe llevar la fecha de hoy.
+        fecha_str = ahora_sv.strftime('%Y-%m-%d')
 
         cuerpo_documento = self._construir_cuerpo_documento()
         dte_json = {

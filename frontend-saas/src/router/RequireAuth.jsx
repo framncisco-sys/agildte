@@ -14,8 +14,12 @@ export function RequireAuth({ children, allowedRoles }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  if (allowedRoles?.length && role && !allowedRoles.includes(role)) {
-    return <Navigate to="/unauthorized" replace />
+  // Si se especifican roles permitidos, verificar que el usuario tenga uno válido.
+  // role=null también se considera no autorizado cuando hay restricción de roles.
+  if (allowedRoles?.length) {
+    if (!role || !allowedRoles.includes(role)) {
+      return <Navigate to="/unauthorized" replace />
+    }
   }
 
   return children

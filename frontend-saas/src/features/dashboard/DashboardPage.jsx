@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { getDashboardStats } from '../../api/dashboard'
+import { useEmpresaStore } from '../../stores/useEmpresaStore'
 
 function SkeletonCard() {
   return (
@@ -30,15 +31,24 @@ function SkeletonChart() {
 }
 
 export function DashboardPage() {
+  const empresaId = useEmpresaStore((s) => s.empresaId)
+  const empresaNombre = useEmpresaStore((s) => s.empresaNombre)
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    if (!empresaId) {
+      setLoading(false)
+      setStats(null)
+      setError(null)
+      return
+    }
     let cancelled = false
     setLoading(true)
     setError(null)
-    getDashboardStats()
+    setStats(null)
+    getDashboardStats(empresaId)
       .then((data) => {
         if (!cancelled) {
           setStats(data)
@@ -53,7 +63,7 @@ export function DashboardPage() {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [empresaId])
 
   const formatCurrency = (n) =>
     typeof n === 'number' ? `$ ${n.toLocaleString('es-SV', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$ 0.00'
@@ -65,8 +75,17 @@ export function DashboardPage() {
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Dashboard</h1>
-        <p className="mt-1 text-gray-500 text-sm">Métricas de facturación del mes actual</p>
+        <p className="mt-1 text-gray-500 text-sm">
+          Métricas de facturación del mes actual
+          {empresaNombre && <span className="ml-1 font-medium text-blue-600">— {empresaNombre}</span>}
+        </p>
       </div>
+
+      {!empresaId && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 text-sm">
+          Selecciona una empresa en la barra superior para ver las estadísticas.
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">

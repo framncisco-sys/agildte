@@ -5,8 +5,11 @@ El esquema NC difiere de CCF: NO permite otrosDocumentos, emisor.codEstable/codP
 extension.placaVehiculo, resumen.pagos/numPagoElectronico/etc, cuerpoDocumento.noGravado/psv/numeroDocumento.
 """
 import copy
+import logging
 from .dte_03_builder import DTE03Builder
 from api.dte_generator import formatear_decimal
+
+logger = logging.getLogger(__name__)
 
 
 def _val(doc, attr, default=None):
@@ -40,7 +43,8 @@ class DTE05Builder(DTE03Builder):
         return ext
 
     def _generar_items(self, tipo_dte, incluir_iva_item=False):
-        """Items para NC: sin noGravado, psv. tipoItem=1. codTributo requerido (null si no aplica). numeroDocumento requerido."""
+        """Items para NC: sin noGravado, psv. tipoItem=1. codTributo requerido (null si no aplica).
+        numeroDocumento se asigna en generar_json() para garantizar que coincida con documentoRelacionado."""
         items = super()._generar_items(tipo_dte='03', incluir_iva_item=False)
         for item in items:
             item.pop('noGravado', None)
@@ -48,8 +52,7 @@ class DTE05Builder(DTE03Builder):
             item['tipoItem'] = 1
             if 'codTributo' not in item or item.get('codTributo') is None:
                 item['codTributo'] = None
-            if item.get('numeroDocumento') is None:
-                item['numeroDocumento'] = (self.venta.numero_control or self.venta.codigo_generacion or '')[:50]
+            # numeroDocumento se fijará en generar_json() con el valor exacto del documentoRelacionado
         return items
 
     def _construir_resumen(self, cuerpo_documento):
@@ -87,15 +90,26 @@ class DTE05Builder(DTE03Builder):
                 vrel = self.venta.venta_relacionada
                 fec_emi = vrel.fecha_emision.strftime('%Y-%m-%d') if vrel.fecha_emision else ''
             if not fec_emi:
-                fec_emi = self.venta.fecha_emision.strftime('%Y-%m-%d') if self.venta.fecha_emision else '2020-01-01'
+                raise ValueError(
+                    "NC/ND: No se encontró la fecha de emisión del documento relacionado. "
+                    "Verifica que la venta referenciada tenga 'fecha_emision' guardada correctamente "
+                    "(debe corresponder a la fecha que MH registró al aceptar el DTE original)."
+                )
             if not num_doc:
-                num_doc = (self.venta.codigo_generacion or '').upper()
+                raise ValueError(
+                    "NC/ND: No se encontró el número de documento relacionado (codigoGeneracion o numeroControl). "
+                    "Verifica que la venta referenciada esté correctamente enlazada."
+                )
             docs = [{
                 "tipoDocumento": str(tipo_doc),
                 "tipoGeneracion": int(tipo_gen),
                 "numeroDocumento": str(num_doc).strip().upper(),
-                "fechaEmision": fec_emi or "2020-01-01"
+                "fechaEmision": fec_emi
             }]
+            logger.warning(
+                f"📎 NC documentoRelacionado → tipo={tipo_doc} gen={tipo_gen} "
+                f"numDoc={str(num_doc)[:20]}... fechaEmision={fec_emi}"
+            )
         if not isinstance(docs, list):
             docs = [docs]
         return docs
@@ -112,9 +126,23 @@ class DTE05Builder(DTE03Builder):
         ]
 
     def generar_json(self, ambiente='00', generar_codigo=True, generar_numero_control=True):
-        """Genera JSON fe-nc-v3 y elimina otrosDocumentos (no permitido)."""
+        """Genera JSON fe-nc-v3 y elimina otrosDocumentos (no permitido).
+        MH exige que cuerpoDocumento.numeroDocumento sea IDÉNTICO en todos los ítems
+        y coincida exactamente con documentoRelacionado.numeroDocumento.
+        """
         dte = super().generar_json(ambiente=ambiente, generar_codigo=generar_codigo, generar_numero_control=generar_numero_control)
-        dte["documentoRelacionado"] = self._construir_documento_relacionado()
+
+        # Construir documentoRelacionado y extraer su numeroDocumento
+        docs_rel = self._construir_documento_relacionado()
+        dte["documentoRelacionado"] = docs_rel
+
+        # Copiar el mismo numeroDocumento a TODOS los ítems (MH rechaza si difieren)
+        if docs_rel:
+            primer_doc = docs_rel[0] if isinstance(docs_rel, list) else docs_rel
+            num_doc_ref = str(primer_doc.get("numeroDocumento") or "").strip().upper()
+            for item in (dte.get("cuerpoDocumento") or []):
+                item["numeroDocumento"] = num_doc_ref
+
         dte.pop("otrosDocumentos", None)
         dte["ventaTercero"] = None
         return dte

@@ -22,9 +22,9 @@ class Empresa(models.Model):
     logo = models.ImageField(upload_to='logos/', null=True, blank=True)
     
     # --- CREDENCIALES MINISTERIO DE HACIENDA (MH) ---
-    # IMPORTANTE: Hacienda requiere códigos numéricos según estándar:
-    # '00' = Producción (api.dtes.mh.gob.sv)
-    # '01' = Pruebas (apitest.dtes.mh.gob.sv)
+    # Convención del campo empresa.ambiente:
+    # '00' = PRODUCCIÓN (api.dtes.mh.gob.sv)
+    # '01' = PRUEBAS   (apitest.dtes.mh.gob.sv)
     AMBIENTE_CHOICES = [
         ('00', 'PRODUCCION'),
         ('01', 'PRUEBAS'),
@@ -166,8 +166,8 @@ class Cliente(models.Model):
     )
     
     # NOTA: NRC ya NO es primary_key porque puede ser null para Consumidor Final
-    # Se mantiene unique=True para evitar duplicados en contribuyentes
-    nrc = models.CharField(max_length=20, unique=True, blank=True, null=True, 
+    # unique=False para permitir el mismo NRC en distintas empresas (multi-tenant); unicidad se valida en serializer por empresa
+    nrc = models.CharField(max_length=20, unique=False, blank=True, null=True,
                           help_text="NRC del cliente (obligatorio solo para Contribuyentes)")
     
     nombre = models.CharField(max_length=200)
@@ -242,6 +242,16 @@ class Cliente(models.Model):
     gran_contribuyente = models.BooleanField(
         default=False,
         help_text='Si es gran contribuyente y mismo giro que emisor, aplica IVA Percibido 1%'
+    )
+
+    # Empresa propietaria del cliente (multi-tenant)
+    empresa = models.ForeignKey(
+        'Empresa',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='clientes',
+        help_text='Empresa a la que pertenece este cliente'
     )
 
     def save(self, *args, **kwargs):
@@ -338,6 +348,7 @@ class Venta(models.Model):
             ('CCF', 'Contribuyente'),
             ('NC', 'Nota de Crédito'),
             ('ND', 'Nota de Débito'),
+            ('FSE', 'Factura Sujeto Excluido'),
         ],
         default='CCF',
     )
@@ -376,6 +387,8 @@ class Venta(models.Model):
     tipo_doc_receptor = models.CharField(max_length=10, blank=True, null=True)  # 'NIT' o 'DUI'
     direccion_receptor = models.CharField(max_length=500, blank=True, null=True)
     correo_receptor = models.CharField(max_length=200, blank=True, null=True)
+    cod_actividad_receptor = models.CharField(max_length=20, blank=True, null=True, help_text="Código actividad económica del receptor (para CCF)")
+    desc_actividad_receptor = models.CharField(max_length=250, blank=True, null=True, help_text="Descripción actividad económica del receptor (para CCF)")
     
     # Montos
     venta_gravada = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
@@ -391,7 +404,18 @@ class Venta(models.Model):
     # 1=Gravada, 2=Exenta, 3=No Sujeta, etc.
     clasificacion_venta = models.CharField(max_length=20, default="1") 
     # 1=Profesiones, 3=Comercial, etc.
-    tipo_ingreso = models.CharField(max_length=20, default="3") 
+    tipo_ingreso = models.CharField(max_length=20, default="3")
+    # Condición de la operación: 1=Contado, 2=Crédito, 3=Otro
+    condicion_operacion = models.IntegerField(default=1, help_text="1=Contado, 2=Crédito, 3=Otro")
+    # Campos para operaciones a crédito (requeridos por MH cuando condicion_operacion=2)
+    plazo_pago = models.CharField(max_length=20, blank=True, null=True, help_text="Número de plazo (ej: '30')")
+    periodo_pago = models.CharField(max_length=10, blank=True, null=True, help_text="Unidad de periodo: 01=Días, 02=Semanas, 03=Meses, 04=Años")
+
+    # Referencia al DTE original (para NC/ND): guarda el codigo_generacion de la venta que modifica
+    codigo_generacion_referenciado = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text="codigoGeneracion del DTE original referenciado (NC/ND apunta aquí al DTE que modifica)"
+    )
 
     # Estado del DTE
     ESTADO_DTE_CHOICES = [
@@ -618,74 +642,48 @@ class RetencionRecibida(models.Model):
         return f"Retención {self.fecha_documento} - {self.nombre_agente} (${self.monto_retenido_1}) - {self.estado}"
 
 # --- TABLA 7: PERFIL DE USUARIO (Sistema Multi-Empresa) ---
-# Propósito: Vincular usuarios de Django con empresas y asignar roles
+# Solo vincula usuarios con su empresa. El ROL se gestiona EXCLUSIVAMENTE
+# mediante Grupos de Django: Administrador | Contador | Vendedor
 class PerfilUsuario(models.Model):
     """
-    Perfil extendido del usuario de Django que vincula usuarios con empresas
-    y asigna roles dentro del sistema SaaS multi-empresa.
+    Perfil extendido del usuario Django: vincula el usuario con su empresa.
+    El rol (Administrador / Contador / Vendedor) se asigna en Grupos de Django,
+    no aquí, para tener una única fuente de verdad.
+    - Superusuario Django: acceso a todas las empresas, rol ADMIN.
+    - Usuarios en grupo 'Administrador': admin de su empresa.
+    - Usuarios en grupo 'Contador': solo reportes de su empresa.
+    - Usuarios en grupo 'Vendedor': facturación de su empresa.
     """
-    # Relación OneToOne con el modelo User de Django
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
         related_name='perfil',
         help_text="Usuario de Django asociado a este perfil"
     )
-    
-    # Relación ForeignKey con Empresa (un usuario pertenece a una empresa)
-    # Nota: Para usuarios MASTER, empresa puede ser None (gestionan todas las empresas)
     empresa = models.ForeignKey(
         Empresa,
         on_delete=models.CASCADE,
         related_name='usuarios',
         null=True,
         blank=True,
-        help_text="Empresa a la que pertenece este usuario (None para usuarios MASTER)"
+        help_text="Empresa del usuario. Vacío solo para superusuarios (ven todas)."
     )
-    
-    # Roles del sistema
-    ROL_CHOICES = [
-        ('MASTER', 'Master (Super Administrador)'),
-        ('ADMINISTRADOR', 'Administrador de Empresa'),
-        ('VENDEDOR', 'Vendedor/Contador'),
-    ]
-    rol = models.CharField(
-        max_length=20,
-        choices=ROL_CHOICES,
-        default='VENDEDOR',
-        help_text="Rol del usuario en el sistema"
-    )
-    
-    # Campos de auditoría
-    fecha_creacion = models.DateTimeField(auto_now_add=True)
-    fecha_actualizacion = models.DateTimeField(auto_now=True)
     activo = models.BooleanField(
         default=True,
-        help_text="Indica si el perfil está activo"
+        help_text="Perfil activo. Desactivar en lugar de eliminar."
     )
-    
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
     class Meta:
         verbose_name = "Perfil de Usuario"
         verbose_name_plural = "Perfiles de Usuario"
-        ordering = ['rol', 'empresa', 'user__username']
-        # Un usuario solo puede tener un perfil activo
-        # Nota: OneToOne garantiza un perfil por usuario, pero un MASTER puede tener empresa=None
-    
+        ordering = ['empresa', 'user__username']
+
     def __str__(self):
         empresa_nombre = self.empresa.nombre if self.empresa else "Todas las empresas"
-        return f"{self.user.username} - {empresa_nombre} ({self.get_rol_display()})"
-    
-    def es_master(self):
-        """Retorna True si el usuario es Master"""
-        return self.rol == 'MASTER'
-    
-    def es_administrador(self):
-        """Retorna True si el usuario es Administrador"""
-        return self.rol == 'ADMINISTRADOR'
-    
-    def es_vendedor(self):
-        """Retorna True si el usuario es Vendedor"""
-        return self.rol == 'VENDEDOR'
+        grupos = ', '.join(self.user.groups.values_list('name', flat=True)) or 'Sin grupo'
+        return f"{self.user.username} — {empresa_nombre} [{grupos}]"
 
 # --- TABLA 8: CORRELATIVOS DTE (Sistema de Numeración Anual) ---
 # Propósito: Controlar la numeración de documentos DTE con reinicio anual automático

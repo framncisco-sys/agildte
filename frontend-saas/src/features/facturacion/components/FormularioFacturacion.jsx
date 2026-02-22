@@ -3,14 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Trash2, Loader2, Search, FileText } from 'lucide-react'
+import { Trash2, Loader2, Search, FileText, UserPlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ModalBuscadorCliente } from './ModalBuscadorCliente'
 import { BuscarDocumentoModal } from './BuscarDocumentoModal'
 import { ItemDescripcionCombobox } from './ItemDescripcionCombobox'
 import { ModalCatalogoItems } from './ModalCatalogoItems'
+import { BuscadorActividad } from '../../../components/BuscadorActividad'
 import { DEPARTAMENTOS, MUNICIPIOS_POR_DEPARTAMENTO } from '../../../data/departamentos-municipios'
 import { crearVenta } from '../../../api/facturas'
+import { createCliente } from '../../../api/clientes'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 
 const TITULOS_POR_TIPO = {
@@ -27,11 +29,17 @@ const schema = z.object({
   nombreComercial: z.string().optional(),
   tipoDocCliente: z.enum(['NIT', 'DUI']),
   numeroDocumento: z.string().optional(),
+  nrc: z.string().optional(),
+  codActividad: z.string().optional(),
+  descActividad: z.string().optional(),
   correo: z.union([z.string().email('Correo inválido'), z.literal('')]),
   telefono: z.string().optional(),
   departamento: z.string().optional(),
   municipio: z.string().optional(),
   direccion: z.string().optional(),
+  condicionOperacion: z.enum(['1', '2', '3']).default('1'),
+  plazoPago: z.string().optional(),
+  periodoPago: z.string().optional(),
   items: z.array(
     z.object({
       cantidad: z.coerce.number().min(0.01, 'Cantidad requerida'),
@@ -46,11 +54,17 @@ const defaultValues = {
   nombreComercial: '',
   tipoDocCliente: 'NIT',
   numeroDocumento: '',
+  nrc: '',
+  codActividad: '',
+  descActividad: '',
   correo: '',
   telefono: '',
   departamento: '06',
-  municipio: '14',
+  municipio: '20',
   direccion: '',
+  condicionOperacion: '1',
+  plazoPago: '03',
+  periodoPago: '30',
   items: [{ cantidad: 1, descripcion: '', precioUnitario: 0 }],
 }
 
@@ -59,11 +73,13 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
   const empresaId = useEmpresaStore((s) => s.empresaId)
   const [modalAbierto, setModalAbierto] = useState(false)
   const [enviando, setEnviando] = useState(false)
+  const [guardandoCliente, setGuardandoCliente] = useState(false)
   const [clienteIdSeleccionado, setClienteIdSeleccionado] = useState(null)
   const [documentoRelacionado, setDocumentoRelacionado] = useState(null)
   const [errorDocumentoRelacionado, setErrorDocumentoRelacionado] = useState('')
   const [modalDocumentoAbierto, setModalDocumentoAbierto] = useState(false)
   const [catalogRowIndex, setCatalogRowIndex] = useState(null)
+  const [actividadDisplay, setActividadDisplay] = useState('')
   const requiereDocumentoRelacionado = tipoDocumento === '05' || tipoDocumento === '06'
 
   const {
@@ -81,6 +97,8 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'items' })
   const items = watch('items')
   const departamentoSeleccionado = watch('departamento')
+  const condicionOperacionWatch = watch('condicionOperacion')
+  const esCredito = condicionOperacionWatch === '2'
   const municipios = MUNICIPIOS_POR_DEPARTAMENTO[departamentoSeleccionado] ?? []
 
   const totalGravadas = (items ?? []).reduce(
@@ -96,15 +114,21 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
     const tieneNit = !!cliente.nit
     const tieneDui = !!cliente.dui
     const tipoDoc = tieneNit ? 'NIT' : tieneDui ? 'DUI' : 'NIT'
-    const numeroDoc = tipoDoc === 'NIT' ? (cliente.nit ?? cliente.nrc ?? '') : (cliente.dui ?? '')
+    const numeroDoc = tipoDoc === 'NIT' ? (cliente.nit ?? cliente.documento_identidad ?? '') : (cliente.dui ?? cliente.documento_identidad ?? '')
     setValue('nombreCompleto', cliente.nombre ?? '')
     setValue('nombreComercial', cliente.giro ?? '')
     setValue('tipoDocCliente', tipoDoc)
     setValue('numeroDocumento', numeroDoc)
-    setValue('correo', cliente.email_contacto ?? '')
+    setValue('nrc', cliente.nrc ?? '')
+    setValue('codActividad', cliente.cod_actividad ?? cliente.actividad_economica ?? '')
+    setValue('descActividad', cliente.desc_actividad ?? '')
+    const codAct = cliente.cod_actividad ?? cliente.actividad_economica ?? ''
+    const descAct = cliente.desc_actividad ?? ''
+    setActividadDisplay(codAct && descAct ? `${codAct} - ${descAct}` : codAct)
+    setValue('correo', cliente.email_contacto ?? cliente.correo ?? '')
     setValue('telefono', cliente.telefono ?? '')
     setValue('departamento', cliente.departamento ?? '06')
-    setValue('municipio', cliente.municipio ?? '14')
+    setValue('municipio', cliente.municipio ?? '20')
     setValue('direccion', cliente.direccion ?? '')
   }
 
@@ -159,6 +183,43 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
     setErrorDocumentoRelacionado('')
   }
 
+  const handleGuardarCliente = async () => {
+    const data = watch()
+    if (!data.nombreCompleto?.trim()) {
+      toast.error('Ingresa el nombre del cliente antes de guardar.')
+      return
+    }
+    if (!empresaId) {
+      toast.error('Selecciona una empresa primero.')
+      return
+    }
+    setGuardandoCliente(true)
+    try {
+      const payload = {
+        nombre: data.nombreCompleto.trim(),
+        tipo_documento: data.tipoDocCliente ?? 'NIT',
+        documento_identidad: data.numeroDocumento?.trim() || null,
+        nrc: data.nrc?.trim() || null,
+        actividad_economica: data.codActividad?.trim() || null,
+        correo: data.correo?.trim() || null,
+        telefono: data.telefono?.trim() || null,
+        direccion_departamento: data.departamento || '06',
+        direccion_municipio: data.municipio || '20',
+        direccion_complemento: data.direccion?.trim() || null,
+        empresa_id: empresaId,
+      }
+      const nuevo = await createCliente(payload)
+      setClienteIdSeleccionado(nuevo.id)
+      toast.success(`Cliente "${data.nombreCompleto.trim()}" guardado correctamente.`)
+    } catch (err) {
+      const d = err.response?.data
+      const msg = d?.nrc?.[0] ?? d?.documento_identidad?.[0] ?? d?.error ?? d?.detail ?? err.message ?? 'Error al guardar cliente.'
+      toast.error(msg)
+    } finally {
+      setGuardandoCliente(false)
+    }
+  }
+
   const onSubmit = async (data) => {
     if (!empresaId) {
       toast.error('Selecciona una empresa antes de emitir')
@@ -170,6 +231,15 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
       return
     }
     setErrorDocumentoRelacionado('')
+
+    // FSE: validar que el número de documento del proveedor sea DUI (9 dígitos) o NIT (14 dígitos)
+    if (tipoDocumento === '14') {
+      const docLimpio = (data.numeroDocumento || '').replace(/\D/g, '')
+      if (docLimpio.length !== 9 && docLimpio.length !== 14) {
+        toast.error('Para Sujeto Excluido ingresa el DUI (9 dígitos) o NIT (14 dígitos) del proveedor')
+        return
+      }
+    }
     setEnviando(true)
     try {
       const payload = {
@@ -182,15 +252,24 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
           nombreComercial: data.nombreComercial,
           tipoDocCliente: data.tipoDocCliente,
           numeroDocumento: data.numeroDocumento,
+          nrc: data.nrc,
+          codActividad: data.codActividad,
+          descActividad: data.descActividad,
           correo: data.correo,
           telefono: data.telefono,
           departamento: data.departamento,
           municipio: data.municipio,
           direccion: data.direccion,
+          condicionOperacion: data.condicionOperacion,
         },
         items: data.items,
         totalGravadas,
         iva: esCreditoFiscal ? iva : 0,
+        condicionOperacion: Number(data.condicionOperacion ?? 1),
+        // plazo_pago → código de unidad MH: "01"=Días, "02"=Semanas, "03"=Meses
+        plazoPago: data.condicionOperacion === '2' ? (data.plazoPago || '03') : null,
+        // periodo_pago → cantidad numérica (ej: 30)
+        periodoPago: data.condicionOperacion === '2' ? (Number(data.periodoPago) || 30) : null,
       }
       const respuesta = await crearVenta(payload)
       const estado = respuesta?.estado_dte || respuesta?.estado
@@ -301,22 +380,35 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
           onSelect={handleDocumentoSeleccionado}
         />
 
-        {/* Sección 2: Cliente */}
+        {/* Sección 2: Datos del Receptor / Proveedor (FSE) */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <h2 className="text-lg font-medium text-gray-800">Datos del Cliente</h2>
-            <button
-              type="button"
-              onClick={() => setModalAbierto(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shrink-0"
-            >
-              CARGAR CLIENTE
-            </button>
+          {/* Encabezado de sección */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5 pb-4 border-b border-gray-100">
+            <div>
+              <h2 className="text-base font-semibold text-blue-800 uppercase tracking-wide">
+                {tipoDocumento === '14' ? 'Información del Proveedor (Sujeto Excluido)' : 'Información del Receptor'}
+              </h2>
+              {tipoDocumento === '14' && (
+                <p className="text-xs text-amber-600 mt-0.5">Datos de quien te vendió sin emitir DTE</p>
+              )}
+            </div>
+            {tipoDocumento !== '14' && (
+              <button
+                type="button"
+                onClick={() => setModalAbierto(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium shrink-0"
+              >
+                <Search size={16} />
+                CARGAR CLIENTE
+              </button>
+            )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="sm:col-span-2 lg:col-span-3">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Nombre completo — fila completa */}
+            <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Nombre Completo / Razón Social
+                Nombre completo / Razón Social <span className="text-red-500">*</span>
               </label>
               <input
                 {...register('nombreCompleto')}
@@ -327,9 +419,11 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
                 <p className="mt-1 text-sm text-red-600">{errors.nombreCompleto.message}</p>
               )}
             </div>
-            <div className="sm:col-span-2 lg:col-span-3">
+
+            {/* Nombre comercial — fila completa */}
+            <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Nombre Comercial <span className="text-gray-400">(Opcional)</span>
+                Nombre Comercial <span className="text-gray-400 font-normal">(Opcional)</span>
               </label>
               <input
                 {...register('nombreComercial')}
@@ -337,47 +431,61 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
                 placeholder="Nombre comercial"
               />
             </div>
+
+            {/* NIT */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Documento</label>
-              <select
-                {...register('tipoDocCliente')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="NIT">NIT</option>
-                <option value="DUI">DUI</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Número Documento</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                NIT {tipoDocumento === '14' && <span className="text-red-500">*</span>}
+              </label>
               <input
                 {...register('numeroDocumento')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="NIT o DUI"
+                placeholder={tipoDocumento === '14' ? 'DUI (9 dígitos) o NIT (14 dígitos)' : 'NIT del receptor'}
               />
               {errors.numeroDocumento && (
                 <p className="mt-1 text-sm text-red-600">{errors.numeroDocumento.message}</p>
               )}
             </div>
-            <div className="sm:col-span-2 lg:col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
-              <input
-                type="email"
-                {...register('correo')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="correo@ejemplo.com"
-              />
-              {errors.correo && (
-                <p className="mt-1 text-sm text-red-600">{errors.correo.message}</p>
-              )}
-            </div>
+
+            {/* NRC (solo para CCF y similares) */}
+            {tipoDocumento !== '14' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">NRC</label>
+                <input
+                  {...register('nrc')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Número de Registro de Contribuyente"
+                />
+              </div>
+            )}
+
+            {/* Descripción Actividad */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descripción Act.</label>
               <input
-                {...register('telefono')}
+                {...register('descActividad')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Teléfono"
+                placeholder="Descripción de la actividad económica"
               />
             </div>
+
+            {/* Código Actividad Económica con buscador */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Código Act. Ec.</label>
+              <BuscadorActividad
+                value={watch('codActividad') ?? ''}
+                displayValue={actividadDisplay}
+                onChange={(codigo) => setValue('codActividad', codigo)}
+                onDisplayChange={(display) => {
+                  setActividadDisplay(display)
+                  const desc = display.includes(' - ') ? display.split(' - ').slice(1).join(' - ') : display
+                  setValue('descActividad', desc)
+                }}
+                placeholder="Buscar actividad (mín. 2 caracteres)"
+              />
+            </div>
+
+            {/* Departamento */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Departamento</label>
               <select
@@ -389,6 +497,8 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
                 ))}
               </select>
             </div>
+
+            {/* Municipio */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Municipio</label>
               <select
@@ -400,15 +510,108 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
                 ))}
               </select>
             </div>
-            <div className="sm:col-span-2 lg:col-span-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Dirección detallada</label>
+
+            {/* Dirección — fila completa */}
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
               <input
                 {...register('direccion')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Colonia, calle, número, etc."
               />
             </div>
+
+            {/* Condición de la Operación */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Condición de la Operación</label>
+              <select
+                {...register('condicionOperacion')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="1">Contado</option>
+                <option value="2">A Crédito</option>
+                <option value="3">Otro</option>
+              </select>
+            </div>
+
+            {/* Campos de crédito (solo visibles cuando condición = A Crédito) */}
+            {esCredito && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Unidad de tiempo <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    {...register('plazoPago')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="01">Días</option>
+                    <option value="02">Semanas</option>
+                    <option value="03">Meses</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">Tipo de período del crédito</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Cantidad <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    {...register('periodoPago')}
+                    placeholder="Ej: 30"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Número de días/semanas/meses (ej: 30)</p>
+                </div>
+              </>
+            )}
+
+            {/* Correo Electrónico */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
+              <input
+                type="email"
+                {...register('correo')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="correo@ejemplo.com"
+              />
+              {errors.correo && (
+                <p className="mt-1 text-sm text-red-600">{errors.correo.message}</p>
+              )}
+            </div>
+
+            {/* Teléfono */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+              <input
+                {...register('telefono')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Teléfono de contacto"
+              />
+            </div>
           </div>
+
+          {/* Botón Guardar Cliente */}
+          {tipoDocumento !== '14' && (
+            <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-500">
+                Guarda estos datos en la cartera de clientes para usarlos en futuras facturas.
+              </p>
+              <button
+                type="button"
+                onClick={handleGuardarCliente}
+                disabled={guardandoCliente}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors text-sm font-medium shrink-0"
+              >
+                {guardandoCliente
+                  ? <Loader2 size={16} className="animate-spin" />
+                  : <UserPlus size={16} />
+                }
+                {guardandoCliente ? 'Guardando...' : 'Guardar Cliente (Clientes nuevos)'}
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Sección 3: Detalle de Productos */}
