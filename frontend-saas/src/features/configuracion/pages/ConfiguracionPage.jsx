@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
-import { getEmpresa, updateEmpresa } from '../../../api/empresa'
+import { getEmpresa, updateEmpresa, getCorrelativos, updateCorrelativos } from '../../../api/empresa'
 import { changePassword } from '../../../api/auth'
-import { ImagePlus, Save, Building2, Lock } from 'lucide-react'
+import { ImagePlus, Save, Building2, Lock, Hash } from 'lucide-react'
 
 const AMBIENTES = [
   { value: '01', label: 'Pruebas (MH)' },
@@ -35,6 +35,10 @@ export default function ConfiguracionPage() {
   const [passwordNew, setPasswordNew] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [savingPassword, setSavingPassword] = useState(false)
+  const [correlativos, setCorrelativos] = useState([])
+  const [correlativosForm, setCorrelativosForm] = useState({})
+  const [loadingCorrelativos, setLoadingCorrelativos] = useState(false)
+  const [savingCorrelativos, setSavingCorrelativos] = useState(false)
 
   useEffect(() => {
     if (!empresaId) {
@@ -71,9 +75,55 @@ export default function ConfiguracionPage() {
     return () => { cancelled = true }
   }, [empresaId])
 
+  useEffect(() => {
+    if (!empresaId) return
+    let cancelled = false
+    setLoadingCorrelativos(true)
+    getCorrelativos(empresaId)
+      .then((res) => {
+        if (!cancelled) {
+          setCorrelativos(res.correlativos ?? [])
+          const form = {}
+          ;(res.correlativos ?? []).forEach((c) => {
+            form[c.tipo_dte] = c.siguiente ?? (c.ultimo_correlativo + 1)
+          })
+          setCorrelativosForm(form)
+        }
+      })
+      .catch(() => { if (!cancelled) setCorrelativos([]) })
+      .finally(() => { if (!cancelled) setLoadingCorrelativos(false) })
+    return () => { cancelled = true }
+  }, [empresaId])
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleCorrelativoChange = (tipoDte, value) => {
+    const v = parseInt(value, 10)
+    setCorrelativosForm((prev) => ({ ...prev, [tipoDte]: isNaN(v) ? '' : v }))
+  }
+
+  const handleSaveCorrelativos = async (e) => {
+    e.preventDefault()
+    if (!empresaId) return
+    setSavingCorrelativos(true)
+    try {
+      await updateCorrelativos(empresaId, correlativosForm)
+      const res = await getCorrelativos(empresaId)
+      setCorrelativos(res.correlativos ?? [])
+      const form = {}
+      ;(res.correlativos ?? []).forEach((c) => {
+        form[c.tipo_dte] = c.siguiente ?? (c.ultimo_correlativo + 1)
+      })
+      setCorrelativosForm(form)
+      toast.success('Correlativos actualizados. Use estos números al pasar a producción.')
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? 'Error al guardar correlativos')
+    } finally {
+      setSavingCorrelativos(false)
+    }
   }
 
   const handleChangePassword = async (e) => {
@@ -359,6 +409,46 @@ export default function ConfiguracionPage() {
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
+            <Hash className="h-5 w-5 text-slate-600" />
+            <h2 className="font-semibold text-slate-800">Correlativos de facturación</h2>
+          </div>
+          <div className="p-5">
+            <p className="text-sm text-slate-600 mb-4">
+              Configure el siguiente número a usar al pasar a producción (por ejemplo, CF 25, CCF 35).
+            </p>
+            {loadingCorrelativos ? (
+              <div className="py-4 text-slate-500">Cargando correlativos...</div>
+            ) : (
+              <form onSubmit={handleSaveCorrelativos} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {correlativos.map((c) => (
+                    <div key={c.tipo_dte}>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">{c.label}</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={correlativosForm[c.tipo_dte] ?? ''}
+                        onChange={(e) => handleCorrelativoChange(c.tipo_dte, e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-slate-500 focus:border-slate-500"
+                        placeholder={`Siguiente: ${c.siguiente ?? ''}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="submit"
+                  disabled={savingCorrelativos}
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:opacity-60"
+                >
+                  {savingCorrelativos ? 'Guardando...' : 'Guardar correlativos'}
+                </button>
+              </form>
+            )}
           </div>
         </div>
 

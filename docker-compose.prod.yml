@@ -102,7 +102,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-sistema_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: db
-      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-90}
+      BACKUP_MONTHLY_KEEP_DAYS: ${BACKUP_MONTHLY_KEEP_DAYS:-1825}
     depends_on:
       db:
         condition: service_healthy
@@ -110,8 +111,7 @@ services:
       - backup_volume:/backups
       - ./scripts/backup.sh:/backup.sh:ro
     command: >
-      sh -c "chmod +x /backup.sh &&
-             echo '0 2 * * * /backup.sh >> /var/log/backup.log 2>&1' | crontab - &&
+      sh -c "echo '0 2 * * * sh /backup.sh >> /var/log/backup.log 2>&1' | crontab - &&
              crond -f -l 8"
 
 volumes:

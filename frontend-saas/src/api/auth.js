@@ -4,8 +4,8 @@ import apiClient from './axios'
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
 
 /**
- * Login con username y password vía JWT.
- * POST /api/token/ -> access + refresh; luego GET /api/auth/me/ para user, role, empresa.
+ * Login con username y password.
+ * Usa /api/auth/login/ (custom) que devuelve access, refresh, user, empresa_default en una sola llamada.
  */
 export async function login(credentials) {
   const username = credentials.username ?? credentials.email
@@ -13,19 +13,16 @@ export async function login(credentials) {
   if (!username || !password) {
     throw new Error('Usuario y contraseña son requeridos')
   }
-  const { data: tokenData } = await axios.post(`${baseURL}/token/`, {
+  const { data } = await axios.post(`${baseURL}/auth/login/`, {
     username: username.trim(),
     password,
   })
-  const access = tokenData.access
-  const refresh = tokenData.refresh
-  const me = await getMe(access)
   return {
-    access,
-    refresh,
-    user: me.user,
-    empresa_default: me.empresa_default,
-    empresas: me.empresas,
+    access: data.access,
+    refresh: data.refresh,
+    user: data.user,
+    empresa_default: data.empresa_default,
+    empresas: data.empresas ?? [],
   }
 }
 

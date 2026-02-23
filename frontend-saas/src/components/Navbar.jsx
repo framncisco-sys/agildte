@@ -18,12 +18,12 @@ export function Navbar({ onMenuClick }) {
   }
 
   return (
-    <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0">
+    <header className="h-14 bg-agil-bg-white border-b border-agil-border-subtle flex items-center justify-between px-4 shrink-0 shadow-sm">
       <div className="flex items-center gap-3 min-w-0">
         <button
           type="button"
           onClick={onMenuClick}
-          className="md:hidden p-2 -ml-2 rounded-lg text-gray-600 hover:bg-gray-100"
+          className="md:hidden p-2 -ml-2 rounded-lg text-agil-text-secondary hover:bg-agil-bg-main transition-colors"
           aria-label="Abrir menú"
         >
           <Menu className="w-6 h-6" />
@@ -33,7 +33,7 @@ export function Navbar({ onMenuClick }) {
           <select
             value={empresaId ?? ''}
             onChange={(e) => selectEmpresa(e.target.value || null)}
-            className="text-sm border border-gray-300 rounded-md px-3 py-1.5"
+            className="text-sm border border-agil-border-subtle rounded-lg px-3 py-2 text-agil-text-primary bg-agil-bg-white focus:ring-2 focus:ring-agil-primary focus:border-agil-primary transition-colors"
           >
             <option value="">Seleccionar empresa</option>
             {empresas.map((e) => (
@@ -43,7 +43,7 @@ export function Navbar({ onMenuClick }) {
             ))}
           </select>
         ) : empresaNombre ? (
-          <span className="text-sm text-gray-700 font-medium truncate hidden sm:inline">
+          <span className="text-sm text-agil-text-primary font-medium truncate hidden sm:inline">
             Empresa: {empresaNombre}
           </span>
         ) : null}
@@ -51,7 +51,7 @@ export function Navbar({ onMenuClick }) {
       </div>
       <button
         onClick={handleLogout}
-        className="text-sm text-red-600 hover:text-red-700"
+        className="text-sm text-agil-text-secondary hover:text-red-600 transition-colors"
       >
         Cerrar sesión
       </button>

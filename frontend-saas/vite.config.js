@@ -7,6 +7,7 @@ const backendUrl = process.env.VITE_API_URL || 'http://localhost:8000'
 
 export default defineConfig({
   plugins: [react()],
+  appType: 'spa',  // Necesario para que /login, /dashboard etc. sirvan index.html al refrescar
   server: {
     port: 3000,
     host: '0.0.0.0',   // necesario para que Docker exponga el puerto

@@ -1,3 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ─── AgilDTE - Paleta de marca Fintech ───────────────────────────────────── */
+:root {
+  --primary-blue: #1A56DB;
+  --primary-blue-hover: #1644b8;
+  --success-green: #10B981;
+  --action-orange: #F59E0B;
+  --action-orange-light: #FEF3C7;
+  --bg-main: #F3F4F6;
+  --bg-white: #FFFFFF;
+  --text-primary: #1F2937;
+  --text-secondary: #6B7280;
+  --border-subtle: #E5E7EB;
+  --border-focus: #1A56DB;
+}

@@ -417,6 +417,15 @@ class Venta(models.Model):
         help_text="codigoGeneracion del DTE original referenciado (NC/ND apunta aquí al DTE que modifica)"
     )
 
+    # Ambiente de emisión (Pruebas vs Producción) - para filtrar dashboard/ventas
+    ambiente_emision = models.CharField(
+        max_length=2,
+        choices=Empresa.AMBIENTE_CHOICES,
+        default='01',
+        db_index=True,
+        help_text="Ambiente en que se emitió: '00'=Producción, '01'=Pruebas"
+    )
+
     # Estado del DTE
     ESTADO_DTE_CHOICES = [
         ('Borrador', 'Borrador'),

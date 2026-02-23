@@ -30,3 +30,20 @@ export async function updateEmpresa(id, payload) {
   const { data } = await apiClient.patch(`/empresas/${id}/`, rest)
   return data
 }
+
+/**
+ * Obtiene los correlativos del año actual (siguiente número por tipo DTE).
+ */
+export async function getCorrelativos(empresaId) {
+  const { data } = await apiClient.get(`/empresas/${empresaId}/correlativos/`)
+  return data
+}
+
+/**
+ * Actualiza el siguiente número correlativo por tipo DTE.
+ * Ej: { "01": 25, "03": 35 } = CF próxima 25, CCF próxima 35.
+ */
+export async function updateCorrelativos(empresaId, payload) {
+  const { data } = await apiClient.patch(`/empresas/${empresaId}/correlativos/`, payload)
+  return data
+}

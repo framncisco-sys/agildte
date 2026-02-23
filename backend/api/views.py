@@ -18,7 +18,7 @@ from rest_framework.permissions import IsAuthenticated as DRFIsAuthenticated
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.views.decorators.csrf import csrf_exempt
-from .models import Cliente, Compra, Venta, Retencion, Empresa, Liquidacion, RetencionRecibida, Producto, DetalleVenta, PerfilUsuario, ActividadEconomica
+from .models import Cliente, Compra, Venta, Retencion, Empresa, Liquidacion, RetencionRecibida, Producto, DetalleVenta, PerfilUsuario, ActividadEconomica, Correlativo
 from .serializers import ClienteSerializer, CompraSerializer, VentaSerializer, RetencionSerializer, EmpresaSerializer, LiquidacionSerializer, RetencionRecibidaSerializer, ProductoSerializer, VentaConDetallesSerializer, ActividadEconomicaSerializer
 from .dte_generator import DTEGenerator
 from .utils.pdf_generator import generar_pdf_venta
@@ -177,8 +177,73 @@ def auth_me_api(request):
     return Response(resp)
 
 
+# Mapeo tipo_dte (MH) -> etiqueta para UI
+TIPO_DTE_LABELS = {
+    '01': 'CF (Consumidor Final)',
+    '03': 'CCF (Crédito Fiscal)',
+    '14': 'FSE (Factura Sujeto Excluido)',
+    '05': 'NC (Nota de Crédito)',
+    '06': 'ND (Nota de Débito)',
+}
+
+
 class EmpresaViewSet(viewsets.ModelViewSet):
     serializer_class = EmpresaSerializer
+
+    @action(detail=True, methods=['get', 'patch'], url_path='correlativos')
+    def correlativos(self, request, pk=None):
+        """
+        GET: Lista correlativos del año actual (siguiente número por tipo DTE).
+        PATCH: Actualiza ultimo_correlativo por tipo_dte.
+        Body: { "01": 25, "03": 34, "14": 4, "05": 1, "06": 1 }
+        """
+        empresa = self.get_object()
+        r = require_empresa_allowed(request, empresa.id)
+        if r is not None:
+            return r
+        anio = timezone.now().year
+
+        if request.method == 'GET':
+            tipos = ['01', '03', '14', '05', '06']
+            items = []
+            for td in tipos:
+                obj, _ = Correlativo.objects.get_or_create(
+                    empresa=empresa, tipo_dte=td, anio=anio,
+                    defaults={'ultimo_correlativo': 0}
+                )
+                items.append({
+                    'tipo_dte': td,
+                    'label': TIPO_DTE_LABELS.get(td, f'DTE-{td}'),
+                    'ultimo_correlativo': obj.ultimo_correlativo,
+                    'siguiente': obj.ultimo_correlativo + 1,
+                })
+            return Response({'anio': anio, 'correlativos': items})
+
+        if request.method == 'PATCH':
+            # Body: { "01": 24, "03": 34 } = "siguiente número a usar"
+            # Internamente: ultimo_correlativo = valor - 1
+            data = request.data
+            if not isinstance(data, dict):
+                return Response({'error': 'Body debe ser un objeto con tipo_dte: siguiente_numero'}, status=400)
+            updated = []
+            for td, valor in data.items():
+                if td not in TIPO_DTE_LABELS:
+                    continue
+                try:
+                    siguiente = int(valor)
+                    if siguiente < 1:
+                        siguiente = 1
+                    ultimo = siguiente - 1
+                except (TypeError, ValueError):
+                    continue
+                obj, _ = Correlativo.objects.get_or_create(
+                    empresa=empresa, tipo_dte=td, anio=anio,
+                    defaults={'ultimo_correlativo': 0}
+                )
+                obj.ultimo_correlativo = ultimo
+                obj.save()
+                updated.append({'tipo_dte': td, 'ultimo_correlativo': ultimo, 'siguiente': siguiente})
+            return Response({'anio': anio, 'actualizados': updated})
 
     def get_queryset(self):
         """Solo superusuarios ven todas las empresas. Usuarios normales solo las suyas."""
@@ -731,6 +796,14 @@ def dashboard_stats_api(request):
     filtro_procesado = Q(estado_dte__in=['AceptadoMH', 'Enviado'])
     filtro_mes = Q(fecha_emision__gte=first_day, fecha_emision__lte=last_day)
     filtro_hoy = Q(fecha_emision=now)
+
+    # Filtrar por ambiente: en producción solo mostrar ventas del ambiente actual
+    if empresa_id:
+        try:
+            emp = Empresa.objects.get(pk=int(empresa_id))
+            filtro_tenant &= Q(ambiente_emision=emp.ambiente)
+        except (Empresa.DoesNotExist, ValueError):
+            pass
 
     base_mes = Venta.objects.filter(filtro_tenant, filtro_procesado, filtro_mes)
     base_hoy = Venta.objects.filter(filtro_tenant, filtro_procesado, filtro_hoy)
@@ -1398,6 +1471,12 @@ def listar_ventas(request):
     ventas = Venta.objects.select_related('empresa', 'cliente').filter(empresa_id__in=empresa_ids)
     if empresa_id:
         ventas = ventas.filter(empresa_id=int(empresa_id))
+        # Filtrar por ambiente: en producción solo mostrar ventas del ambiente actual
+        try:
+            emp = Empresa.objects.get(pk=int(empresa_id))
+            ventas = ventas.filter(ambiente_emision=emp.ambiente)
+        except (Empresa.DoesNotExist, ValueError):
+            pass
     elif nrc:
         ventas = ventas.filter(empresa__nrc=nrc)
     
@@ -1438,6 +1517,12 @@ def _aplicar_filtros_ventas(queryset, request):
     """Aplica los mismos filtros que listar_ventas (para reutilizar en download_batch)."""
     empresa_id = request.GET.get('empresa_id')
     nrc = request.GET.get('nrc')
+    if empresa_id:
+        try:
+            emp = Empresa.objects.get(pk=int(empresa_id))
+            queryset = queryset.filter(ambiente_emision=emp.ambiente)
+        except (Empresa.DoesNotExist, ValueError):
+            pass
     periodo = request.GET.get('periodo')
     tipo = request.GET.get('tipo')
     fecha_inicio = request.GET.get('fecha_inicio')

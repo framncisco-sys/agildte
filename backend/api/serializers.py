@@ -448,6 +448,10 @@ class VentaSerializer(serializers.ModelSerializer):
                     validated_data[campo] = valor.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                 except (ValueError, TypeError):
                     validated_data[campo] = Decimal('0.00')
+
+        # 3b. Ambiente de emisión: desde empresa para filtrar dashboard/ventas por ambiente
+        empresa = validated_data.get('empresa')
+        validated_data['ambiente_emision'] = (empresa.ambiente if empresa else '01')
         
         # 4. Crear la venta PRIMERO (esto genera el ID)
         venta = Venta.objects.create(**validated_data)
@@ -691,6 +695,10 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             else:
                 # Si no viene el campo, inicializar en 0
                 validated_data[campo] = Decimal('0.00')
+
+        # 3b. Ambiente de emisión: desde empresa para filtrar dashboard/ventas por ambiente
+        empresa = validated_data.get('empresa')
+        validated_data['ambiente_emision'] = (empresa.ambiente if empresa else '01')
         
         # 4. Crear la venta PRIMERO
         venta = Venta.objects.create(**validated_data)

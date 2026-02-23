@@ -11,7 +11,7 @@ export function MainLayout() {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
         <Navbar onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 p-4 md:p-6 bg-gray-50 overflow-auto">
+        <main className="flex-1 p-4 md:p-6 bg-agil-bg-main overflow-auto">
           <Outlet />
         </main>
       </div>

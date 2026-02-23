@@ -60,7 +60,7 @@ export const router = {
     {
       path: '/unauthorized',
       element: (
-        <div className="min-h-screen flex items-center justify-center bg-slate-100">
+        <div className="min-h-screen flex items-center justify-center bg-agil-bg-main">
           <div className="text-center p-8 bg-white rounded-xl shadow-lg max-w-md">
             <h1 className="text-xl font-semibold text-slate-800 mb-2">Sin permiso</h1>
             <p className="text-slate-600 mb-4">No tiene permisos para acceder a esta sección.</p>
