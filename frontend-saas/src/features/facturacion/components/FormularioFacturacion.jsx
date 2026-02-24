@@ -106,8 +106,9 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
     0
   )
   const esCreditoFiscal = ['03', '05', '06'].includes(tipoDocumento)
-  const iva = esCreditoFiscal ? totalGravadas * 0.13 : 0
-  const totalPagar = totalGravadas + iva
+  const esCF = tipoDocumento === '01'
+  const iva = esCreditoFiscal ? totalGravadas * 0.13 : (esCF ? Math.round((totalGravadas - totalGravadas / 1.13) * 100) / 100 : 0)
+  const totalPagar = esCF ? totalGravadas : totalGravadas + iva
 
   const onClienteSeleccionado = (cliente) => {
     setClienteIdSeleccionado(cliente?.id ?? null)
@@ -718,15 +719,29 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
         {/* Sección 4: Resumen y Totales */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="max-w-xs ml-auto space-y-2">
-            <div className="flex justify-between text-gray-600">
-              <span>Total Gravadas:</span>
-              <span>${totalGravadas.toFixed(2)}</span>
-            </div>
-            {esCreditoFiscal && (
-              <div className="flex justify-between text-gray-600">
-                <span>IVA (13%):</span>
-                <span>${iva.toFixed(2)}</span>
-              </div>
+            {esCF ? (
+              <>
+                <div className="flex justify-between text-gray-600">
+                  <span>Total (IVA incl.):</span>
+                  <span>${totalPagar.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>Desglose: Gravado ${(totalGravadas / 1.13).toFixed(2)} + IVA ${(totalGravadas - totalGravadas / 1.13).toFixed(2)}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between text-gray-600">
+                  <span>Total Gravadas:</span>
+                  <span>${totalGravadas.toFixed(2)}</span>
+                </div>
+                {esCreditoFiscal && (
+                  <div className="flex justify-between text-gray-600">
+                    <span>IVA (13%):</span>
+                    <span>${iva.toFixed(2)}</span>
+                  </div>
+                )}
+              </>
             )}
             <div className="flex justify-between text-lg font-bold text-gray-800 pt-2 border-t border-gray-200">
               <span>Total a Pagar:</span>
@@ -738,9 +753,11 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
               type="submit"
               disabled={enviando}
               className="w-full sm:w-auto px-8 py-3 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-70 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
+              aria-busy={enviando}
+              aria-label={enviando ? 'Transmitiendo a Hacienda...' : 'Emitir documento'}
             >
               {enviando && <Loader2 size={20} className="animate-spin" />}
-              {enviando ? 'Enviando...' : 'EMITIR DOCUMENTO'}
+              {enviando ? 'Transmitiendo a Hacienda...' : 'EMITIR DOCUMENTO'}
             </button>
           </div>
         </section>

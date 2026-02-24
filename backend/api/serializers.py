@@ -727,19 +727,52 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             # Asegurar numero_item
             detalle_data['numero_item'] = detalle_raw.get('numero_item', idx + 1)
             
-            # Campos decimales: convertir y redondear a 2 decimales
-            campos_decimales = [
-                'cantidad', 'precio_unitario', 'monto_descuento', 
-                'venta_no_sujeta', 'venta_exenta', 'venta_gravada', 'iva_item'
-            ]
-            
-            for campo in campos_decimales:
-                valor_raw = detalle_raw.get(campo, 0)
+            # Consumidor Final (01): el precio ingresado es TOTAL con IVA. Normalizar para no guardar total como gravado.
+            if tipo_dte == '01':
                 try:
-                    valor = Decimal(str(valor_raw))
-                    detalle_data[campo] = valor.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    cant = Decimal(str(detalle_raw.get('cantidad', 1)))
+                    prec = Decimal(str(detalle_raw.get('precio_unitario', 0)))
+                    total_linea = (cant * prec).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    vg_raw = Decimal(str(detalle_raw.get('venta_gravada', 0)))
+                    iva_raw = Decimal(str(detalle_raw.get('iva_item', 0)))
                 except (ValueError, TypeError):
-                    detalle_data[campo] = Decimal('0.00')
+                    total_linea = vg_raw = iva_raw = Decimal('0.00')
+                # Si venta_gravada parece "total con IVA" (ej. 1000) e iva ≈ total - total/1.13, normalizar
+                if total_linea > 0:
+                    iva_si_total = (vg_raw - vg_raw / Decimal('1.13')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    if abs(iva_raw - iva_si_total) <= Decimal('0.03'):
+                        total_con_iva = vg_raw
+                    else:
+                        total_con_iva = (vg_raw + iva_raw).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    monto_gravado = (total_con_iva / Decimal('1.13')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    iva_linea = (total_con_iva - monto_gravado).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    detalle_data['venta_gravada'] = monto_gravado
+                    detalle_data['iva_item'] = iva_linea
+                    detalle_data['precio_unitario'] = (monto_gravado / cant).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if cant else Decimal('0.00')
+                    detalle_data['cantidad'] = cant
+                    detalle_data['monto_descuento'] = Decimal(str(detalle_raw.get('monto_descuento', 0))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    detalle_data['venta_no_sujeta'] = Decimal(str(detalle_raw.get('venta_no_sujeta', 0))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    detalle_data['venta_exenta'] = Decimal(str(detalle_raw.get('venta_exenta', 0))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                else:
+                    for campo in ['cantidad', 'precio_unitario', 'monto_descuento', 'venta_no_sujeta', 'venta_exenta', 'venta_gravada', 'iva_item']:
+                        valor_raw = detalle_raw.get(campo, 0)
+                        try:
+                            detalle_data[campo] = Decimal(str(valor_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        except (ValueError, TypeError):
+                            detalle_data[campo] = Decimal('0.00')
+            else:
+                # Campos decimales (no CF): convertir y redondear
+                campos_decimales = [
+                    'cantidad', 'precio_unitario', 'monto_descuento',
+                    'venta_no_sujeta', 'venta_exenta', 'venta_gravada', 'iva_item'
+                ]
+                for campo in campos_decimales:
+                    valor_raw = detalle_raw.get(campo, 0)
+                    try:
+                        valor = Decimal(str(valor_raw))
+                        detalle_data[campo] = valor.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    except (ValueError, TypeError):
+                        detalle_data[campo] = Decimal('0.00')
             
             # Crear el detalle pasando explícitamente la venta
             DetalleVenta.objects.create(

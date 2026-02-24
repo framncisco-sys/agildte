@@ -278,7 +278,7 @@ export function ListaFacturas() {
                     <p className="font-medium text-gray-800">{correlativo}</p>
                     <p className="text-sm text-gray-600">{formatFecha(v)}</p>
                     <p className="text-sm text-gray-700 truncate" title={cliente}>{cliente}</p>
-                    <p className="text-sm font-semibold text-gray-900">{formatMoneda(total)}</p>
+                    <p className="text-sm text-gray-500">Total a pagar: <span className="font-semibold text-gray-900">{formatMoneda(total)}</span></p>
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${badge.color}`}>
                       {badge.icon} {badge.label}
                     </span>
@@ -317,7 +317,7 @@ export function ListaFacturas() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Fecha</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Correlativo</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Cliente</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase">Total</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase">Total a pagar</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Estado</th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase">Acciones</th>
                 </tr>

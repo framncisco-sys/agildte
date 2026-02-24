@@ -381,20 +381,29 @@ def generar_pdf_venta(venta):
 
     # ----- TABLA DE DETALLE: Descripción como Paragraph para que no se salga -----
     detalles = list(venta.detalles.all()) if hasattr(venta, 'detalles') else []
+    es_cf = getattr(venta, 'tipo_venta', None) == 'CF'
     col_widths = [1.5 * cm, 1.2 * cm, 8 * cm, 2.5 * cm, 2 * cm, 2 * cm, 2 * cm]
     headers = ['Cantidad', 'Unidad', 'Descripción', 'P. Unitario', 'No Sujetas', 'Exentas', 'Gravadas']
     rows = [headers]
     for d in detalles:
         desc = (d.producto.descripcion if d.producto else d.descripcion_libre) or 'Item'
         desc_paragraph = Paragraph(_escape_html(desc), estilo_normal)
+        # CF: mostrar valor con IVA incluido (igual que DTE para MH)
+        if es_cf and (_d(d.venta_gravada) + _d(d.iva_item)) > 0:
+            total_linea = _d(d.venta_gravada) + _d(d.iva_item)
+            p_unit = total_linea / _d(d.cantidad) if _d(d.cantidad) else total_linea
+            gravada_col = total_linea
+        else:
+            p_unit = _d(d.precio_unitario)
+            gravada_col = _d(d.venta_gravada)
         rows.append([
             f"{_d(d.cantidad):.2f}",
             'UND',
             desc_paragraph,
-            f"${_d(d.precio_unitario):.2f}",
+            f"${p_unit:.2f}",
             f"${_d(d.venta_no_sujeta):.2f}",
             f"${_d(d.venta_exenta):.2f}",
-            f"${_d(d.venta_gravada):.2f}",
+            f"${gravada_col:.2f}",
         ])
     if not detalles:
         rows.append(['-', '-', Paragraph('Sin ítems', estilo_normal), '-', '-', '-', '-'])
@@ -425,20 +434,28 @@ def generar_pdf_venta(venta):
     debito_fiscal = _d(venta.debito_fiscal)
     iva_ret_1 = _d(venta.iva_retenido_1)
     iva_ret_2 = _d(venta.iva_retenido_2)
-    suma_ventas = venta_gravada + venta_exenta + venta_no_sujeta
+    tipo_venta = (getattr(venta, 'tipo_venta', None) or '').strip().upper()
+    es_cf = tipo_venta == 'CF'
+    # CF: todo con IVA incluido (Suma de Ventas = Sub-Total = Total a pagar = 25)
+    if es_cf:
+        suma_ventas = round(venta_gravada + debito_fiscal + venta_exenta + venta_no_sujeta, 2)
+    else:
+        suma_ventas = venta_gravada + venta_exenta + venta_no_sujeta
     descuentos = 0
     subtotal = suma_ventas - descuentos
-    total_pagar = round(subtotal + debito_fiscal - iva_ret_1 - iva_ret_2, 2)
+    total_pagar = round(subtotal + (0 if es_cf else debito_fiscal) - iva_ret_1 - iva_ret_2, 2)
     valor_letras = _valor_en_letras(total_pagar)
 
     # ----- 1. TABLA DE TOTALES (Columna derecha ~35%): solo cálculos numéricos -----
+    # CF: no mostrar línea de IVA; Suma de Ventas y Sub-Total ya son el total con IVA
     datos_totales = [
         ['Suma de Ventas:', f"$ {suma_ventas:.2f}"],
         ['Descuento:', f"$ {descuentos:.2f}"],
         ['Sub-Total:', f"$ {subtotal:.2f}"],
-        ['IVA 13%:', f"$ {debito_fiscal:.2f}"],
-        ['IVA Retenido:', f"$ {iva_ret_1:.2f}"],
     ]
+    if not es_cf:
+        datos_totales.append(['IVA 13%:', f"$ {debito_fiscal:.2f}"])
+    datos_totales.append(['IVA Retenido:', f"$ {iva_ret_1:.2f}"])
     if iva_ret_2 > 0:
         datos_totales.append(['IVA Percibido:', f"$ {iva_ret_2:.2f}"])
     datos_totales.append(['TOTAL A PAGAR:', f"$ {total_pagar:.2f}"])

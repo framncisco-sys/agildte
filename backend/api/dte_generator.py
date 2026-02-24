@@ -629,34 +629,39 @@ class DTEGenerator:
                 detalle_venta_no_sujeta = float(formatear_decimal(detalle.venta_no_sujeta))
                 
                 # Distribuir el monto según el tipo
+                # Para DTE-01 (CF) el detalle ya viene con venta_gravada = monto gravado (Total/1.13) e iva_item
                 if detalle_venta_gravada > 0:
-                    # Es gravado
-                    v_gravada = round(monto_total_linea, 2)
+                    v_gravada = round(detalle_venta_gravada, 2)
                 elif detalle_venta_exenta > 0:
-                    # Es exento
                     v_exenta = round(monto_total_linea, 2)
                 elif detalle_venta_no_sujeta > 0:
-                    # Es no sujeta
                     v_nosujeta = round(monto_total_linea, 2)
                 else:
-                    # Si no hay clasificación clara, asumir gravado por defecto
                     v_gravada = round(monto_total_linea, 2)
                 
                 # Recalcular IVA según el tipo de DTE (solo si es gravado)
+                detalle_iva_item = float(formatear_decimal(detalle.iva_item or 0))
                 es_gravado = v_gravada > 0
                 if es_gravado:
                     if tipo_dte == '01':
-                        # DTE-01 (Factura): El precio incluye IVA
-                        # ventaGravada debe ser el monto total (con IVA incluido)
-                        # ivaItem es el IVA extraído del monto total
-                        iva_item_calculado = round(v_gravada - (v_gravada / 1.13), 2)
-                        # v_gravada se mantiene como monto total (no se divide por 1.13)
+                        # DTE-01 (CF): MH exige que totalGravada, subtotal y valor del producto vayan CON IVA INCLUIDO (25).
+                        # Solo totalIva va como desglose (2.88). Todo lo demás expresa los 25.
+                        iva_si_total = round(v_gravada - (v_gravada / 1.13), 2)
+                        if abs(detalle_iva_item - iva_si_total) < 0.03:
+                            total_linea_cf = v_gravada
+                        else:
+                            total_linea_cf = round(v_gravada + detalle_iva_item, 2)
+                        iva_item_cf = round(total_linea_cf - (total_linea_cf / 1.13), 2)
+                        v_gravada = round(total_linea_cf, 2)
+                        iva_item_calculado = iva_item_cf
+                        precio_unitario = round(total_linea_cf / cantidad, 2) if cantidad else total_linea_cf
                     else:
-                        # DTE-03 (Crédito Fiscal): El precio es más IVA
-                        # ventaGravada es el monto base, IVA se calcula sobre ese monto
-                        iva_item_calculado = round(v_gravada * 0.13, 2)
+                        # DTE-03: usar iva del detalle o calcular
+                        if detalle_iva_item > 0:
+                            iva_item_calculado = round(detalle_iva_item, 2)
+                        else:
+                            iva_item_calculado = round(v_gravada * 0.13, 2)
                 else:
-                    # No es gravado (exento o no sujeta)
                     iva_item_calculado = 0.00
                 
                 # DTE-01: tributos puede ser null/vacío; DTE-03: tributos ["20"] si es gravado
@@ -675,7 +680,7 @@ class DTEGenerator:
                     "descripcion": descripcion,
                     "cantidad": cantidad,
                     "uniMedida": 59,  # 59 = Unidad
-                    "precioUni": precio_unitario,
+                    "precioUni": round(precio_unitario, 2),
                     "montoDescu": monto_descuento,
                     "ventaNoSuj": round(v_nosujeta, 2),
                     "ventaExenta": round(v_exenta, 2),
@@ -685,10 +690,9 @@ class DTEGenerator:
                     "noGravado": 0.00
                 }
                 
-                # DTE-01 (V1): ivaItem obligatorio en cada item
-                # DTE-03 (V3): NO incluir ivaItem (Catálogo 2025 - IVA solo en resumen)
+                # DTE-01 (V1): ivaItem obligatorio; DTE-03 (V3): NO incluir ivaItem
                 if tipo_dte == '01':
-                    item["ivaItem"] = round(v_gravada - (v_gravada / 1.13), 2) if es_gravado else 0.00
+                    item["ivaItem"] = round(iva_item_calculado, 2) if es_gravado else 0.00
                 # DTE-03 V3: no agregar ivaItem
                 items.append(item)
         else:
@@ -709,13 +713,13 @@ class DTEGenerator:
                 else:
                     tributos_value = ["20"] if tiene_iva_gravada else []
                 
-                # DTE-01: ivaItem calculado inverso; DTE-03: ivaItem = monto_gravado * 0.13
+                # DTE-01: MH exige valor con IVA incluido; DTE-03: monto gravado + IVA
                 venta_gravada_float = float(formatear_decimal(venta_gravada))
                 if tipo_dte == '01':
-                    # DTE-01: El precio incluye IVA
-                    iva_item_fallback = round(venta_gravada_float - (venta_gravada_float / 1.13), 2)
+                    total_con_iva = round(venta_gravada_float + debito_fiscal, 2)
+                    venta_gravada_float = total_con_iva
+                    iva_item_fallback = round(debito_fiscal, 2)
                 else:
-                    # DTE-03: IVA explícito sobre el monto gravado (obligatorio en v1)
                     iva_item_fallback = round(venta_gravada_float * 0.13, 2)
                 
                 fallback_item = {
@@ -809,13 +813,13 @@ class DTEGenerator:
             else:
                 tributos_value = ["20"] if tiene_iva_default else []
             
-            # DTE-01: ivaItem calculado inverso; DTE-03: ivaItem = monto_gravado * 0.13
+            # DTE-01: MH exige valor con IVA incluido; DTE-03: monto gravado + IVA
             venta_gravada_default_float = float(venta_gravada_default)
             if tipo_dte == '01':
-                # DTE-01: El precio incluye IVA
-                iva_item_default = round(venta_gravada_default_float - (venta_gravada_default_float / 1.13), 2)
+                total_default = round(venta_gravada_default_float + float(debito_fiscal_default), 2)
+                venta_gravada_default_float = total_default
+                iva_item_default = round(float(debito_fiscal_default), 2)
             else:
-                # DTE-03: IVA explícito sobre el monto gravado (obligatorio en v1)
                 iva_item_default = round(venta_gravada_default_float * 0.13, 2)
             
             default_item = {
@@ -870,6 +874,10 @@ class DTEGenerator:
                 total_iva = round(total_gravado * 0.13, 2)
             else:
                 total_iva = float(sum(item.get("ivaItem", 0) for item in cuerpo_documento))
+            # DTE-01 (CF): MH debe recibir el valor total de la factura (gravado + IVA), no solo gravado.
+            # Si por algún motivo total_iva quedó 0, forzar desglose para que montoTotalOperacion = total ingresado.
+            if tipo_dte == '01' and total_gravado > 0 and total_iva <= 0:
+                total_iva = round(total_gravado - (total_gravado / 1.13), 2)
         else:
             # Fallback: usar valores de la base de datos
             total_gravado = float(formatear_decimal(self.venta.venta_gravada or 0))
@@ -894,10 +902,11 @@ class DTEGenerator:
         # Calcular subtotal de ventas (suma de todas las categorías)
         subtotal_ventas = round(total_gravado + total_exento + total_no_sujeto, 2)
         
-        # V1: Calcular montoTotalOperacion
+        # V1: Calcular montoTotalOperacion y totalPagar
         if tipo_dte == '01':
-            # DTE-01: IVA incluido en el subtotal
-            monto_total_operacion = round(subtotal_ventas, 2)
+            # DTE-01 (CF): totalGravada y subtotal ya llevan IVA incluido (25). totalIva es solo el desglose (2.88).
+            # No sumar total_iva al total; el valor de la factura es total_gravado.
+            monto_total_operacion = round(total_gravado, 2)
         else:
             # DTE-03: montoTotalOperacion = subTotal + totalIva (obligatorio en v1)
             sub_total = round(subtotal_ventas - total_descu, 2)

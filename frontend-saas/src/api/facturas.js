@@ -25,8 +25,19 @@ function mapearPayloadFrontendADjango(payload) {
     : null
   const tipoDocReceptor = cliente?.tipoDocCliente ?? 'NIT'
 
-  const ventaGravada = Math.round((totalGravadas ?? 0) * 100) / 100
-  const debitoFiscal = Math.round((iva ?? 0) * 100) / 100
+  // Consumidor Final (01): el precio ingresado ya incluye IVA. Desglose: Monto Gravado = Total/1.13
+  const esCF = tipoDocumento === '01'
+  const aplicaIVA = ['03', '05', '06'].includes(tipoDocumento)
+
+  let ventaGravada, debitoFiscal
+  if (esCF) {
+    const totalConIva = Math.round((totalGravadas ?? 0) * 100) / 100
+    ventaGravada = Math.round((totalConIva / 1.13) * 100) / 100
+    debitoFiscal = Math.round((totalConIva - ventaGravada) * 100) / 100
+  } else {
+    ventaGravada = Math.round((totalGravadas ?? 0) * 100) / 100
+    debitoFiscal = Math.round((iva ?? 0) * 100) / 100
+  }
 
   const docRel = payload.documentoRelacionado
   const documentoRelacionadoId = docRel?.codigoGeneracion || null
@@ -34,14 +45,20 @@ function mapearPayloadFrontendADjango(payload) {
   const detalles = (items || []).map((it, idx) => {
     const cant = Number(it.cantidad) || 0
     const precio = Number(it.precioUnitario) || 0
-    const gravada = cant * precio
-    const aplicaIVA = ['03', '05', '06'].includes(tipoDocumento)
-    const ivaItem = aplicaIVA ? Math.round(gravada * 0.13 * 100) / 100 : 0
+    const totalLinea = cant * precio
+    let gravada, ivaItem
+    if (esCF) {
+      gravada = Math.round((totalLinea / 1.13) * 100) / 100
+      ivaItem = Math.round((totalLinea - gravada) * 100) / 100
+    } else {
+      gravada = totalLinea
+      ivaItem = aplicaIVA ? Math.round(gravada * 0.13 * 100) / 100 : 0
+    }
     return {
       cantidad: cant,
       descripcion_libre: it.descripcion || null,
       codigo_libre: null,
-      precio_unitario: precio,
+      precio_unitario: esCF ? Math.round((gravada / cant) * 100) / 100 : precio,
       monto_descuento: 0,
       venta_no_sujeta: 0,
       venta_exenta: 0,

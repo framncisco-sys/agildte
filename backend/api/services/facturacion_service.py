@@ -337,7 +337,10 @@ class FacturacionService:
                 else:
                     mensaje = datos.get("descripcionMsg", "Sin mensaje")
                     observaciones = datos.get("observaciones", "Sin observaciones")
-                    logger.warning(f"⚠️ DTE RECIBIDO PERO RECHAZADO: {mensaje}")
+                    logger.warning(
+                        "⚠️ MH RECHAZÓ DTE: estado=%s | descripcionMsg=%s | observaciones=%s | body=%s",
+                        estado, mensaje, observaciones, json.dumps(datos, ensure_ascii=False)
+                    )
                     return {
                         "exito": False,
                         "estado": estado,
@@ -347,19 +350,25 @@ class FacturacionService:
                     }
             else:
                 error_msg = f"Error HTTP {resp.status_code}: {resp.text}"
-                logger.error(f"❌ Error en el envío: {error_msg}")
-                # 5xx = error transitorio del servidor MH
+                try:
+                    body_parsed = resp.json()
+                    logger.error(
+                        "❌ MH rechazó envío: status=%s | body=%s",
+                        resp.status_code, json.dumps(body_parsed, ensure_ascii=False)
+                    )
+                except Exception:
+                    logger.error("❌ MH Error envío: status=%s | body=%s", resp.status_code, resp.text[:500])
                 if resp.status_code >= 500:
                     raise EnvioMHTransitorioError(error_msg) from None
                 raise EnvioMHError(error_msg)
                 
         except requests.exceptions.RequestException as e:
             error_msg = f"Error de conexión enviando a MH: {str(e)}"
-            logger.error(f"❌ Error Conexión MH: {error_msg}")
+            logger.error("❌ Error Conexión MH: %s", error_msg, exc_info=True)
             raise EnvioMHTransitorioError(error_msg) from e
         except Exception as e:
             error_msg = f"Error inesperado enviando a MH: {str(e)}"
-            logger.error(f"❌ Error inesperado: {error_msg}")
+            logger.error("❌ Error inesperado enviando a MH: %s", error_msg, exc_info=True)
             raise EnvioMHError(error_msg) from e
     
     def procesar_factura(self, venta: Venta) -> Dict[str, Any]:

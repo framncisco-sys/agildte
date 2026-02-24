@@ -144,8 +144,9 @@ MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media')))
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- Facturación Asíncrona ---
-# Si True, las facturas se procesan en segundo plano (colade tareas). Respuesta inmediata al usuario.
-USE_ASYNC_FACTURACION = os.environ.get('USE_ASYNC_FACTURACION', 'true').lower() in ('1', 'true', 'yes')
+# Si False (default), la transmisión al Firmador y MH es síncrona: el usuario espera y ve RECIBIDO/RECHAZADO al instante.
+# Si True, se encola la tarea y se responde de inmediato (estado queda Pendiente hasta que el worker procese).
+USE_ASYNC_FACTURACION = os.environ.get('USE_ASYNC_FACTURACION', 'false').lower() in ('1', 'true', 'yes')
 
 # --- Ministerio de Hacienda (DTE / Facturación Electrónica) ---
 # PRUEBA: Si está definido, se usa esta contraseña en lugar de la BD (para validar espacios/caracteres).

@@ -52,9 +52,11 @@ export function BuscarDocumentoModal({ isOpen, onClose, onSelect }) {
   }
 
   const formatTotal = (v) => {
-    const grav = Number(v.venta_gravada ?? v.venta_gravada ?? 0)
-    const iva = v.tipo_venta === 'CCF' ? grav * 0.13 : 0
-    return (grav + iva).toFixed(2)
+    const grav = Number(v.venta_gravada ?? 0)
+    const exenta = Number(v.venta_exenta ?? 0)
+    const noSuj = Number(v.venta_no_sujeta ?? 0)
+    const iva = Number(v.debito_fiscal ?? 0)
+    return (grav + exenta + noSuj + iva).toFixed(2)
   }
 
   if (!isOpen) return null
