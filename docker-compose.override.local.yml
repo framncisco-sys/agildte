@@ -1,16 +1,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Override para desarrollo LOCAL con docker-compose.prod.yml
-# Uso: docker compose -f docker-compose.prod.yml -f docker-compose.override.local.yml up
-#
-# - nginx: HTTP solo (sin SSL)
-# - backend: expone puerto 8000 para acceso directo
+# override para desarrollo LOCAL: nginx sin SSL (sin certificados Let's Encrypt).
+# Uso: docker compose -f docker-compose.prod.yml -f docker-compose.override.local.yml up -d
 # ─────────────────────────────────────────────────────────────────────────────
-
 services:
   nginx:
     volumes:
       - ./nginx/nginx-local.conf:/etc/nginx/nginx.conf:ro
-
-  backend:
-    ports:
-      - "8000:8000"
+      - static_volume:/static:ro
+      - media_volume:/media:ro
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot:ro

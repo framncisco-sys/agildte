@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { z } from 'zod'
@@ -68,7 +68,7 @@ const defaultValues = {
   items: [{ cantidad: 1, descripcion: '', precioUnitario: 0 }],
 }
 
-export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
+export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSeleccionada }) {
   const navigate = useNavigate()
   const empresaId = useEmpresaStore((s) => s.empresaId)
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -132,6 +132,26 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo }) {
     setValue('municipio', cliente.municipio ?? '20')
     setValue('direccion', cliente.direccion ?? '')
   }
+
+  // Prefill desde una plantilla rápida (cliente + ítems)
+  useEffect(() => {
+    if (!plantillaSeleccionada) return
+
+    const cliente = plantillaSeleccionada.cliente
+    if (cliente && typeof cliente === 'object') {
+      onClienteSeleccionado(cliente)
+    }
+
+    const plantillaItems = plantillaSeleccionada.items || []
+    if (plantillaItems.length > 0) {
+      const itemsForm = plantillaItems.map((d) => ({
+        cantidad: Number(d.cantidad) || 0,
+        descripcion: d.descripcion_libre || d.producto?.descripcion || '',
+        precioUnitario: Number(d.precio_unitario) || 0,
+      }))
+      replace(itemsForm)
+    }
+  }, [plantillaSeleccionada])
 
   /**
    * Al seleccionar un documento en el modal: vincula relación MH, carga cliente e ítems.

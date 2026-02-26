@@ -40,6 +40,11 @@ urlpatterns = [
     path('productos/', views.listar_productos),
     path('productos/crear/', views.crear_producto),
     path('productos/<int:pk>/', views.producto_detalle),
+
+    # PLANTILLAS DE FACTURACIÓN RÁPIDA
+    path('plantillas-factura/', views.listar_plantillas_factura),
+    path('plantillas-factura/crear/', views.crear_plantilla_factura),
+    path('plantillas-factura/<int:pk>/', views.plantilla_factura_detalle),
     
     # RETENCIONES
     path('retenciones/crear/', views.crear_retencion),

@@ -18,8 +18,8 @@ from rest_framework.permissions import IsAuthenticated as DRFIsAuthenticated
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.views.decorators.csrf import csrf_exempt
-from .models import Cliente, Compra, Venta, Retencion, Empresa, Liquidacion, RetencionRecibida, Producto, DetalleVenta, PerfilUsuario, ActividadEconomica, Correlativo
-from .serializers import ClienteSerializer, CompraSerializer, VentaSerializer, RetencionSerializer, EmpresaSerializer, LiquidacionSerializer, RetencionRecibidaSerializer, ProductoSerializer, VentaConDetallesSerializer, ActividadEconomicaSerializer
+from .models import Cliente, Compra, Venta, Retencion, Empresa, Liquidacion, RetencionRecibida, Producto, DetalleVenta, PerfilUsuario, ActividadEconomica, Correlativo, PlantillaFactura
+from .serializers import ClienteSerializer, CompraSerializer, VentaSerializer, RetencionSerializer, EmpresaSerializer, LiquidacionSerializer, RetencionRecibidaSerializer, ProductoSerializer, VentaConDetallesSerializer, ActividadEconomicaSerializer, PlantillaFacturaSerializer
 from .dte_generator import DTEGenerator
 from .utils.pdf_generator import generar_pdf_venta
 from .utils.tenant import get_empresa_ids_allowlist, require_empresa_allowed, require_object_empresa_allowed, get_and_validate_empresa
@@ -1388,6 +1388,111 @@ def listar_productos(request):
     productos = productos.order_by('descripcion')
     serializer = ProductoSerializer(productos, many=True)
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+def listar_plantillas_factura(request):
+    """
+    Lista plantillas de facturación rápida por empresa.
+    GET: empresa_id (opcional; si el usuario solo tiene una empresa se usa esa),
+    search (búsqueda por nombre).
+    """
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return Response({"error": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    empresa_id = request.query_params.get('empresa_id')
+    if empresa_id:
+        r = require_empresa_allowed(request, int(empresa_id))
+        if r is not None:
+            return r
+        qs = PlantillaFactura.objects.filter(empresa_id=empresa_id)
+    else:
+        qs = PlantillaFactura.objects.filter(empresa_id__in=empresa_ids)
+        if len(empresa_ids) == 1:
+            qs = qs.filter(empresa_id=empresa_ids[0])
+
+    qs = qs.filter(activo=True)
+    search = (request.query_params.get('search') or '').strip()
+    if search:
+        qs = qs.filter(nombre__icontains=search)
+
+    qs = qs.select_related('empresa', 'cliente').prefetch_related('items__producto').order_by('nombre')
+    serializer = PlantillaFacturaSerializer(qs, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+def crear_plantilla_factura(request):
+    """
+    Crea una plantilla de facturación rápida para una empresa.
+    Requiere empresa_id en el body.
+    """
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return Response({"detail": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    raw_empresa = request.data.get('empresa_id') or request.data.get('empresa')
+    if raw_empresa is None or raw_empresa == '':
+        return Response({"detail": "empresa_id es requerido"}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        empresa_id = int(raw_empresa)
+    except (TypeError, ValueError):
+        return Response({"detail": "empresa_id debe ser un número"}, status=status.HTTP_400_BAD_REQUEST)
+
+    r = require_empresa_allowed(request, empresa_id)
+    if r is not None:
+        return r
+
+    data = dict(request.data)
+    data['empresa'] = empresa_id
+    data['empresa_id'] = empresa_id
+
+    serializer = PlantillaFacturaSerializer(data=data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    plantilla = serializer.save()
+    out = PlantillaFacturaSerializer(plantilla).data
+    return Response(out, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+def plantilla_factura_detalle(request, pk):
+    """
+    CRUD de una plantilla de factura.
+    DELETE realiza un soft-delete (activo=False).
+    """
+    try:
+        plantilla = PlantillaFactura.objects.select_related('empresa', 'cliente').prefetch_related('items__producto').get(pk=pk)
+    except PlantillaFactura.DoesNotExist:
+        return Response({"detail": "Plantilla no encontrada"}, status=status.HTTP_404_NOT_FOUND)
+
+    r = require_object_empresa_allowed(request, plantilla)
+    if r is not None:
+        return r
+
+    if request.method == 'GET':
+        serializer = PlantillaFacturaSerializer(plantilla)
+        return Response(serializer.data)
+
+    if request.method == 'DELETE':
+        plantilla.activo = False
+        plantilla.save(update_fields=['activo'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    if request.method in ('PUT', 'PATCH'):
+        data = dict(request.data)
+        data['empresa'] = plantilla.empresa_id
+        data['empresa_id'] = plantilla.empresa_id
+        serializer = PlantillaFacturaSerializer(plantilla, data=data, partial=(request.method == 'PATCH'))
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        plantilla = serializer.save()
+        out = PlantillaFacturaSerializer(plantilla).data
+        return Response(out)
+
+    return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 @api_view(['POST'])

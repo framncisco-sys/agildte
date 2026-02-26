@@ -2,7 +2,20 @@ from rest_framework import serializers
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
 from django.db.models import Q
-from .models import Cliente, Compra, Venta, Retencion, Empresa, Liquidacion, RetencionRecibida, Producto, DetalleVenta, ActividadEconomica
+from .models import (
+    Cliente,
+    Compra,
+    Venta,
+    Retencion,
+    Empresa,
+    Liquidacion,
+    RetencionRecibida,
+    Producto,
+    DetalleVenta,
+    ActividadEconomica,
+    PlantillaFactura,
+    PlantillaItem,
+)
 
 
 class ActividadEconomicaSerializer(serializers.ModelSerializer):
@@ -271,6 +284,122 @@ class DetalleVentaSerializer(serializers.ModelSerializer):
                     pass  # Si no se puede convertir, dejar que la validación normal lo maneje
         
         return super().to_internal_value(data)
+
+
+class PlantillaItemSerializer(serializers.ModelSerializer):
+    producto = ProductoSerializer(read_only=True)
+    producto_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = PlantillaItem
+        fields = '__all__'
+        extra_kwargs = {
+            'plantilla': {'read_only': True},
+        }
+
+
+class PlantillaFacturaSerializer(serializers.ModelSerializer):
+    """
+    Serializer para CRUD de plantillas de facturación rápida,
+    incluyendo sus ítems anidados.
+    """
+    items = PlantillaItemSerializer(many=True, required=False)
+    cliente = ClienteSerializer(read_only=True)
+    cliente_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = PlantillaFactura
+        fields = '__all__'
+
+    @transaction.atomic
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        cliente_id = validated_data.pop('cliente_id', None)
+
+        if cliente_id:
+            try:
+                cliente = Cliente.objects.get(pk=cliente_id)
+            except Cliente.DoesNotExist:
+                raise serializers.ValidationError({'cliente_id': 'Cliente no encontrado.'})
+            validated_data['cliente'] = cliente
+
+        plantilla = PlantillaFactura.objects.create(**validated_data)
+
+        for idx, item_raw in enumerate(items_data):
+            producto_id = item_raw.pop('producto_id', None)
+            producto = None
+            if producto_id:
+                try:
+                    producto = Producto.objects.get(pk=producto_id)
+                except Producto.DoesNotExist:
+                    producto = None
+
+            # Normalizar decimales básicos
+            campos_decimales = ['cantidad', 'precio_unitario']
+            for campo in campos_decimales:
+                if campo in item_raw and item_raw[campo] is not None:
+                    try:
+                        valor = Decimal(str(item_raw[campo]))
+                        item_raw[campo] = valor.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    except (ValueError, TypeError):
+                        item_raw[campo] = Decimal('0.00')
+
+            PlantillaItem.objects.create(
+                plantilla=plantilla,
+                producto=producto,
+                numero_item=item_raw.get('numero_item', idx + 1),
+                **item_raw,
+            )
+
+        return plantilla
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+        cliente_id = validated_data.pop('cliente_id', None)
+
+        if cliente_id is not None:
+            if cliente_id:
+                try:
+                    instance.cliente = Cliente.objects.get(pk=cliente_id)
+                except Cliente.DoesNotExist:
+                    raise serializers.ValidationError({'cliente_id': 'Cliente no encontrado.'})
+            else:
+                instance.cliente = None
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Si se envían items, reemplazar completamente el detalle de la plantilla
+        if items_data is not None:
+            instance.items.all().delete()
+            for idx, item_raw in enumerate(items_data):
+                producto_id = item_raw.pop('producto_id', None)
+                producto = None
+                if producto_id:
+                    try:
+                        producto = Producto.objects.get(pk=producto_id)
+                    except Producto.DoesNotExist:
+                        producto = None
+
+                campos_decimales = ['cantidad', 'precio_unitario']
+                for campo in campos_decimales:
+                    if campo in item_raw and item_raw[campo] is not None:
+                        try:
+                            valor = Decimal(str(item_raw[campo]))
+                            item_raw[campo] = valor.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        except (ValueError, TypeError):
+                            item_raw[campo] = Decimal('0.00')
+
+                PlantillaItem.objects.create(
+                    plantilla=instance,
+                    producto=producto,
+                    numero_item=item_raw.get('numero_item', idx + 1),
+                    **item_raw,
+                )
+
+        return instance
 
 class VentaSerializer(serializers.ModelSerializer):
     # Campo explícito para aceptar NRC del cliente desde el frontend

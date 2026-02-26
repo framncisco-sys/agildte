@@ -570,6 +570,82 @@ class DetalleVenta(models.Model):
         desc = self.producto.descripcion if self.producto else self.descripcion_libre
         return f"{self.venta.id} - {desc} x{self.cantidad}"
 
+
+# --- TABLA 3.3: PLANTILLAS DE FACTURACIÓN RÁPIDA ---
+class PlantillaFactura(models.Model):
+    """
+    Modelo para guardar plantillas reutilizables de facturas
+    (\"Facturación Rápida\").
+    """
+    TIPO_DTE_CHOICES = [
+        ('01', 'Factura Consumidor Final'),
+        ('03', 'Crédito Fiscal'),
+    ]
+
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name='plantillas_factura',
+        help_text='Empresa dueña de la plantilla',
+    )
+    cliente = models.ForeignKey(
+        Cliente,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='plantillas_factura',
+        help_text='Cliente asignado por defecto a la plantilla',
+    )
+    nombre = models.CharField(max_length=200, help_text='Nombre visible de la plantilla (ej. Alquiler Mensual)')
+    tipo_dte = models.CharField(
+        max_length=2,
+        choices=TIPO_DTE_CHOICES,
+        default='01',
+        help_text="Tipo de DTE que se generará al usar la plantilla (01=CF, 03=CCF)",
+    )
+    activo = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Plantilla de Factura'
+        verbose_name_plural = 'Plantillas de Factura'
+        ordering = ['empresa', 'nombre']
+
+    def __str__(self):
+        return f"{self.empresa.nombre} - {self.nombre}"
+
+
+class PlantillaItem(models.Model):
+    """
+    Ítems que forman parte de una PlantillaFactura.
+    Se parecen mucho a DetalleVenta pero sin vincular a una Venta concreta.
+    """
+    plantilla = models.ForeignKey(
+        PlantillaFactura,
+        on_delete=models.CASCADE,
+        related_name='items',
+    )
+    producto = models.ForeignKey(
+        Producto,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text='Producto asociado (opcional). Si no se indica, se usa descripcion_libre.',
+    )
+    descripcion_libre = models.CharField(max_length=200, blank=True, null=True)
+    codigo_libre = models.CharField(max_length=50, blank=True, null=True)
+    cantidad = models.DecimalField(max_digits=10, decimal_places=2, default=1.00)
+    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    numero_item = models.IntegerField(default=1)
+
+    class Meta:
+        ordering = ['plantilla', 'numero_item', 'id']
+
+    def __str__(self):
+        desc = self.producto.descripcion if self.producto else self.descripcion_libre
+        return f"{self.plantilla.nombre} - {desc} x{self.cantidad}"
+
 # --- TABLA 4: RETENCIONES RECIBIDAS (Saldo a Favor) - MODELO LEGACY ---
 class Retencion(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="retenciones")

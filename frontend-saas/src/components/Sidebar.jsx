@@ -1,6 +1,9 @@
-import { NavLink } from 'react-router-dom'
-import { X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { ChevronDown, ChevronRight, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useEmpresaStore } from '../stores/useEmpresaStore'
+import { listarPlantillas } from '../api/plantillas'
 
 const allNavItems = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -14,11 +17,43 @@ const allNavItems = [
 
 export function Sidebar({ open = false, onClose }) {
   const { user, role } = useAuth()
+  const navigate = useNavigate()
+  const empresaId = useEmpresaStore((s) => s.empresaId)
+  const [plantillas, setPlantillas] = useState([])
+  const [loadingPlantillas, setLoadingPlantillas] = useState(false)
+  const [showFacturacionRapida, setShowFacturacionRapida] = useState(true)
 
   const navItems = allNavItems.filter((item) => {
     if (!item.roles) return true
     return role && item.roles.includes(role)
   })
+
+  useEffect(() => {
+    let cancelado = false
+    const cargar = async () => {
+      if (!empresaId) {
+        setPlantillas([])
+        return
+      }
+      setLoadingPlantillas(true)
+      try {
+        const data = await listarPlantillas({ empresa_id: empresaId })
+        if (!cancelado) {
+          setPlantillas(Array.isArray(data) ? data : [])
+        }
+      } catch (e) {
+        if (!cancelado) {
+          setPlantillas([])
+        }
+      } finally {
+        if (!cancelado) setLoadingPlantillas(false)
+      }
+    }
+    cargar()
+    return () => {
+      cancelado = true
+    }
+  }, [empresaId])
 
   const navLinkClass = ({ isActive }) =>
     `block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -38,12 +73,58 @@ export function Sidebar({ open = false, onClose }) {
             <p className="text-sm text-white/70 truncate">{user.email}</p>
           )}
         </div>
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {navItems.map(({ to, label }) => (
             <NavLink key={to} to={to} className={navLinkClass} end={to === '/dashboard'}>
               {label}
             </NavLink>
           ))}
+
+          {/* Sección Facturación Rápida (desktop) */}
+          <div className="mt-4 pt-3 border-t border-white/15">
+            <button
+              type="button"
+              onClick={() => setShowFacturacionRapida((v) => !v)}
+              className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-white/80 hover:text-white"
+            >
+              <span>Facturación Rápida</span>
+              {showFacturacionRapida ? (
+                <ChevronDown className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              )}
+            </button>
+            {showFacturacionRapida && (
+              <div className="mt-1 space-y-1">
+                {loadingPlantillas && (
+                  <p className="text-[11px] text-white/60 px-2">Cargando plantillas...</p>
+                )}
+                {!loadingPlantillas && plantillas.length === 0 && (
+                  <p className="text-[11px] text-white/60 px-2">
+                    Sin plantillas. Crea tu primera.
+                  </p>
+                )}
+                {plantillas.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => navigate(`/facturacion/nueva?plantillaId=${p.id}`)}
+                    className="w-full text-left px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-xs text-white/90 truncate"
+                    title={p.nombre}
+                  >
+                    {p.nombre}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => navigate('/facturacion/plantillas/nueva')}
+                  className="w-full mt-1 text-left px-3 py-1.5 rounded-lg bg-emerald-500/90 hover:bg-emerald-400 text-xs font-semibold text-white"
+                >
+                  + Crear Plantilla Rápida
+                </button>
+              </div>
+            )}
+          </div>
         </nav>
       </aside>
 
@@ -80,6 +161,58 @@ export function Sidebar({ open = false, onClose }) {
               {label}
             </NavLink>
           ))}
+
+          {/* Sección Facturación Rápida (móvil) */}
+          <div className="mt-4 pt-3 border-t border-white/15">
+            <button
+              type="button"
+              onClick={() => setShowFacturacionRapida((v) => !v)}
+              className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-white/80 hover:text-white"
+            >
+              <span>Facturación Rápida</span>
+              {showFacturacionRapida ? (
+                <ChevronDown className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              )}
+            </button>
+            {showFacturacionRapida && (
+              <div className="mt-1 space-y-1">
+                {loadingPlantillas && (
+                  <p className="text-[11px] text-white/60 px-2">Cargando plantillas...</p>
+                )}
+                {!loadingPlantillas && plantillas.length === 0 && (
+                  <p className="text-[11px] text-white/60 px-2">
+                    Sin plantillas. Crea tu primera.
+                  </p>
+                )}
+                {plantillas.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      navigate(`/facturacion/nueva?plantillaId=${p.id}`)
+                      onClose?.()
+                    }}
+                    className="w-full text-left px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-xs text-white/90 truncate"
+                    title={p.nombre}
+                  >
+                    {p.nombre}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/facturacion/plantillas/nueva')
+                    onClose?.()
+                  }}
+                  className="w-full mt-1 text-left px-3 py-1.5 rounded-lg bg-emerald-500/90 hover:bg-emerald-400 text-xs font-semibold text-white"
+                >
+                  + Crear Plantilla Rápida
+                </button>
+              </div>
+            )}
+          </div>
         </nav>
       </aside>
     </>
