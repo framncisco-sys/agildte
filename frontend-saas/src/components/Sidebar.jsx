@@ -13,7 +13,7 @@ const allNavItems = [
   { to: '/facturacion/carga-masiva', label: 'Carga Masiva' },
   { to: '/contabilidad/libros-iva', label: 'Libros de IVA', roles: ['ADMIN', 'CONTADOR'] },
   { to: '/configuracion', label: 'Configuración', roles: ['ADMIN'] },
-  { to: '/items', label: 'Administración de ��tems' },
+  { to: '/items', label: 'Administración de Ítems' },
 ]
 
 export function Sidebar({ open = false, onClose }) {
