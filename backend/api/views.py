@@ -66,7 +66,15 @@ def login_api(request):
 
     user = None
     if username:
-        user = authenticate(request, username=username, password=password)
+        # Buscar usuario ignorando mayúsculas/minúsculas (ej: "Framncisco" == "framncisco")
+        try:
+            u = User.objects.get(username__iexact=username)
+            user = authenticate(request, username=u.username, password=password)
+        except User.DoesNotExist:
+            pass
+        except User.MultipleObjectsReturned:
+            # Si hay duplicados (raro), intentar exacto
+            user = authenticate(request, username=username, password=password)
     if not user and email:
         try:
             u = User.objects.get(email__iexact=email)
@@ -74,7 +82,12 @@ def login_api(request):
         except User.DoesNotExist:
             pass
     if not user and login_input and '@' not in login_input:
-        user = authenticate(request, username=login_input, password=password)
+        # Fallback: buscar por username case-insensitive si no se encontró antes
+        try:
+            u = User.objects.get(username__iexact=login_input)
+            user = authenticate(request, username=u.username, password=password)
+        except (User.DoesNotExist, User.MultipleObjectsReturned):
+            pass
 
     if not user or not user.is_active:
         return Response({'detail': 'Credenciales inválidas'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -383,7 +396,7 @@ class VentaViewSet(viewsets.ModelViewSet):
                     "datos_completos": resultado
                 }, status=status.HTTP_200_OK)
             else:
-                return Response({
+                resp = {
                     "error": "La factura fue rechazada por el Ministerio de Hacienda",
                     "mensaje": resultado.get('mensaje', 'Sin mensaje'),
                     "observaciones": resultado.get('observaciones', 'Sin observaciones'),
@@ -391,7 +404,12 @@ class VentaViewSet(viewsets.ModelViewSet):
                     "venta_id": resultado['venta_id'],
                     "codigo_generacion": resultado.get('codigo_generacion'),
                     "numero_control": resultado.get('numero_control')
-                }, status=status.HTTP_400_BAD_REQUEST)
+                }
+                if resultado.get('dte_json_preview') is not None:
+                    resp["dte_json_preview"] = resultado['dte_json_preview']
+                if resultado.get('receptor_preview') is not None:
+                    resp["receptor_preview"] = resultado['receptor_preview']
+                return Response(resp, status=status.HTTP_400_BAD_REQUEST)
         except AutenticacionMHError as e:
             logger.error(f"Error de autenticación MH para venta {venta.id}: {str(e)}")
             return Response({
@@ -413,22 +431,18 @@ class VentaViewSet(viewsets.ModelViewSet):
             venta.estado_dte = 'ErrorEnvio'
             venta.error_envio_mensaje = str(e)[:500] if str(e) else None
             venta.save(update_fields=['estado_dte', 'error_envio_mensaje'])
-            return Response({
-                "exito": False,
-                "error": "Error al enviar el DTE al Ministerio de Hacienda",
-                "mensaje": str(e),
-                "reintentar": True,
-                "venta_id": venta.id,
-                "estado_dte": "ErrorEnvio"
-            }, status=status.HTTP_200_OK)
+            r = {"exito": False, "error": "Error al enviar el DTE al Ministerio de Hacienda", "mensaje": str(e),
+                 "reintentar": True, "venta_id": venta.id, "estado_dte": "ErrorEnvio"}
+            return Response(r, status=status.HTTP_200_OK)
         except FacturacionServiceError as e:
             logger.error(f"Error en servicio de facturación para venta {venta.id}: {str(e)}")
-            return Response({
-                "error": "Error en el proceso de facturación",
-                "mensaje": str(e),
-                "tipo_error": "FacturacionServiceError",
-                "venta_id": venta.id
-            }, status=status.HTTP_400_BAD_REQUEST)
+            r = {"error": "Error en el proceso de facturación", "mensaje": str(e),
+                 "tipo_error": "FacturacionServiceError", "venta_id": venta.id}
+            if getattr(e, 'json_dte', None) is not None:
+                r["dte_json_preview"] = e.json_dte
+            if getattr(e, 'receptor_preview', None) is not None:
+                r["receptor_preview"] = e.receptor_preview
+            return Response(r, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error(f"Error inesperado al emitir factura {venta.id}: {str(e)}", exc_info=True)
             return Response({
@@ -1343,6 +1357,8 @@ def crear_venta_con_detalles(request):
 
     # Procesamiento síncrono (legacy)
     mensaje = None
+    dte_preview = None
+    receptor_preview = None
     try:
         servicio = FacturacionService(venta.empresa)
         resultado = servicio.procesar_factura(venta)
@@ -1350,10 +1366,14 @@ def crear_venta_con_detalles(request):
         if resultado.get('exito'):
             mensaje = 'Factura enviada a Hacienda correctamente.'
         else:
-            mensaje = resultado.get('mensaje') or resultado.get('observaciones') or 'Rechazado por Hacienda'
+            mensaje = resultado.get('mensaje') or str(resultado.get('observaciones', [])) or 'Rechazado por Hacienda'
+            dte_preview = resultado.get('dte_json_preview')
+            receptor_preview = resultado.get('receptor_preview')
     except FacturacionServiceError as e:
         venta.refresh_from_db()
         mensaje = str(e)
+        dte_preview = getattr(e, 'json_dte', None)
+        receptor_preview = getattr(e, 'receptor_preview', None)
     except Exception as e:
         venta.refresh_from_db()
         mensaje = f'Error al procesar: {str(e)}'
@@ -1361,6 +1381,10 @@ def crear_venta_con_detalles(request):
     data = VentaSerializer(venta).data
     data['mensaje'] = mensaje
     data['procesamiento'] = 'sincrono'
+    if dte_preview is not None:
+        data['dte_json_preview'] = dte_preview
+    if receptor_preview is not None:
+        data['receptor_preview'] = receptor_preview
     return Response(data, status=201)
 
 @api_view(['GET'])
@@ -1552,10 +1576,13 @@ def producto_detalle(request, pk):
 
 @api_view(['GET'])
 def listar_ventas(request):
-    """Lista ventas con filtros opcionales.
-    Parámetros GET: empresa_id, nrc, periodo, tipo, fecha_inicio, fecha_fin, search, tipo_dte
+    """Lista ventas con filtros opcionales y paginación server-side.
+    Parámetros GET: empresa_id, nrc, periodo, tipo, fecha_inicio, fecha_fin, search, tipo_dte,
+                    page (default 1), page_size (default 20, max 20)
+    Respuesta paginada: { count, total_pages, page, page_size, has_next, has_previous, results }
     Multi-tenant: solo se listan ventas de empresas permitidas para el usuario.
     """
+    import math
     from django.db.models import Q
     empresa_ids = get_empresa_ids_allowlist(request)
     if not empresa_ids:
@@ -1572,7 +1599,7 @@ def listar_ventas(request):
     fecha_fin = request.query_params.get('fecha_fin')
     search = request.query_params.get('search', '').strip()
     tipo_dte = request.query_params.get('tipo_dte')
-    
+
     ventas = Venta.objects.select_related('empresa', 'cliente').filter(empresa_id__in=empresa_ids)
     if empresa_id:
         ventas = ventas.filter(empresa_id=int(empresa_id))
@@ -1584,23 +1611,23 @@ def listar_ventas(request):
             pass
     elif nrc:
         ventas = ventas.filter(empresa__nrc=nrc)
-    
+
     if periodo:
         ventas = ventas.filter(periodo_aplicado=periodo)
-    
+
     if tipo:
         ventas = ventas.filter(tipo_venta=tipo)
-    
+
     if fecha_inicio:
         ventas = ventas.filter(fecha_emision__gte=fecha_inicio)
     if fecha_fin:
         ventas = ventas.filter(fecha_emision__lte=fecha_fin)
-    
+
     if tipo_dte == '01':
         ventas = ventas.filter(tipo_venta='CF')
     elif tipo_dte == '03':
         ventas = ventas.filter(tipo_venta='CCF')
-    
+
     if search:
         ventas = ventas.filter(
             Q(numero_control__icontains=search) |
@@ -1608,14 +1635,40 @@ def listar_ventas(request):
             Q(cliente__nombre__icontains=search) |
             Q(nombre_receptor__icontains=search)
         )
-    
+
     solo_procesadas = request.query_params.get('solo_procesadas')
     if solo_procesadas:
         ventas = ventas.filter(sello_recepcion__isnull=False).exclude(sello_recepcion='')
-    
+
     ventas = ventas.order_by('-fecha_emision', '-id')
-    serializer = VentaSerializer(ventas, many=True, context={'request': request})
-    return Response(serializer.data)
+
+    # Paginación server-side
+    PAGE_SIZE_MAX = 20
+    try:
+        page = max(1, int(request.query_params.get('page', 1)))
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        page_size = min(PAGE_SIZE_MAX, max(1, int(request.query_params.get('page_size', PAGE_SIZE_MAX))))
+    except (ValueError, TypeError):
+        page_size = PAGE_SIZE_MAX
+
+    total_count = ventas.count()
+    total_pages = max(1, math.ceil(total_count / page_size))
+    page = min(page, total_pages)
+    offset = (page - 1) * page_size
+    ventas_page = ventas[offset: offset + page_size]
+
+    serializer = VentaSerializer(ventas_page, many=True, context={'request': request})
+    return Response({
+        'count': total_count,
+        'total_pages': total_pages,
+        'page': page,
+        'page_size': page_size,
+        'has_next': page < total_pages,
+        'has_previous': page > 1,
+        'results': serializer.data,
+    })
 
 
 def _aplicar_filtros_ventas(queryset, request):
@@ -1779,46 +1832,55 @@ def generar_pdf_venta_endpoint(request, pk):
 @api_view(['GET'])
 def generar_dte_venta(request, pk):
     """
-    Genera el archivo JSON DTE a partir de una venta.
+    Descarga el JSON DTE completo.
+    - Si la venta fue aceptada por MH (tiene dte_firmado y sello_recepcion):
+      devuelve el JSON con firmaElectronica y selloRecibido tal como lo aceptó MH.
+    - Si aún no fue aceptada: devuelve el JSON sin firmar (para diagnóstico).
     Endpoint: GET /api/ventas/{id}/generar-dte/
     """
     try:
         venta = Venta.objects.get(pk=pk)
     except Venta.DoesNotExist:
         return Response({"error": "Venta no encontrada"}, status=404)
-    
-    # Verificar que la venta tenga empresa asociada
+
     if not venta.empresa:
         return Response({"error": "La venta debe tener una empresa asociada para generar el DTE"}, status=400)
-    
+
     try:
-        # Crear generador de DTE
-        generator = DTEGenerator(venta)
-        
-        # Obtener ambiente desde query params (default: pruebas)
-        ambiente = request.query_params.get('ambiente', '01')  # '00' = Producción, '01' = Pruebas
-        
-        # Generar el JSON
-        dte_json = generator.generar_json(ambiente=ambiente)
-        
-        # Guardar código y número de control en la venta si se generaron
-        if generator.venta.codigo_generacion and not venta.codigo_generacion:
-            venta.codigo_generacion = generator.venta.codigo_generacion
-        if generator.venta.numero_control and not venta.numero_control:
-            venta.numero_control = generator.venta.numero_control
-        venta.save()
-        
+        from .utils.builders import generar_dte
+        ambiente_empresa = (venta.empresa.ambiente or '01').strip()
+        DTE_AMBIENTE = {'01': '00', '00': '01'}
+        ambiente_dte = request.query_params.get('ambiente') or DTE_AMBIENTE.get(ambiente_empresa, '00')
+        json_dte = generar_dte(venta, ambiente=ambiente_dte)
+
+        # Si la venta fue aceptada por MH, agregar firmaElectronica y selloRecibido
+        if venta.dte_firmado and venta.sello_recepcion:
+            json_dte['firmaElectronica'] = venta.dte_firmado
+            json_dte['selloRecibido'] = venta.sello_recepcion
+            mensaje = "JSON DTE aceptado por MH (con firma y sello)"
+        else:
+            mensaje = "JSON DTE sin firmar (venta aún no procesada por MH)"
+
+        receptor = json_dte.get('receptor', {})
         return Response({
             "venta_id": venta.id,
-            "numero_control": venta.numero_control,
-            "codigo_generacion": venta.codigo_generacion,
-            "dte_json": dte_json,
-            "mensaje": "DTE generado correctamente"
+            "numero_control": venta.numero_control or json_dte.get('identificacion', {}).get('numeroControl'),
+            "codigo_generacion": venta.codigo_generacion or json_dte.get('identificacion', {}).get('codigoGeneracion'),
+            "dte_json": json_dte,
+            "receptor_preview": {
+                "nit": receptor.get('nit'),
+                "nrc": receptor.get('nrc'),
+                "nombre": receptor.get('nombre'),
+                "tipoDocumento": receptor.get('tipoDocumento'),
+                "numDocumento": receptor.get('numDocumento'),
+            },
+            "mensaje": mensaje,
         }, status=200)
-        
     except Exception as e:
+        import traceback
         return Response({
-            "error": f"Error al generar DTE: {str(e)}"
+            "error": str(e),
+            "traceback": traceback.format_exc()
         }, status=500)
 @api_view(['DELETE'])
 def borrar_venta(request, pk):

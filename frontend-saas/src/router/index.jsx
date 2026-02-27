@@ -8,6 +8,7 @@ import { PlaceholderPage } from '../components/PlaceholderPage'
 import { NuevaFactura } from '../features/facturacion/pages/NuevaFactura'
 import { ListaFacturas } from '../features/facturacion/pages/ListaFacturas'
 import { PlantillasRapidasPage } from '../features/facturacion/pages/PlantillasRapidas'
+import { CargaMasiva } from '../features/facturacion/pages/CargaMasiva'
 import Clientes from '../features/clientes/pages/Clientes'
 import LibrosIva from '../features/contabilidad/pages/LibrosIva'
 import ConfiguracionPage from '../features/configuracion/pages/ConfiguracionPage'
@@ -29,6 +30,7 @@ export const router = {
         { path: 'facturacion/nueva', element: <NuevaFactura /> },
         { path: 'facturacion/lista', element: <ListaFacturas /> },
         { path: 'facturacion/plantillas/nueva', element: <PlantillasRapidasPage /> },
+        { path: 'facturacion/carga-masiva', element: <CargaMasiva /> },
         { path: 'clientes', element: <Clientes /> },
         { path: 'contabilidad', element: <PlaceholderPage title="Contabilidad" /> },
         {

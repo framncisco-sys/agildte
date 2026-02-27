@@ -344,10 +344,11 @@ class PlantillaFacturaSerializer(serializers.ModelSerializer):
                     except (ValueError, TypeError):
                         item_raw[campo] = Decimal('0.00')
 
+            numero_item = item_raw.pop('numero_item', idx + 1)
             PlantillaItem.objects.create(
                 plantilla=plantilla,
                 producto=producto,
-                numero_item=item_raw.get('numero_item', idx + 1),
+                numero_item=numero_item,
                 **item_raw,
             )
 
@@ -392,10 +393,11 @@ class PlantillaFacturaSerializer(serializers.ModelSerializer):
                         except (ValueError, TypeError):
                             item_raw[campo] = Decimal('0.00')
 
+                numero_item = item_raw.pop('numero_item', idx + 1)
                 PlantillaItem.objects.create(
                     plantilla=instance,
                     producto=producto,
-                    numero_item=item_raw.get('numero_item', idx + 1),
+                    numero_item=numero_item,
                     **item_raw,
                 )
 
@@ -710,14 +712,21 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
     tipo_doc_receptor = serializers.CharField(required=False, allow_blank=True, default='NIT', write_only=True)
     receptor_direccion = serializers.CharField(required=False, allow_blank=True, write_only=True)
     receptor_correo = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    nit_receptor = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
+    nombre_comercial_receptor = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
+    receptor_departamento = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
+    receptor_municipio = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
+    receptor_telefono = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
     detalles = DetalleVentaSerializer(many=True, required=False, write_only=True)
     
     class Meta:
         model = Venta
         fields = '__all__'
     
-    def _actualizar_cliente_si_cambia(self, cliente_obj, nombre, direccion, correo):
-        """Actualiza el Cliente si los datos del formulario difieren de la BD."""
+    def _actualizar_cliente_si_cambia(self, cliente_obj, nombre, direccion, correo, **kwargs):
+        """Actualiza el Cliente si los datos del formulario difieren de la BD.
+        kwargs: nit, nombre_comercial, cod_actividad, desc_actividad, departamento, municipio, telefono
+        """
         actualizar = False
         if nombre and (cliente_obj.nombre or '') != str(nombre).strip():
             cliente_obj.nombre = str(nombre).strip()
@@ -730,6 +739,14 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             if (cliente_obj.email_contacto or '') != (correo_limpio or ''):
                 cliente_obj.email_contacto = correo_limpio
                 actualizar = True
+        for campo in ('nit', 'dui', 'tipo_documento', 'documento_identidad', 'nombre_comercial', 'cod_actividad', 'desc_actividad', 'departamento', 'municipio', 'telefono'):
+            val = kwargs.get(campo)
+            if val is not None:
+                val_str = str(val).strip() if val else None
+                actual = getattr(cliente_obj, campo, None) or ''
+                if (val_str or '') != (actual or ''):
+                    setattr(cliente_obj, campo, val_str or None)
+                    actualizar = True
         if actualizar:
             cliente_obj.save()
     
@@ -750,8 +767,15 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
         tipo_doc_receptor = validated_data.pop('tipo_doc_receptor', None)
         receptor_direccion = validated_data.pop('receptor_direccion', None)
         receptor_correo = validated_data.pop('receptor_correo', None)
+        nit_receptor = validated_data.pop('nit_receptor', None)
+        nombre_comercial_receptor = validated_data.pop('nombre_comercial_receptor', None)
+        receptor_departamento = validated_data.pop('receptor_departamento', None)
+        receptor_municipio = validated_data.pop('receptor_municipio', None)
+        receptor_telefono = validated_data.pop('receptor_telefono', None)
         tipo_venta = validated_data.get('tipo_venta', 'CCF')
         nombre_receptor = validated_data.get('nombre_receptor') or ''
+        cod_act_receptor = validated_data.get('cod_actividad_receptor')
+        desc_act_receptor = validated_data.get('desc_actividad_receptor')
         
         cliente_input_limpio = None
         if cliente_input and str(cliente_input).strip() and str(cliente_input).lower() != 'null':
@@ -781,20 +805,83 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             # CASO A: Cliente existente por ID
             try:
                 cliente_obj = Cliente.objects.get(pk=cliente_id)
+                nit_raw = (nit_receptor or '').strip() or None
+                nit_val = dui_val = tipo_doc = doc_dig = None
+                if nit_raw:
+                    doc_dig = ''.join(c for c in nit_raw if c.isdigit())
+                    if len(doc_dig) == 10:
+                        doc_dig = doc_dig[:9]
+                    es_dui = len(doc_dig) == 9
+                    tipo_doc = 'DUI' if es_dui else 'NIT'
+                    nit_val = None if es_dui else nit_raw
+                    dui_val = doc_dig if es_dui else None
+                nom_com = (nombre_comercial_receptor or '').strip() or None
+                dept = (receptor_departamento or '').strip() or None
+                muni = (receptor_municipio or '').strip() or None
+                tel = (receptor_telefono or '').strip() or None
                 self._actualizar_cliente_si_cambia(
-                    cliente_obj, nombre_receptor, receptor_direccion, receptor_correo
+                    cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
+                    nit=nit_val, dui=dui_val, tipo_documento=tipo_doc, documento_identidad=doc_dig,
+                    nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
+                    desc_actividad=desc_act_receptor, departamento=dept, municipio=muni, telefono=tel
                 )
             except Cliente.DoesNotExist:
                 raise serializers.ValidationError({'cliente_id': 'Cliente no encontrado.'})
             validated_data['cliente'] = cliente_obj
         elif cliente_input_limpio:
             # CASO B: Cliente por NRC (get_or_create)
-            cliente_obj, created = Cliente.objects.get_or_create(
-                nrc=cliente_input_limpio,
-                defaults={'nombre': nombre_receptor.strip() or f'Cliente {cliente_input_limpio}', 'nit': cliente_input_limpio}
-            )
+            # CCF requiere NIT o DUI (ley de homologación). 9 dígitos=DUI, 14 dígitos=NIT.
+            nit_def = (nit_receptor or '').strip() or None
+            if not nit_def:
+                raise serializers.ValidationError({
+                    'nit_receptor': 'Para Crédito Fiscal (CCF) se requiere NIT (14 dígitos) o DUI (9 dígitos) en columna "nit".'
+                })
+            doc_dig = ''.join(c for c in nit_def if c.isdigit())
+            # Excel elimina ceros iniciales: 8 dígitos → DUI sin cero → completar a 9
+            if len(doc_dig) == 8:
+                doc_dig = '0' + doc_dig
+            elif len(doc_dig) == 13:
+                doc_dig = '0' + doc_dig
+            elif len(doc_dig) == 10:
+                doc_dig = doc_dig[:9]
+            es_dui = len(doc_dig) == 9
+            if es_dui:
+                tipo_doc, nit_val, dui_val = 'DUI', None, doc_dig
+            else:
+                tipo_doc, nit_val, dui_val = 'NIT', nit_def, None
+            empresa = validated_data.get('empresa')
+            defaults = {
+                'nombre': nombre_receptor.strip() or f'Cliente {cliente_input_limpio}',
+                'nit': nit_val,
+                'dui': dui_val,
+                'tipo_documento': tipo_doc,
+                'documento_identidad': doc_dig,
+                'direccion': (receptor_direccion or '').strip() or None,
+                'email_contacto': (receptor_correo or '').strip() or None,
+                'cod_actividad': (cod_act_receptor or '').strip() or None,
+                'desc_actividad': (desc_act_receptor or '').strip() or None,
+                'departamento': (receptor_departamento or '').strip()[:2] or '06',
+                'municipio': (receptor_municipio or '').strip()[:2] or '14',
+                'telefono': (receptor_telefono or '').strip() or None,
+                'nombre_comercial': (nombre_comercial_receptor or '').strip() or None,
+            }
+            if empresa:
+                defaults['empresa'] = empresa
+            lookup = {'nrc': cliente_input_limpio}
+            if empresa:
+                lookup['empresa'] = empresa
+            else:
+                lookup['empresa__isnull'] = True
+            cliente_obj, _ = Cliente.objects.get_or_create(defaults=defaults, **lookup)
+            nom_com = (nombre_comercial_receptor or '').strip() or None
+            dept = (receptor_departamento or '').strip() or None
+            muni = (receptor_municipio or '').strip() or None
+            tel = (receptor_telefono or '').strip() or None
             self._actualizar_cliente_si_cambia(
-                cliente_obj, nombre_receptor, receptor_direccion, receptor_correo
+                cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
+                nit=nit_val, dui=dui_val, tipo_documento=tipo_doc, documento_identidad=doc_dig,
+                nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
+                desc_actividad=desc_act_receptor, departamento=dept, municipio=muni, telefono=tel
             )
             validated_data['cliente'] = cliente_obj
         else:

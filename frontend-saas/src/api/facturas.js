@@ -117,9 +117,9 @@ export async function crearVenta(payload) {
 }
 
 /**
- * Lista ventas con filtros opcionales.
- * @param {Object} filters - { fecha_inicio, fecha_fin, search, tipo_dte, empresa_id, periodo, tipo, solo_procesadas }
- * @returns {Promise<Array>}
+ * Lista ventas con filtros opcionales y paginación server-side.
+ * @param {Object} filters - { fecha_inicio, fecha_fin, search, tipo_dte, empresa_id, periodo, tipo, solo_procesadas, page, page_size }
+ * @returns {Promise<{ count, total_pages, page, page_size, has_next, has_previous, results }>}
  */
 export async function getVentas(filters = {}) {
   const params = new URLSearchParams()
@@ -131,10 +131,10 @@ export async function getVentas(filters = {}) {
   if (filters.periodo) params.append('periodo', filters.periodo)
   if (filters.tipo) params.append('tipo', filters.tipo)
   if (filters.solo_procesadas) params.append('solo_procesadas', '1')
+  params.append('page', filters.page ?? 1)
+  params.append('page_size', filters.page_size ?? 20)
 
-  const qs = params.toString()
-  const url = qs ? `/ventas/listar/?${qs}` : '/ventas/listar/'
-  const { data } = await apiClient.get(url)
+  const { data } = await apiClient.get(`/ventas/listar/?${params.toString()}`)
   return data
 }
 

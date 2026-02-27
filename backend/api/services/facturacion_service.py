@@ -454,6 +454,7 @@ class FacturacionService:
             if respuesta_mh.get("exito"):
                 venta.estado_dte = 'AceptadoMH'
                 venta.sello_recepcion = respuesta_mh.get("sello_recibido")
+                venta.dte_firmado = dte_firmado  # Guardar JWS para descarga posterior
                 venta.codigo_generacion = codigo_generacion
                 venta.numero_control = numero_control
                 venta.hora_emision = json_dte.get('identificacion', {}).get('horEmi') or venta.hora_emision
@@ -483,6 +484,9 @@ class FacturacionService:
                 })
                 venta.save()
                 logger.warning(f"⚠️ FACTURA #{venta.id} RECHAZADA POR MH")
+                # DEBUG: incluir JSON DTE enviado (antes de firma) para diagnosticar errores de MH
+                resultado["dte_json_preview"] = json_dte
+                resultado["receptor_preview"] = json_dte.get("receptor", {})
             
             return resultado
             
@@ -521,7 +525,13 @@ class FacturacionService:
             venta.estado_dte = 'RechazadoMH'
             venta.observaciones_mh = error_msg
             venta.save()
-            raise FacturacionServiceError(error_msg) from e
+            err = FacturacionServiceError(error_msg)
+            try:
+                err.json_dte = json_dte
+                err.receptor_preview = json_dte.get("receptor", {})
+            except NameError:
+                pass
+            raise err from e
             
         except Exception as e:
             error_msg = f"Error inesperado: {str(e)}"

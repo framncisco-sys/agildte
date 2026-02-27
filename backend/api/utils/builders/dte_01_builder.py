@@ -42,7 +42,10 @@ class DTE01Builder(DTE03Builder):
             else:
                 num_doc = None
             dir_comp = getattr(self.venta, 'direccion_receptor', None) and str(self.venta.direccion_receptor).strip()
-            correo = getattr(self.venta, 'correo_receptor', None) and str(self.venta.correo_receptor).strip()
+            correo_raw = getattr(self.venta, 'correo_receptor', None) and str(self.venta.correo_receptor).strip()
+            correo = None
+            if correo_raw and '@' in correo_raw and '.' in correo_raw.split('@')[-1]:
+                correo = correo_raw[:200]
             direccion_obj = {
                 "departamento": "06",
                 "municipio": "14",
@@ -93,8 +96,9 @@ class DTE01Builder(DTE03Builder):
         else:
             receptor["direccion"] = None
 
-        if cliente.email_contacto:
-            receptor["correo"] = cliente.email_contacto
+        correo_val = (cliente.email_contacto or '').strip()
+        if correo_val and '@' in correo_val and '.' in correo_val.split('@')[-1]:
+            receptor["correo"] = correo_val[:200]
         else:
             receptor["correo"] = None
 
@@ -105,7 +109,13 @@ class DTE01Builder(DTE03Builder):
         return self._generar_items(tipo_dte='01', incluir_iva_item=True)
 
     def _construir_resumen(self, cuerpo_documento):
-        """Resumen FC: totalIva, tributos=None, NO ivaPerci1."""
+        """Resumen FC: totalIva, tributos=None, NO ivaPerci1.
+
+        Para CF: ventaGravada en el cuerpo ya viene CON IVA (precio que ingresó el usuario).
+        totalGravada = suma de ventaGravada (con IVA).
+        totalIva = suma de ivaItem (desglose del IVA incluido).
+        montoTotalOperacion = totalGravada (el IVA ya está incluido, no se suma de nuevo).
+        """
         total_gravado = float(sum(i.get("ventaGravada", 0) for i in cuerpo_documento))
         total_exento = float(sum(i.get("ventaExenta", 0) for i in cuerpo_documento))
         total_no_sujeto = float(sum(i.get("ventaNoSuj", 0) for i in cuerpo_documento))
@@ -113,6 +123,7 @@ class DTE01Builder(DTE03Builder):
         total_iva = float(sum(i.get("ivaItem", 0) for i in cuerpo_documento))
 
         subtotal_ventas = round(total_gravado + total_exento + total_no_sujeto, 2)
+        # CF: el IVA ya está incluido en ventaGravada → montoTotalOperacion = subtotalVentas (sin sumar IVA)
         monto_total_operacion = round(subtotal_ventas, 2)
         iva_retenido_1 = float(self.venta.iva_retenido_1 or 0) if self.venta.iva_retenido_1 is not None else 0.0
         iva_retenido_2 = float(self.venta.iva_retenido_2 or 0) if self.venta.iva_retenido_2 is not None else 0.0

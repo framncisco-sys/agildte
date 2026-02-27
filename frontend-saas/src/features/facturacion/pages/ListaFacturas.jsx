@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronUp, Search, FileText, Braces, Eye, Loader2, CircleX, FileDown, FolderDown, Send } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, FileText, Braces, Eye, Loader2, CircleX, FileDown, FolderDown, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getVentas, downloadPDF, downloadJSON, downloadBatch, reenviarVenta } from '../../../api/facturas'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
@@ -35,10 +35,89 @@ function formatMoneda(val) {
   return isNaN(n) ? '$0.00' : `$${n.toFixed(2)}`
 }
 
+const PAGE_SIZE = 20
+
+function Paginacion({ page, totalPages, totalCount, pageSize, onPageChange, cargando }) {
+  if (totalPages <= 1 && totalCount === 0) return null
+
+  const inicio = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
+  const fin = Math.min(page * pageSize, totalCount)
+
+  // Generar rango de páginas visible (máx 5 botones)
+  const rango = []
+  const delta = 2
+  const left = Math.max(1, page - delta)
+  const right = Math.min(totalPages, page + delta)
+  for (let i = left; i <= right; i++) rango.push(i)
+
+  const btnBase = 'inline-flex items-center justify-center h-8 min-w-[2rem] px-2 rounded-lg text-sm font-medium transition-colors'
+  const btnActivo = 'bg-emerald-600 text-white shadow-sm'
+  const btnNormal = 'text-gray-600 hover:bg-gray-100 border border-gray-200'
+  const btnDisabled = 'text-gray-300 border border-gray-100 cursor-not-allowed'
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-gray-100 bg-white rounded-b-xl">
+      <p className="text-sm text-gray-500 shrink-0">
+        {totalCount === 0
+          ? 'Sin resultados'
+          : `Mostrando ${inicio}–${fin} de ${totalCount} factura${totalCount !== 1 ? 's' : ''}`}
+      </p>
+      {totalPages > 1 && (
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onPageChange(page - 1)}
+            disabled={page <= 1 || cargando}
+            className={`${btnBase} ${page <= 1 || cargando ? btnDisabled : btnNormal}`}
+            title="Página anterior"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          {left > 1 && (
+            <>
+              <button onClick={() => onPageChange(1)} className={`${btnBase} ${btnNormal}`}>1</button>
+              {left > 2 && <span className="px-1 text-gray-400 text-sm">…</span>}
+            </>
+          )}
+
+          {rango.map((p) => (
+            <button
+              key={p}
+              onClick={() => onPageChange(p)}
+              disabled={cargando}
+              className={`${btnBase} ${p === page ? btnActivo : btnNormal}`}
+            >
+              {p}
+            </button>
+          ))}
+
+          {right < totalPages && (
+            <>
+              {right < totalPages - 1 && <span className="px-1 text-gray-400 text-sm">…</span>}
+              <button onClick={() => onPageChange(totalPages)} className={`${btnBase} ${btnNormal}`}>{totalPages}</button>
+            </>
+          )}
+
+          <button
+            onClick={() => onPageChange(page + 1)}
+            disabled={page >= totalPages || cargando}
+            className={`${btnBase} ${page >= totalPages || cargando ? btnDisabled : btnNormal}`}
+            title="Página siguiente"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ListaFacturas() {
   const empresaId = useEmpresaStore((s) => s.empresaId)
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false)
   const [ventas, setVentas] = useState([])
+  const [paginacion, setPaginacion] = useState({ count: 0, total_pages: 1, page: 1, has_next: false, has_previous: false })
+  const [paginaActual, setPaginaActual] = useState(1)
   const [cargando, setCargando] = useState(false)
   const [modalRechazo, setModalRechazo] = useState(null)
   const [modalInvalidacion, setModalInvalidacion] = useState(null)
@@ -52,33 +131,65 @@ export function ListaFacturas() {
     search: '',
   })
 
-  const buscar = async () => {
-    setCargando(true)
-    try {
-      const params = { ...filtros }
-      if (empresaId) params.empresa_id = empresaId
-      const data = await getVentas(params)
-      setVentas(Array.isArray(data) ? data : [])
-    } catch (err) {
-      toast.error(err.response?.data?.detail || err.message || 'Error al cargar ventas')
-      setVentas([])
-    } finally {
-      setCargando(false)
-    }
+  // Ref para disparar búsqueda: { page, trigger }
+  const [buscarTrigger, setBuscarTrigger] = useState({ page: 1, ts: Date.now() })
+
+  const dispararBusqueda = (page = 1) => {
+    setPaginaActual(page)
+    setBuscarTrigger({ page, ts: Date.now() })
+  }
+
+  const handleBuscar = () => dispararBusqueda(1)
+
+  const handleCambiarPagina = (nuevaPagina) => {
+    dispararBusqueda(nuevaPagina)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const limpiarFiltros = () => {
-    setFiltros({
-      fecha_inicio: '',
-      fecha_fin: '',
-      tipo_dte: '',
-      search: '',
-    })
+    setFiltros({ fecha_inicio: '', fecha_fin: '', tipo_dte: '', search: '' })
     setVentas([])
+    setPaginacion({ count: 0, total_pages: 1, page: 1, has_next: false, has_previous: false })
+    setPaginaActual(1)
   }
 
+  // Ejecutar búsqueda cuando cambia el trigger o la empresa
+  const filtrosRef = useRef(filtros)
+  filtrosRef.current = filtros
+
   useEffect(() => {
-    buscar()
+    const fetchData = async () => {
+      setCargando(true)
+      try {
+        const params = { ...filtrosRef.current, page: buscarTrigger.page, page_size: PAGE_SIZE }
+        if (empresaId) params.empresa_id = empresaId
+        const data = await getVentas(params)
+        setVentas(Array.isArray(data.results) ? data.results : [])
+        setPaginacion({
+          count: data.count ?? 0,
+          total_pages: data.total_pages ?? 1,
+          page: data.page ?? buscarTrigger.page,
+          has_next: data.has_next ?? false,
+          has_previous: data.has_previous ?? false,
+        })
+        setPaginaActual(data.page ?? buscarTrigger.page)
+      } catch (err) {
+        toast.error(err.response?.data?.detail || err.message || 'Error al cargar ventas')
+        setVentas([])
+      } finally {
+        setCargando(false)
+      }
+    }
+    fetchData()
+  }, [buscarTrigger, empresaId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reiniciar a página 1 cuando cambia la empresa
+  const prevEmpresaId = useRef(empresaId)
+  useEffect(() => {
+    if (prevEmpresaId.current !== empresaId) {
+      prevEmpresaId.current = empresaId
+      dispararBusqueda(1)
+    }
   }, [empresaId])
 
   const handleDownloadPDF = async (v) => {
@@ -208,7 +319,7 @@ export function ListaFacturas() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={buscar}
+                onClick={handleBuscar}
                 disabled={cargando}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
               >
@@ -411,6 +522,14 @@ export function ListaFacturas() {
             </div>
           </>
         )}
+        <Paginacion
+          page={paginaActual}
+          totalPages={paginacion.total_pages}
+          totalCount={paginacion.count}
+          pageSize={PAGE_SIZE}
+          onPageChange={handleCambiarPagina}
+          cargando={cargando}
+        />
       </div>
 
       <DetalleRechazoModal

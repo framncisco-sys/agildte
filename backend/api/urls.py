@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from . import views
 from .views import EmpresaViewSet, VentaViewSet, ActividadEconomicaViewSet
+from .views_carga_masiva import carga_masiva_upload, carga_masiva_plantilla_ejemplo
 
 router = DefaultRouter()
 router.register(r'empresas', EmpresaViewSet, basename='empresa')
@@ -40,6 +41,10 @@ urlpatterns = [
     path('productos/', views.listar_productos),
     path('productos/crear/', views.crear_producto),
     path('productos/<int:pk>/', views.producto_detalle),
+
+    # CARGA MASIVA DE FACTURAS
+    path('carga-masiva/upload/', carga_masiva_upload),
+    path('carga-masiva/plantilla-ejemplo/', carga_masiva_plantilla_ejemplo),
 
     # PLANTILLAS DE FACTURACIÓN RÁPIDA
     path('plantillas-factura/', views.listar_plantillas_factura),

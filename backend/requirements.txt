@@ -1,13 +1,46 @@
-gunicorn
-whitenoise
-dj-database-url
-psycopg2-binary
-reportlab
-djangorestframework
-djangorestframework-simplejwt
-django-cors-headers
-num2words
-qrcode[pil]
-requests
-cryptography
-jwcrypto
+# Versiones fijadas con pip freeze (27/Feb/2026) — actualizar con cuidado en producción
+Django==5.2.11
+asgiref==3.11.1
+gunicorn==25.1.0
+whitenoise==6.11.0
+psycopg2-binary==2.9.11
+dj-database-url==3.1.2
+
+# API REST
+djangorestframework==3.16.1
+djangorestframework_simplejwt==5.5.1
+PyJWT==2.11.0
+django-cors-headers==4.9.0
+
+# Firma digital DTE
+cryptography==46.0.5
+jwcrypto==1.5.6
+cffi==2.0.0
+pycparser==3.0
+
+# Generación PDF y QR
+reportlab==4.4.10
+qrcode==8.2
+pillow==12.1.1
+
+# Excel / carga masiva
+pandas==2.3.3
+openpyxl==3.1.5
+numpy==2.2.6
+
+# Utilidades
+num2words==0.5.14
+requests==2.32.5
+python-dateutil==2.9.0.post0
+pytz==2025.2
+tzdata==2025.3
+six==1.17.0
+sqlparse==0.5.5
+charset-normalizer==3.4.4
+certifi==2026.2.25
+idna==3.11
+urllib3==2.6.3
+packaging==26.0
+typing_extensions==4.15.0
+et_xmlfile==2.0.0
+docopt==0.6.2

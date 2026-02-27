@@ -126,8 +126,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Internationalization
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+LANGUAGE_CODE = 'es'
+TIME_ZONE = 'America/El_Salvador'
 USE_I18N = True
 USE_TZ = True
 
@@ -180,3 +180,12 @@ else:
 
 # Permitir cookies y Authorization header en peticiones CORS
 CORS_ALLOW_CREDENTIALS = True
+
+# ─── SEGURIDAD HTTPS (producción detrás de nginx) ────────────────────────────
+# Django necesita saber que está detrás de un proxy HTTPS para generar URLs correctas.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True

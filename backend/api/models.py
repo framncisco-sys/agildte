@@ -171,7 +171,11 @@ class Cliente(models.Model):
                           help_text="NRC del cliente (obligatorio solo para Contribuyentes)")
     
     nombre = models.CharField(max_length=200)
-    
+    nombre_comercial = models.CharField(
+        max_length=200, blank=True, null=True,
+        help_text="Nombre comercial del cliente (para DTE-03 CCF)"
+    )
+
     # Tipo y número de documento (MH: NIT, DUI, Pasaporte)
     TIPO_DOCUMENTO_CHOICES = [
         ('NIT', 'NIT'),
@@ -370,6 +374,7 @@ class Venta(models.Model):
     codigo_generacion = models.CharField(max_length=100, blank=True, null=True) # El código largo (UUID)
     numero_control = models.CharField(max_length=100, blank=True, null=True)    # El consecutivo (DTE-01...)
     sello_recepcion = models.CharField(max_length=100, blank=True, null=True)   # El sello de Hacienda
+    dte_firmado = models.TextField(blank=True, null=True, help_text="JWS firmado del DTE tal como fue enviado y aceptado por MH")
     
     # Campos específicos para Físicos (Papel)
     serie_documento = models.CharField(max_length=100, blank=True, null=True)
