@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Trash2, Loader2, Search, FileText, UserPlus } from 'lucide-react'
+import { Trash2, Loader2, Search, FileText, UserPlus, Info } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ModalBuscadorCliente } from './ModalBuscadorCliente'
 import { BuscarDocumentoModal } from './BuscarDocumentoModal'
@@ -68,6 +68,9 @@ const defaultValues = {
   items: [{ cantidad: 1, descripcion: '', precioUnitario: 0 }],
 }
 
+// Umbral mínimo para aplicar retención 1% (según normativa MH)
+const UMBRAL_RETENCION = 100
+
 export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSeleccionada }) {
   const navigate = useNavigate()
   const empresaId = useEmpresaStore((s) => s.empresaId)
@@ -80,6 +83,8 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
   const [modalDocumentoAbierto, setModalDocumentoAbierto] = useState(false)
   const [catalogRowIndex, setCatalogRowIndex] = useState(null)
   const [actividadDisplay, setActividadDisplay] = useState('')
+  const [retencion1Activa, setRetencion1Activa] = useState(false)
+  const [retencionMensaje, setRetencionMensaje] = useState('')
   const requiereDocumentoRelacionado = tipoDocumento === '05' || tipoDocumento === '06'
 
   const {
@@ -107,8 +112,30 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
   )
   const esCreditoFiscal = ['03', '05', '06'].includes(tipoDocumento)
   const esCF = tipoDocumento === '01'
+  // La retención 1% aplica a CF (entidades gobierno), CCF, NC y ND
+  const permiteRetencion = ['01', '03', '05', '06'].includes(tipoDocumento)
+  // CF: totalGravadas es total con IVA → base gravada = total/1.13. CCF/NC/ND: totalGravadas ya es base sin IVA
+  const baseParaRetencion = esCF ? totalGravadas / 1.13 : totalGravadas
+  const montoRetencion1 = (permiteRetencion && retencion1Activa)
+    ? Math.round(baseParaRetencion * 0.01 * 100) / 100
+    : 0
   const iva = esCreditoFiscal ? totalGravadas * 0.13 : (esCF ? Math.round((totalGravadas - totalGravadas / 1.13) * 100) / 100 : 0)
-  const totalPagar = esCF ? totalGravadas : totalGravadas + iva
+  const totalPagar = esCF ? totalGravadas - montoRetencion1 : totalGravadas + iva - montoRetencion1
+
+  // useEffect: desactivar retención automáticamente si el subtotal baja de $100
+  useEffect(() => {
+    if (!permiteRetencion) return
+    if (totalGravadas < UMBRAL_RETENCION) {
+      setRetencion1Activa((prev) => {
+        if (prev) {
+          setRetencionMensaje(`Retención desactivada: el subtotal ($${totalGravadas.toFixed(2)}) es menor a $${UMBRAL_RETENCION}.`)
+        }
+        return false
+      })
+    } else {
+      setRetencionMensaje('')
+    }
+  }, [totalGravadas, permiteRetencion])
 
   const onClienteSeleccionado = (cliente) => {
     setClienteIdSeleccionado(cliente?.id ?? null)
@@ -286,6 +313,7 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
         items: data.items,
         totalGravadas,
         iva: esCreditoFiscal ? iva : 0,
+        ivaRetenido1: montoRetencion1,
         condicionOperacion: Number(data.condicionOperacion ?? 1),
         // plazo_pago → código de unidad MH: "01"=Días, "02"=Semanas, "03"=Meses
         plazoPago: data.condicionOperacion === '2' ? (data.plazoPago || '03') : null,
@@ -743,8 +771,33 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
               <>
                 <div className="flex justify-between text-gray-600">
                   <span>Total (IVA incl.):</span>
-                  <span>${totalPagar.toFixed(2)}</span>
+                  <span>${totalGravadas.toFixed(2)}</span>
                 </div>
+                {/* Switch Retención 1% — cerca de Total Gravada */}
+                {permiteRetencion && (
+                  <div className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span className="text-sm font-medium text-gray-700">Aplicar retención IVA 1%</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={retencion1Activa}
+                      disabled={totalGravadas < UMBRAL_RETENCION}
+                      onClick={() => setRetencion1Activa((v) => !v)}
+                      title={totalGravadas < UMBRAL_RETENCION ? `Mínimo $${UMBRAL_RETENCION}` : 'Activar retención 1%'}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1
+                        ${retencion1Activa ? 'bg-emerald-600' : 'bg-gray-300'}
+                        ${totalGravadas < UMBRAL_RETENCION ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${retencion1Activa ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
+                )}
+                {montoRetencion1 > 0 && (
+                  <div className="flex justify-between text-amber-700 text-sm">
+                    <span>Retención IVA 1%:</span>
+                    <span>- ${montoRetencion1.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-xs text-gray-500">
                   <span>Desglose: Gravado ${(totalGravadas / 1.13).toFixed(2)} + IVA ${(totalGravadas - totalGravadas / 1.13).toFixed(2)}</span>
                 </div>
@@ -755,13 +808,44 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
                   <span>Total Gravadas:</span>
                   <span>${totalGravadas.toFixed(2)}</span>
                 </div>
+                {/* Switch Retención 1% — cerca de Total Gravadas */}
+                {permiteRetencion && (
+                  <div className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span className="text-sm font-medium text-gray-700">Aplicar retención IVA 1%</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={retencion1Activa}
+                      disabled={totalGravadas < UMBRAL_RETENCION}
+                      onClick={() => setRetencion1Activa((v) => !v)}
+                      title={totalGravadas < UMBRAL_RETENCION ? `Mínimo $${UMBRAL_RETENCION}` : 'Activar retención 1%'}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1
+                        ${retencion1Activa ? 'bg-emerald-600' : 'bg-gray-300'}
+                        ${totalGravadas < UMBRAL_RETENCION ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${retencion1Activa ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
+                )}
                 {esCreditoFiscal && (
                   <div className="flex justify-between text-gray-600">
                     <span>IVA (13%):</span>
                     <span>${iva.toFixed(2)}</span>
                   </div>
                 )}
+                {montoRetencion1 > 0 && (
+                  <div className="flex justify-between text-amber-700 text-sm">
+                    <span>Retención IVA 1%:</span>
+                    <span>- ${montoRetencion1.toFixed(2)}</span>
+                  </div>
+                )}
               </>
+            )}
+            {retencionMensaje && (
+              <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                <Info size={12} className="shrink-0 mt-0.5" />
+                <span>{retencionMensaje}</span>
+              </div>
             )}
             <div className="flex justify-between text-lg font-bold text-gray-800 pt-2 border-t border-gray-200">
               <span>Total a Pagar:</span>

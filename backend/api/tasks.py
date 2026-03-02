@@ -42,8 +42,10 @@ def procesar_factura_venta(venta_id: int) -> dict:
         resultado = servicio.procesar_factura(venta)
         venta.refresh_from_db()
 
-        if resultado.get('exito'):
-            # Enviar correo con PDF y XML
+        if resultado.get('exito') and venta.estado_dte == 'AceptadoMH':
+            # Enviar correo solo cuando MH aceptó el DTE.
+            # enviar_factura_email ya maneja sus propios errores internamente;
+            # el try/except aquí es una red de seguridad extra para no bloquear el flujo.
             try:
                 enviar_factura_email(venta)
             except Exception as e:

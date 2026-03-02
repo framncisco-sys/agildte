@@ -5,7 +5,7 @@ import apiClient from './axios'
  * Backend: POST /api/ventas/crear-con-detalles/
  */
 function mapearPayloadFrontendADjango(payload) {
-  const { cliente, items, tipoDocumento, totalGravadas, iva, condicionOperacion, plazoPago, periodoPago } = payload
+  const { cliente, items, tipoDocumento, totalGravadas, iva, ivaRetenido1, condicionOperacion, plazoPago, periodoPago } = payload
   const empresaId = payload.empresaId // desde useEmpresaStore
   const hoy = new Date().toISOString().slice(0, 10)
   const periodo = new Date().toISOString().slice(0, 7) // YYYY-MM
@@ -97,6 +97,7 @@ function mapearPayloadFrontendADjango(payload) {
     periodo_pago: periodoPago ?? null,
     cod_actividad_receptor: cliente?.codActividad?.trim() || null,
     desc_actividad_receptor: cliente?.descActividad?.trim() || null,
+    iva_retenido_1: ivaRetenido1 ?? 0,
     detalles,
   }
   if (documentoRelacionadoId) {

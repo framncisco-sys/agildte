@@ -5,7 +5,21 @@
 
 ## Changelog — Cambios incluidos en este deploy
 
-### v2.0 — 27 Feb 2026 (deploy actual)
+### v2.1 — 2 Mar 2026 (deploy actual)
+
+#### Correo con facturas aceptadas
+- Envío automático de correo cuando el DTE es **AceptadoMH**. Usa variables de entorno `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_FROM_ADDRESS` (fallback si la empresa no tiene SMTP en el admin).
+- Compatible con **Amazon SES** vía SMTP. Si no llega, verificar el correo destinatario en SES (modo sandbox solo acepta destinatarios verificados).
+- Si el envío falla por red/SMTP, se registra en logs pero no bloquea la visualización de la factura.
+
+#### Retención IVA 1%
+- Switch **"Aplicar retención IVA 1%"** en el formulario, visible para CF, CCF, NC y ND (cerca de Total Gravadas).
+- Se desactiva automáticamente si el subtotal &lt; $100.
+- La retención se resta del Total a Pagar y se envía al backend como `iva_retenido_1` (ivaRete1 en JSON MH).
+
+---
+
+### v2.0 — 27 Feb 2026
 
 #### Facturación DTE
 - **CF (DTE-01) corregido**: `precioUni` y `ventaGravada` ahora van con IVA incluido, como exige MH. `totalGravada`, `montoTotalOperacion` y `totalPagar` reflejan el precio que el usuario ingresó.
@@ -82,6 +96,21 @@ POSTGRES_PASSWORD=<contraseña_segura_sin_espacios>
 ```
 
 El resto del `.env` ya tiene los valores correctos para producción (`DJANGO_DEBUG=False`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, etc.).
+
+### Variables opcionales para envío de correo (SMTP global)
+
+Si no configuras el SMTP por empresa desde el admin de Django, puedes agregar estas variables al `.env` como fallback global:
+
+```bash
+# SMTP global (fallback si la empresa no tiene smtp_host configurado en el admin)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=tu_correo@gmail.com
+EMAIL_HOST_PASSWORD=tu_contraseña_de_aplicacion
+EMAIL_USE_TLS=true
+```
+
+> **Nota**: Si la empresa tiene `smtp_host` y `smtp_user` configurados en el panel de administración, esos valores tienen prioridad sobre las variables de entorno.
 
 ---
 
