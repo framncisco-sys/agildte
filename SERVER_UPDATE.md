@@ -97,20 +97,32 @@ POSTGRES_PASSWORD=<contraseña_segura_sin_espacios>
 
 El resto del `.env` ya tiene los valores correctos para producción (`DJANGO_DEBUG=False`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, etc.).
 
-### Variables opcionales para envío de correo (SMTP global)
+### Variables para envío de correo
 
-Si no configuras el SMTP por empresa desde el admin de Django, puedes agregar estas variables al `.env` como fallback global:
+**Opción A — SES API (HTTPS, puerto 443)** — Recomendado cuando SMTP 587/465 está bloqueado:
 
 ```bash
-# SMTP global (fallback si la empresa no tiene smtp_host configurado en el admin)
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=tu_correo@gmail.com
-EMAIL_HOST_PASSWORD=tu_contraseña_de_aplicacion
-EMAIL_USE_TLS=true
+# Credenciales IAM con política ses:SendRawEmail (NO las credenciales SMTP)
+AWS_ACCESS_KEY_ID=tu_access_key_id
+AWS_SECRET_ACCESS_KEY=tu_secret_access_key
+AWS_REGION=us-east-1
+EMAIL_FROM_ADDRESS=AgilDTE <facturas@agildte.com>
 ```
 
-> **Nota**: Si la empresa tiene `smtp_host` y `smtp_user` configurados en el panel de administración, esos valores tienen prioridad sobre las variables de entorno.
+Crear en AWS: IAM → Usuarios → Tu usuario → Credenciales de seguridad → Crear clave de acceso. Asignar política `AmazonSesSendingAccess` o similar con `ses:SendRawEmail`. La dirección en `EMAIL_FROM_ADDRESS` debe estar verificada en SES.
+
+**Opción B — SMTP** (cuando los puertos 587/465 están permitidos):
+
+```bash
+EMAIL_HOST=email-smtp.us-east-1.amazonaws.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=AKIA...
+EMAIL_HOST_PASSWORD=...
+EMAIL_FROM_ADDRESS=AgilDTE <facturas@agildte.com>
+```
+
+> **Nota**: Si la empresa tiene `smtp_host` y `smtp_user` configurados en el admin, esos valores tienen prioridad sobre las variables de entorno.
 
 ---
 

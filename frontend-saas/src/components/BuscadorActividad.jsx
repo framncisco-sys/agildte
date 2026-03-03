@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getActividades } from '../api/actividades'
+import { ACTIVIDADES_ECONOMICAS } from '../data/actividades-economicas'
 
 const MIN_CHARS = 2
 const DEBOUNCE_MS = 300
@@ -43,14 +44,33 @@ export function BuscadorActividad({
       setLoading(true)
       getActividades({ search: inputText, limit: 20 })
         .then((data) => {
-          const list = data.results || data || []
+          let list = data.results || data || []
+          if (list.length === 0) {
+            const term = inputText.toLowerCase()
+            list = ACTIVIDADES_ECONOMICAS
+              .filter((a) =>
+                (a.codigo || '').includes(term) ||
+                (a.nombre || '').toLowerCase().includes(term)
+              )
+              .slice(0, 20)
+              .map((a) => ({ codigo: a.codigo, descripcion: a.nombre }))
+          }
           setOptions(list)
           setOpen(list.length > 0)
           setHighlightIndex(-1)
         })
         .catch(() => {
-          setOptions([])
-          setOpen(false)
+          const term = inputText.toLowerCase()
+          const fallback = ACTIVIDADES_ECONOMICAS
+            .filter((a) =>
+              (a.codigo || '').includes(term) ||
+              (a.nombre || '').toLowerCase().includes(term)
+            )
+            .slice(0, 20)
+            .map((a) => ({ codigo: a.codigo, descripcion: a.nombre }))
+          setOptions(fallback)
+          setOpen(fallback.length > 0)
+          setHighlightIndex(-1)
         })
         .finally(() => setLoading(false))
     }, DEBOUNCE_MS)

@@ -24,6 +24,7 @@ from .dte_generator import DTEGenerator
 from .utils.pdf_generator import generar_pdf_venta
 from .utils.tenant import get_empresa_ids_allowlist, require_empresa_allowed, require_object_empresa_allowed, get_and_validate_empresa
 from .services import FacturacionService, FacturacionServiceError, AutenticacionMHError, FirmaDTEError, EnvioMHError
+from .services.email_service import enviar_factura_email
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +234,12 @@ class EmpresaViewSet(viewsets.ModelViewSet):
             return Response({'anio': anio, 'correlativos': items})
 
         if request.method == 'PATCH':
+            from .permissions import IsAdminUser
+            if not IsAdminUser().has_permission(request, self):
+                return Response(
+                    {'detail': 'Solo administradores pueden modificar correlativos.'},
+                    status=403
+                )
             # Body: { "01": 24, "03": 34 } = "siguiente número a usar"
             # Internamente: ultimo_correlativo = valor - 1
             data = request.data
@@ -1365,6 +1372,12 @@ def crear_venta_con_detalles(request):
         venta.refresh_from_db()
         if resultado.get('exito'):
             mensaje = 'Factura enviada a Hacienda correctamente.'
+            # Enviar correo solo cuando MH aceptó el DTE (modo síncrono)
+            if venta.estado_dte == 'AceptadoMH':
+                try:
+                    enviar_factura_email(venta)
+                except Exception as e:
+                    logger.warning(f"No se pudo enviar correo para venta {venta.id}: {e}")
         else:
             mensaje = resultado.get('mensaje') or str(resultado.get('observaciones', [])) or 'Rechazado por Hacienda'
             dte_preview = resultado.get('dte_json_preview')

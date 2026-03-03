@@ -2,10 +2,10 @@
 Servicio de envío de correos con facturas (PDF + JSON/XML).
 Incluye branding AgilDTE en el pie de cada correo.
 
-Prioridad de configuración SMTP:
-  1. Campos smtp_* del modelo Empresa (configurados en el admin).
-  2. Variables de entorno EMAIL_HOST, EMAIL_PORT, EMAIL_HOST_USER,
-     EMAIL_HOST_PASSWORD, EMAIL_USE_TLS del .env (fallback global).
+Modos de envío (en orden de prioridad):
+  1. SES API (boto3) — si AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY están definidos.
+     Usa HTTPS (puerto 443), útil cuando SMTP 587/465 está bloqueado.
+  2. SMTP — variables EMAIL_* o campos smtp_* del modelo Empresa.
 """
 import json
 import logging
@@ -29,6 +29,13 @@ BRANDING_HTML = f'''
   <a href="{AGILDTE_WEB_URL}" style="color: #0066cc;">{AGILDTE_WEB_URL}</a>
 </div>
 '''
+
+
+def _tiene_credenciales_ses_api() -> bool:
+    """True si hay credenciales IAM para usar SES vía API (HTTPS, puerto 443)."""
+    key = os.environ.get('AWS_ACCESS_KEY_ID', '').strip()
+    secret = os.environ.get('AWS_SECRET_ACCESS_KEY', '').strip()
+    return bool(key and secret)
 
 
 def _obtener_config_smtp(emp) -> dict | None:
@@ -124,10 +131,16 @@ def enviar_factura_email(venta) -> bool:
 
     emp = venta.empresa
     smtp_cfg = _obtener_config_smtp(emp)
-    if not smtp_cfg:
+    from_address = None
+    if smtp_cfg:
+        from_address = smtp_cfg.get('from_address') or smtp_cfg.get('user')
+    if not from_address:
+        from_address = os.environ.get('EMAIL_FROM_ADDRESS', '').strip() or os.environ.get('EMAIL_HOST_USER', '').strip()
+    use_ses_api = _tiene_credenciales_ses_api()
+    if not smtp_cfg and not (use_ses_api and from_address):
         logger.info(
-            f"Empresa '{emp.nombre}' sin SMTP configurado y sin variables EMAIL_HOST/EMAIL_HOST_USER "
-            f"en el entorno. Omitiendo envío de correo para venta {venta.id}."
+            f"Empresa '{emp.nombre}' sin SMTP configurado y sin credenciales SES API (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY). "
+            f"Omitiendo envío de correo para venta {venta.id}."
         )
         return False
 
@@ -171,7 +184,7 @@ def enviar_factura_email(venta) -> bool:
 
     msg = MIMEMultipart('alternative')
     msg['Subject'] = asunto
-    msg['From'] = smtp_cfg.get('from_address') or smtp_cfg['user']
+    msg['From'] = from_address
     msg['To'] = destinatario
 
     msg.attach(MIMEText(cuerpo_html, 'html', 'utf-8'))
@@ -193,7 +206,25 @@ def enviar_factura_email(venta) -> bool:
         adj_json.add_header('Content-Disposition', 'attachment', filename=nombre_json)
         msg.attach(adj_json)
 
-    # Enviar — los errores de red se registran pero NO propagan la excepción
+    # Enviar — prioridad: SES API (HTTPS 443) si hay credenciales IAM; sino SMTP
+    raw_bytes = msg.as_bytes() if hasattr(msg, 'as_bytes') else msg.as_string().encode('utf-8')
+
+    if use_ses_api:
+        try:
+            _enviar_via_ses_api(raw_bytes, from_address, destinatario)
+            logger.info(f"Correo enviado vía SES API a {destinatario} para venta {venta.id} (DTE {venta.codigo_generacion})")
+            return True
+        except Exception as e:
+            logger.error(
+                f"Error SES API enviando correo para venta {venta.id} a {destinatario}: {e}. "
+                f"La factura fue procesada correctamente por MH."
+            )
+            return False
+
+    if not smtp_cfg:
+        logger.warning("Credenciales SES API no disponibles y SMTP no configurado, no se envió correo")
+        return False
+
     try:
         if smtp_cfg['use_tls']:
             server = smtplib.SMTP(smtp_cfg['host'], smtp_cfg['port'], timeout=30)
@@ -205,15 +236,12 @@ def enviar_factura_email(venta) -> bool:
 
         if smtp_cfg['password']:
             server.login(smtp_cfg['user'], smtp_cfg['password'])
-        # Para Amazon SES: el MAIL FROM debe ser la dirección verificada (from_address),
-        # no el Access Key ID de AWS que se usa solo para autenticarse.
-        # Extraemos solo el email del from_address (puede ser "Nombre <email@dom.com>")
         from_raw = smtp_cfg.get('from_address') or smtp_cfg['user']
         m = re.search(r'<([^>]+)>', from_raw)
         mail_from = m.group(1) if m else from_raw
         server.sendmail(mail_from, [destinatario], msg.as_string())
         server.quit()
-        logger.info(f"Correo enviado a {destinatario} para venta {venta.id} (DTE {venta.codigo_generacion})")
+        logger.info(f"Correo enviado vía SMTP a {destinatario} para venta {venta.id} (DTE {venta.codigo_generacion})")
         return True
     except (smtplib.SMTPException, OSError, TimeoutError) as e:
         logger.error(
@@ -224,3 +252,19 @@ def enviar_factura_email(venta) -> bool:
     except Exception as e:
         logger.error(f"Error inesperado enviando correo para venta {venta.id}: {e}")
         return False
+
+
+def _enviar_via_ses_api(raw_message_bytes: bytes, source: str, destination: str) -> None:
+    """
+    Envía correo vía Amazon SES API (HTTPS, puerto 443).
+    Requiere AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY y opcionalmente AWS_REGION.
+    """
+    import boto3
+
+    region = os.environ.get('AWS_REGION', '').strip() or os.environ.get('AWS_DEFAULT_REGION', 'us-east-1')
+    client = boto3.client('ses', region_name=region)
+    client.send_raw_email(
+        Source=source,
+        Destinations=[destination],
+        RawMessage={'Data': raw_message_bytes},
+    )

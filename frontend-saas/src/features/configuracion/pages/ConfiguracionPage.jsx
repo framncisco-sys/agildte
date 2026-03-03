@@ -10,6 +10,8 @@ const AMBIENTES = [
   { value: '00', label: 'Producción (MH)' },
 ]
 
+const TIPOS_DTE_VALIDOS = ['01', '03', '14', '05', '06']
+
 export default function ConfiguracionPage() {
   const empresaId = useEmpresaStore((s) => s.empresaId)
   const empresas = useEmpresaStore((s) => s.empresas)
@@ -108,9 +110,21 @@ export default function ConfiguracionPage() {
   const handleSaveCorrelativos = async (e) => {
     e.preventDefault()
     if (!empresaId) return
+    const payload = {}
+    for (const td of TIPOS_DTE_VALIDOS) {
+      const v = correlativosForm[td]
+      if (v != null && v !== '') {
+        const n = Number(v)
+        if (!Number.isNaN(n) && n >= 1) payload[td] = Math.floor(n)
+      }
+    }
+    if (Object.keys(payload).length === 0) {
+      toast.error('Ingrese al menos un valor numérico válido para actualizar')
+      return
+    }
     setSavingCorrelativos(true)
     try {
-      await updateCorrelativos(empresaId, correlativosForm)
+      await updateCorrelativos(empresaId, payload)
       const res = await getCorrelativos(empresaId)
       setCorrelativos(res.correlativos ?? [])
       const form = {}
