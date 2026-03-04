@@ -384,7 +384,7 @@ export function CargaMasiva() {
                     <td className="p-2 text-right">
                       <input
                         type="number"
-                        step="0.01"
+                        step="0.00001"
                         min="0"
                         value={fila.precio_unitario ?? ''}
                         onChange={(e) => actualizarFila(idx, 'precio_unitario', e.target.value)}

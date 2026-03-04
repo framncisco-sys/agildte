@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createCliente, updateCliente } from '../../../api/clientes'
 import { DEPARTAMENTOS, MUNICIPIOS_POR_DEPARTAMENTO } from '../../../data/departamentos-municipios'
-import { BuscadorActividad } from '../../../components/BuscadorActividad'
+import { ModalBuscadorActividad } from '../../facturacion/components/ModalBuscadorActividad'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 
 const TIPO_DOCUMENTO_OPTIONS = [
@@ -18,12 +18,14 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
   const empresaId = useEmpresaStore((s) => s.empresaId)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
+  const [modalActividadAbierto, setModalActividadAbierto] = useState(false)
   const [form, setForm] = useState({
     nombre: '',
     tipo_documento: 'NIT',
     documento_identidad: '',
     nrc: '',
     actividad_economica: '',
+    desc_actividad: '',
     actividad_economica_display: '',
     correo: '',
     telefono: '',
@@ -49,6 +51,7 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
         documento_identidad: clienteEdit.documento_identidad ?? clienteEdit.nit ?? clienteEdit.dui ?? '',
         nrc: clienteEdit.nrc ?? '',
         actividad_economica: codAct,
+        desc_actividad: descAct,
         actividad_economica_display: displayAct,
         correo: clienteEdit.correo ?? clienteEdit.email_contacto ?? '',
         telefono: clienteEdit.telefono ?? '',
@@ -63,6 +66,7 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
         documento_identidad: '',
         nrc: '',
         actividad_economica: '',
+        desc_actividad: '',
         actividad_economica_display: '',
         correo: '',
         telefono: '',
@@ -106,6 +110,7 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
     documento_identidad: form.documento_identidad?.trim() || null,
     nrc: form.nrc?.trim() || null,
     actividad_economica: form.actividad_economica?.trim() || null,
+    desc_actividad: form.desc_actividad?.trim() || null,
     correo: form.correo?.trim() || null,
     telefono: form.telefono?.trim() || null,
     direccion_departamento: form.direccion_departamento || '06',
@@ -237,14 +242,24 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Actividad económica (obligatorio si tiene NRC)</label>
-              <BuscadorActividad
-                value={form.actividad_economica}
-                displayValue={form.actividad_economica_display}
-                onChange={(codigo) => handleChange('actividad_economica', codigo)}
-                onDisplayChange={(display) => setForm((prev) => ({ ...prev, actividad_economica_display: display }))}
-                placeholder="Buscar por código o descripción (mín. 2 caracteres)"
-                error={!!errors.actividad_economica}
-              />
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  readOnly
+                  value={form.actividad_economica_display}
+                  placeholder="Seleccione desde el catálogo de actividades"
+                  className={`flex-1 px-3 py-2 border rounded-lg bg-gray-50 text-gray-700 ${errors.actividad_economica ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setModalActividadAbierto(true)}
+                  className="flex-shrink-0 p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-400 touch-manipulation inline-flex items-center justify-center"
+                  aria-label="Buscar actividad económica"
+                  title="Buscar actividad económica"
+                >
+                  <Search size={18} />
+                </button>
+              </div>
               {errors.actividad_economica && <p className="mt-1 text-sm text-red-600">{Array.isArray(errors.actividad_economica) ? errors.actividad_economica[0] : errors.actividad_economica}</p>}
             </div>
           </div>
@@ -328,6 +343,21 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
             </button>
           </div>
         </form>
+
+        <ModalBuscadorActividad
+          isOpen={modalActividadAbierto}
+          onClose={() => setModalActividadAbierto(false)}
+          onSelect={({ codigo, descripcion }) => {
+            setForm((prev) => ({
+              ...prev,
+              actividad_economica: codigo,
+              desc_actividad: descripcion,
+              actividad_economica_display: descripcion ? `${codigo} - ${descripcion}` : codigo,
+            }))
+            if (errors.actividad_economica) setErrors((e) => ({ ...e, actividad_economica: null }))
+            setModalActividadAbierto(false)
+          }}
+        />
       </div>
     </div>
   )

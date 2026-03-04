@@ -9,7 +9,7 @@ import { ModalBuscadorCliente } from './ModalBuscadorCliente'
 import { BuscarDocumentoModal } from './BuscarDocumentoModal'
 import { ItemDescripcionCombobox } from './ItemDescripcionCombobox'
 import { ModalCatalogoItems } from './ModalCatalogoItems'
-import { BuscadorActividad } from '../../../components/BuscadorActividad'
+import { ModalBuscadorActividad } from './ModalBuscadorActividad'
 import { DEPARTAMENTOS, MUNICIPIOS_POR_DEPARTAMENTO } from '../../../data/departamentos-municipios'
 import { crearVenta } from '../../../api/facturas'
 import { createCliente } from '../../../api/clientes'
@@ -82,6 +82,7 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
   const [errorDocumentoRelacionado, setErrorDocumentoRelacionado] = useState('')
   const [modalDocumentoAbierto, setModalDocumentoAbierto] = useState(false)
   const [catalogRowIndex, setCatalogRowIndex] = useState(null)
+  const [modalActividadAbierto, setModalActividadAbierto] = useState(false)
   const [actividadDisplay, setActividadDisplay] = useState('')
   const [retencion1Activa, setRetencion1Activa] = useState(false)
   const [retencionMensaje, setRetencionMensaje] = useState('')
@@ -521,17 +522,24 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
             {/* Código Actividad Económica con buscador */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Código Act. Ec.</label>
-              <BuscadorActividad
-                value={watch('codActividad') ?? ''}
-                displayValue={actividadDisplay}
-                onChange={(codigo) => setValue('codActividad', codigo)}
-                onDisplayChange={(display) => {
-                  setActividadDisplay(display)
-                  const desc = display.includes(' - ') ? display.split(' - ').slice(1).join(' - ') : display
-                  setValue('descActividad', desc)
-                }}
-                placeholder="Buscar actividad (mín. 2 caracteres)"
-              />
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  readOnly
+                  value={actividadDisplay}
+                  placeholder="Seleccione una actividad desde el catálogo"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
+                />
+                <button
+                  type="button"
+                  onClick={() => setModalActividadAbierto(true)}
+                  className="flex-shrink-0 p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-400 touch-manipulation inline-flex items-center justify-center"
+                  aria-label="Buscar actividad económica"
+                  title="Buscar actividad económica"
+                >
+                  <Search size={18} />
+                </button>
+              </div>
             </div>
 
             {/* Departamento */}
@@ -733,7 +741,7 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
                       <td className="py-2 px-3">
                         <input
                           type="number"
-                          step="0.01"
+                          step="0.00001"
                           {...register(`items.${index}.precioUnitario`)}
                           className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-w-[4rem]"
                         />
@@ -884,6 +892,17 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
           setCatalogRowIndex(null)
         }}
         empresaId={empresaId}
+      />
+
+      <ModalBuscadorActividad
+        isOpen={modalActividadAbierto}
+        onClose={() => setModalActividadAbierto(false)}
+        onSelect={({ codigo, descripcion }) => {
+          setValue('codActividad', codigo)
+          setValue('descActividad', descripcion)
+          setActividadDisplay(descripcion ? `${codigo} - ${descripcion}` : codigo)
+          setModalActividadAbierto(false)
+        }}
       />
     </div>
   )
