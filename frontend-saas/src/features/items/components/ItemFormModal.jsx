@@ -146,7 +146,7 @@ export function ItemFormModal({ isOpen, onClose, onSaved, itemEdit = null, empre
             <label className="block text-sm font-medium text-gray-700 mb-1">Precio unitario *</label>
             <input
               type="number"
-              step="0.00001"
+              step="0.00000001"
               min="0"
               value={form.precio_unitario}
               onChange={(e) => handleChange('precio_unitario', e.target.value)}

@@ -500,7 +500,7 @@ class Producto(models.Model):
     empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='productos', null=True)
     codigo = models.CharField(max_length=50, blank=True, default='')
     descripcion = models.CharField(max_length=200)
-    precio_unitario = models.DecimalField(max_digits=12, decimal_places=5, default=0.00)
+    precio_unitario = models.DecimalField(max_digits=14, decimal_places=8, default=0.00)
     TIPO_ITEM_CHOICES = [(1, 'Bien'), (2, 'Servicio')]
     tipo_item = models.IntegerField(choices=TIPO_ITEM_CHOICES, default=1)
     TIPO_IMPUESTO_CHOICES = [
@@ -535,7 +535,7 @@ class DetalleVenta(models.Model):
     codigo_libre = models.CharField(max_length=50, blank=True, null=True)
     
     cantidad = models.DecimalField(max_digits=10, decimal_places=2, default=1.00)
-    precio_unitario = models.DecimalField(max_digits=12, decimal_places=5, default=0.00)
+    precio_unitario = models.DecimalField(max_digits=14, decimal_places=8, default=0.00)
     monto_descuento = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     
     # Clasificación del item
@@ -641,7 +641,7 @@ class PlantillaItem(models.Model):
     descripcion_libre = models.CharField(max_length=200, blank=True, null=True)
     codigo_libre = models.CharField(max_length=50, blank=True, null=True)
     cantidad = models.DecimalField(max_digits=10, decimal_places=2, default=1.00)
-    precio_unitario = models.DecimalField(max_digits=12, decimal_places=5, default=0.00)
+    precio_unitario = models.DecimalField(max_digits=14, decimal_places=8, default=0.00)
     numero_item = models.IntegerField(default=1)
 
     class Meta:

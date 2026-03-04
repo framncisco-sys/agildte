@@ -741,7 +741,7 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
                       <td className="py-2 px-3">
                         <input
                           type="number"
-                          step="0.00001"
+                          step="0.00000001"
                           {...register(`items.${index}.precioUnitario`)}
                           className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-w-[4rem]"
                         />
