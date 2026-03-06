@@ -12,7 +12,7 @@ from decimal import Decimal, ROUND_HALF_UP
 TZ_EL_SALVADOR = timezone(timedelta(hours=-6))
 
 from api.models import Venta
-from api.dte_generator import CorrelativoDTE, formatear_decimal, limpiar_nulos
+from api.dte_generator import CorrelativoDTE, formatear_decimal, formatear_nrc_emisor, limpiar_nulos
 
 
 def _es_valor_vacio(valor):
@@ -68,9 +68,13 @@ class BaseDTEBuilder(ABC):
         nit_limpio = (self.empresa.nit or self.empresa.nrc or "").replace('-', '').replace(' ', '')
         cod_estable, cod_punto_venta = self._obtener_codigos_establecimiento()
 
+        nrc_formateado = formatear_nrc_emisor(self.empresa.nrc)
+        if not nrc_formateado:
+            raise ValueError("Empresa sin NRC válido. El NRC es obligatorio para emitir DTE.")
+
         emisor = {
             "nit": nit_limpio,
-            "nrc": self.empresa.nrc,
+            "nrc": nrc_formateado,
             "nombre": self.empresa.nombre,
             "codActividad": cod_actividad,
             "descActividad": desc_actividad,

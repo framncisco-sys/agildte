@@ -165,7 +165,7 @@ class DTE01Builder(DTE03Builder):
             "descuGravada": round(total_descu, 2),
             "porcentajeDescuento": 0.00,
             "totalDescu": round(total_descu, 2),
-            "tributos": None,
+            "tributos": [],  # MH exige array (vacío para CF)
             "subTotal": round(subtotal_ventas - total_descu, 2),
             "reteRenta": round(rete_renta, 2),
             "ivaRete1": round(iva_retenido_1, 2),

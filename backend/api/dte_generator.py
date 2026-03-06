@@ -42,6 +42,20 @@ def obtener_codigo_departamento_municipio(departamento_nombre=None, municipio_no
     return codigo_default
 
 
+def formatear_nrc_emisor(valor):
+    """
+    Formatea el NRC del emisor según esquema MH.
+    Solo dígitos, 4-8 caracteres. MH acepta NRC cortos (ej: 1171) y largos (ej: 2984414).
+    """
+    if valor is None:
+        return None
+    s = str(valor).strip().replace('-', '').replace(' ', '').replace('.', '')
+    solo_digitos = ''.join(c for c in s if c.isdigit())
+    if not solo_digitos or len(solo_digitos) < 4:
+        return None
+    return solo_digitos[:8]
+
+
 def formatear_decimal(valor, decimales=2):
     """
     Formatea un valor numérico a Decimal con la cantidad de decimales especificada.
@@ -402,9 +416,13 @@ class DTEGenerator:
         cod_punto_venta = cod_punto_venta.strip() if cod_punto_venta and cod_punto_venta.strip() else 'P001'
         
         # Esquema MH fe-fc-v1 / fe-ccf-v3: requieren los 4 campos (codEstableMH puede ser null si MH no asignó)
+        # NRC: MH exige formato numérico de 7 dígitos (sin guiones ni espacios)
+        nrc_formateado = formatear_nrc_emisor(self.empresa.nrc)
+        if not nrc_formateado:
+            raise ValueError("Empresa sin NRC válido. El NRC es obligatorio para emitir DTE.")
         emisor = {
             "nit": nit_limpio,
-            "nrc": self.empresa.nrc,
+            "nrc": nrc_formateado,
             "nombre": self.empresa.nombre,
             "codActividad": cod_actividad,
             "descActividad": desc_actividad,
@@ -944,7 +962,7 @@ class DTEGenerator:
             }
         ]
         
-        # DTE-03: desglosa IVA en tributos; DTE-01: tributos vacío/null
+        # DTE-03: desglosa IVA en tributos; DTE-01: tributos array vacío (MH exige array)
         if tipo_dte == '03':
             tributos_value = [
                 {
@@ -954,7 +972,7 @@ class DTEGenerator:
                 }
             ] if total_iva > 0 else []
         else:
-            tributos_value = None
+            tributos_value = []  # MH exige array en resumen (vacío para CF)
         
         resumen = {
             "totalNoSuj": round(total_no_sujeto, 2),
