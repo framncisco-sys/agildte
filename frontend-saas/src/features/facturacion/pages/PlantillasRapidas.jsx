@@ -10,6 +10,7 @@ import { crearPlantilla } from '../../../api/plantillas'
 import { ModalBuscadorCliente } from '../components/ModalBuscadorCliente'
 import { ItemDescripcionCombobox } from '../components/ItemDescripcionCombobox'
 import { ModalCatalogoItems } from '../components/ModalCatalogoItems'
+import { ModalControlarPlantillas } from '../components/ModalControlarPlantillas'
 
 const schema = z.object({
   nombrePlantilla: z.string().min(1, 'El nombre de la plantilla es obligatorio'),
@@ -36,6 +37,7 @@ export function PlantillasRapidasPage() {
   const [modalClienteAbierto, setModalClienteAbierto] = useState(false)
   const [catalogRowIndex, setCatalogRowIndex] = useState(null)
   const [enviando, setEnviando] = useState(false)
+  const [modalControlarAbierto, setModalControlarAbierto] = useState(false)
 
   const {
     register,
@@ -269,7 +271,14 @@ export function PlantillasRapidasPage() {
           )}
         </section>
 
-        <section className="flex justify-end">
+        <section className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => setModalControlarAbierto(true)}
+            className="px-6 py-3 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 transition-colors"
+          >
+            Controlar plantillas rápidas
+          </button>
           <button
             type="submit"
             disabled={enviando}
@@ -301,6 +310,12 @@ export function PlantillasRapidasPage() {
           setCatalogRowIndex(null)
         }}
         empresaId={empresaId}
+      />
+
+      <ModalControlarPlantillas
+        isOpen={modalControlarAbierto}
+        onClose={() => setModalControlarAbierto(false)}
+        onCambio={() => window.dispatchEvent(new CustomEvent('plantillas-actualizadas'))}
       />
     </div>
   )

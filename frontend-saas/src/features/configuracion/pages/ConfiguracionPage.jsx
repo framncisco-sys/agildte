@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
-import { getEmpresa, updateEmpresa, getCorrelativos, updateCorrelativos } from '../../../api/empresa'
+import { getEmpresa, updateEmpresa, getCorrelativos, updateCorrelativos, activarContingencia, desactivarContingencia, procesarContingenciaCompleta } from '../../../api/empresa'
 import { changePassword } from '../../../api/auth'
 import { ImagePlus, Save, Building2, Lock, Hash } from 'lucide-react'
 
@@ -41,6 +41,10 @@ export default function ConfiguracionPage() {
   const [correlativosForm, setCorrelativosForm] = useState({})
   const [loadingCorrelativos, setLoadingCorrelativos] = useState(false)
   const [savingCorrelativos, setSavingCorrelativos] = useState(false)
+  const [contingenciaLoading, setContingenciaLoading] = useState(false)
+  const [contingenciaModalAbierto, setContingenciaModalAbierto] = useState(false)
+  const [contingenciaForm, setContingenciaForm] = useState({ tipoContingencia: '1', motivo: '' })
+  const [contingenciaResultado, setContingenciaResultado] = useState(null)
 
   useEffect(() => {
     if (!empresaId) {
@@ -178,6 +182,59 @@ export default function ConfiguracionPage() {
     setLogoFile(file)
     const url = URL.createObjectURL(file)
     setLogoPreview(url)
+  }
+
+  const handleToggleContingencia = async (activar) => {
+    if (!empresaId) {
+      toast.error('Seleccione una empresa')
+      return
+    }
+    setContingenciaLoading(true)
+    try {
+      if (activar) {
+        const res = await activarContingencia(empresaId, {})
+        toast.success(res?.mensaje ?? 'Contingencia activada para esta empresa.')
+        setEmpresa((prev) => prev ? { ...prev, contingencia_activa: true } : prev)
+      } else {
+        // Abrir modal para procesar contingencia completa (reporte + envíos)
+        setContingenciaResultado(null)
+        setContingenciaModalAbierto(true)
+      }
+    } catch (err) {
+      const msg = err.response?.data?.mensaje ?? err.response?.data?.detail ?? err.message ?? 'Error al cambiar la contingencia'
+      toast.error(msg)
+    } finally {
+      setContingenciaLoading(false)
+    }
+  }
+
+  const handleContingenciaFormChange = (e) => {
+    const { name, value } = e.target
+    setContingenciaForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleProcesarContingencia = async () => {
+    if (!empresaId) {
+      toast.error('Seleccione una empresa')
+      return
+    }
+    setContingenciaLoading(true)
+    setContingenciaResultado(null)
+    try {
+      const payload = {
+        tipoContingencia: Number(contingenciaForm.tipoContingencia || 1),
+        motivo: contingenciaForm.motivo || undefined,
+      }
+      const res = await procesarContingenciaCompleta(empresaId, payload)
+      setContingenciaResultado(res)
+      setEmpresa((prev) => prev ? { ...prev, contingencia_activa: false } : prev)
+      toast.success(res?.mensaje ?? 'Contingencia procesada y facturas enviadas.')
+    } catch (err) {
+      const msg = err.response?.data?.mensaje ?? err.response?.data?.detail ?? err.message ?? 'Error al procesar contingencia'
+      toast.error(msg)
+    } finally {
+      setContingenciaLoading(false)
+    }
   }
 
   const handleSubmit = async (e) => {
@@ -373,6 +430,38 @@ export default function ConfiguracionPage() {
             <h2 className="font-semibold text-slate-800">Facturación electrónica (MH)</h2>
           </div>
           <div className="p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Contingencia con Ministerio de Hacienda</p>
+                <p className="text-xs text-slate-500">
+                  Cuando la contingencia está activa, las facturas se quedan como pendientes de envío y se reportan luego a MH.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${empresa?.contingencia_activa ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                  {empresa?.contingencia_activa ? 'Contingencia ACTIVA' : 'Contingencia desactivada'}
+                </span>
+                {empresa?.contingencia_activa ? (
+                  <button
+                    type="button"
+                    disabled={contingenciaLoading}
+                    onClick={() => handleToggleContingencia(false)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                  >
+                    {contingenciaLoading ? 'Procesando…' : 'Desactivar y enviar pendientes'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={contingenciaLoading}
+                    onClick={() => handleToggleContingencia(true)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+                  >
+                    {contingenciaLoading ? 'Procesando…' : 'Activar contingencia'}
+                  </button>
+                )}
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Ambiente</label>
@@ -425,6 +514,19 @@ export default function ConfiguracionPage() {
             </div>
           </div>
         </div>
+
+        {empresa?.contingencia_activa && (
+          <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-amber-200 bg-amber-50 flex items-center justify-between gap-2">
+              <div>
+                <h2 className="font-semibold text-amber-900 text-sm">Contingencia activa</h2>
+                <p className="text-xs text-amber-700">
+                  Las facturas se están guardando como PendienteEnvio. Para finalizar, desactiva la contingencia y procesa el reporte.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
@@ -526,6 +628,99 @@ export default function ConfiguracionPage() {
           </button>
         </div>
       </form>
+
+      {/* Modal de procesamiento de contingencia */}
+      {contingenciaModalAbierto && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl shadow-lg max-w-lg w-full mx-4">
+            <div className="px-5 py-3 border-b border-slate-200">
+              <h2 className="font-semibold text-slate-800 text-sm">
+                Procesar contingencia MH
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Se enviará primero el reporte de contingencia y luego todas las facturas en estado PendienteEnvio para esta empresa.
+              </p>
+            </div>
+            <div className="p-5 space-y-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Tipo de contingencia (MH)
+                  </label>
+                  <select
+                    name="tipoContingencia"
+                    value={contingenciaForm.tipoContingencia}
+                    onChange={handleContingenciaFormChange}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-slate-500 focus:border-slate-500 text-sm"
+                  >
+                    <option value="1">1 - Fallo de sistemas internos</option>
+                    <option value="2">2 - Fallo de comunicaciones</option>
+                    <option value="3">3 - Fallo de servicios MH</option>
+                    <option value="4">4 - Corte de energía</option>
+                    <option value="5">5 - Otro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Motivo (opcional, obligatorio si tipo=5)
+                  </label>
+                  <textarea
+                    name="motivo"
+                    rows={2}
+                    value={contingenciaForm.motivo}
+                    onChange={handleContingenciaFormChange}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-slate-500 focus:border-slate-500 text-sm"
+                    placeholder="Describa brevemente el motivo de la contingencia"
+                  />
+                </div>
+              </div>
+
+              {contingenciaResultado && (
+                <div className="mt-2 border border-slate-200 rounded-lg p-3 bg-slate-50 text-xs space-y-1 max-h-64 overflow-auto">
+                  <p className="font-semibold text-slate-800">
+                    Resumen de envío de facturas
+                  </p>
+                  <p>Total en contingencia: {contingenciaResultado?.resumen_envio?.total ?? 0}</p>
+                  <p>Aceptadas por MH: {contingenciaResultado?.resumen_envio?.aceptadas ?? 0}</p>
+                  <p>Rechazadas: {contingenciaResultado?.resumen_envio?.rechazadas ?? 0}</p>
+                  <p>Errores: {contingenciaResultado?.resumen_envio?.errores ?? 0}</p>
+                  {contingenciaResultado?.resultado_contingencia && (
+                    <>
+                      <p className="mt-2 font-semibold text-slate-800">
+                        Resultado del evento de contingencia
+                      </p>
+                      <p>Estado: {contingenciaResultado.resultado_contingencia.estado}</p>
+                      <p>Mensaje: {contingenciaResultado.resultado_contingencia.mensaje}</p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800"
+                onClick={() => {
+                  if (!contingenciaLoading) {
+                    setContingenciaModalAbierto(false)
+                    setContingenciaResultado(null)
+                  }
+                }}
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                disabled={contingenciaLoading}
+                onClick={handleProcesarContingencia}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {contingenciaLoading ? 'Procesando...' : 'Enviar reporte y facturas'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

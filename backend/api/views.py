@@ -9,6 +9,7 @@ from django.http import HttpResponse, JsonResponse
 from django.db.models import Q, F, Sum
 from django.db.models.functions import TruncDay
 from django.utils import timezone
+from datetime import datetime
 from rest_framework.decorators import api_view, action, permission_classes as drf_permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status, viewsets, permissions
@@ -18,13 +19,14 @@ from rest_framework.permissions import IsAuthenticated as DRFIsAuthenticated
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.views.decorators.csrf import csrf_exempt
-from .models import Cliente, Compra, Venta, Retencion, Empresa, Liquidacion, RetencionRecibida, Producto, DetalleVenta, PerfilUsuario, ActividadEconomica, Correlativo, PlantillaFactura
+from .models import Cliente, Compra, Venta, Retencion, Empresa, Liquidacion, RetencionRecibida, Producto, DetalleVenta, PerfilUsuario, ActividadEconomica, Correlativo, PlantillaFactura, TareaFacturacion
 from .serializers import ClienteSerializer, CompraSerializer, VentaSerializer, RetencionSerializer, EmpresaSerializer, LiquidacionSerializer, RetencionRecibidaSerializer, ProductoSerializer, VentaConDetallesSerializer, ActividadEconomicaSerializer, PlantillaFacturaSerializer
 from .dte_generator import DTEGenerator
 from .utils.pdf_generator import generar_pdf_venta
 from .utils.tenant import get_empresa_ids_allowlist, require_empresa_allowed, require_object_empresa_allowed, get_and_validate_empresa
 from .services import FacturacionService, FacturacionServiceError, AutenticacionMHError, FirmaDTEError, EnvioMHError
 from .services.email_service import enviar_factura_email
+from .utils.contingencia import generar_reporte_contingencia
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +205,286 @@ TIPO_DTE_LABELS = {
 
 class EmpresaViewSet(viewsets.ModelViewSet):
     serializer_class = EmpresaSerializer
+
+    @action(detail=True, methods=['post'], url_path='activar-contingencia')
+    def activar_contingencia(self, request, pk=None):
+        """
+        Activa la contingencia MH para la empresa.
+        Body opcional: { "tipoContingencia": 1-5, "motivo": "texto..." }
+        """
+        empresa = self.get_object()
+        r = require_empresa_allowed(request, empresa.id)
+        if r is not None:
+            return r
+
+        now_sv = timezone.localtime(timezone.now())
+        tipo = request.data.get('tipoContingencia')
+        motivo = request.data.get('motivo')
+
+        empresa.contingencia_activa = True
+        empresa.contingencia_f_inicio = now_sv.date()
+        empresa.contingencia_h_inicio = now_sv.time().replace(microsecond=0)
+        empresa.contingencia_f_fin = None
+        empresa.contingencia_h_fin = None
+        empresa.contingencia_tipo = int(tipo) if tipo in (1, 2, 3, 4, 5) else None
+        empresa.contingencia_motivo = motivo or None
+        empresa.save(update_fields=[
+            'contingencia_activa',
+            'contingencia_f_inicio',
+            'contingencia_h_inicio',
+            'contingencia_f_fin',
+            'contingencia_h_fin',
+            'contingencia_tipo',
+            'contingencia_motivo',
+        ])
+
+        return Response({
+            "mensaje": "Contingencia MH activada para la empresa.",
+            "empresa_id": empresa.id,
+            "contingencia": {
+                "activa": empresa.contingencia_activa,
+                "f_inicio": empresa.contingencia_f_inicio,
+                "h_inicio": empresa.contingencia_h_inicio,
+                "tipoContingencia": empresa.contingencia_tipo,
+                "motivo": empresa.contingencia_motivo,
+            }
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='desactivar-contingencia')
+    def desactivar_contingencia(self, request, pk=None):
+        """
+        Desactiva la contingencia MH y:
+        1) Genera el JSON de reporte de contingencia (según schema v3) con las ventas PendienteEnvio.
+        2) Encola todas las ventas PendienteEnvio de la empresa en TareaFacturacion para que se envíen a MH.
+        Devuelve el JSON generado para que puedas verlo/enviarlo al MH.
+        """
+        empresa = self.get_object()
+        r = require_empresa_allowed(request, empresa.id)
+        if r is not None:
+            return r
+
+        if not empresa.contingencia_activa:
+            return Response({
+                "detalle": "La contingencia no está activa para esta empresa."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        now_sv = timezone.localtime(timezone.now())
+
+        ventas_qs = Venta.objects.filter(
+            empresa=empresa,
+            estado_dte='PendienteEnvio',
+        ).order_by('fecha_emision', 'id')
+        ventas = list(ventas_qs)
+
+        if not ventas:
+            empresa.contingencia_activa = False
+            empresa.contingencia_f_fin = now_sv.date()
+            empresa.contingencia_h_fin = now_sv.time().replace(microsecond=0)
+            empresa.save(update_fields=[
+                'contingencia_activa',
+                'contingencia_f_fin',
+                'contingencia_h_fin',
+            ])
+            return Response({
+                "mensaje": "Contingencia desactivada. No se encontraron ventas en estado PendienteEnvio.",
+                "empresa_id": empresa.id,
+            }, status=status.HTTP_200_OK)
+
+        ambiente_mh = empresa.ambiente or '01'
+
+        if empresa.contingencia_f_inicio and empresa.contingencia_h_inicio:
+            f_inicio_dt = datetime.combine(
+                empresa.contingencia_f_inicio,
+                empresa.contingencia_h_inicio,
+                tzinfo=timezone.get_current_timezone(),
+            )
+        else:
+            primera = ventas[0]
+            f_inicio_dt = datetime.combine(
+                primera.fecha_emision,
+                now_sv.time().replace(microsecond=0),
+                tzinfo=timezone.get_current_timezone(),
+            )
+
+        f_fin_dt = now_sv
+
+        tipo_cont = empresa.contingencia_tipo or request.data.get('tipoContingencia') or 1
+        motivo_cont = request.data.get('motivo') or empresa.contingencia_motivo
+
+        reporte_json = generar_reporte_contingencia(
+            empresa=empresa,
+            ventas=ventas,
+            ambiente_mh=ambiente_mh,
+            f_inicio=f_inicio_dt,
+            f_fin=f_fin_dt,
+            tipo_contingencia=int(tipo_cont),
+            motivo=motivo_cont,
+            nombre_responsable=None,
+            tipo_doc_responsable=None,
+            numero_doc_responsable=None,
+        )
+
+        empresa.contingencia_activa = False
+        empresa.contingencia_f_fin = now_sv.date()
+        empresa.contingencia_h_fin = now_sv.time().replace(microsecond=0)
+        empresa.save(update_fields=[
+            'contingencia_activa',
+            'contingencia_f_fin',
+            'contingencia_h_fin',
+        ])
+
+        for v in ventas:
+            TareaFacturacion.objects.get_or_create(
+                venta=v,
+                defaults={'estado': 'Pendiente'}
+            )
+
+        return Response({
+            "mensaje": "Contingencia desactivada. Ventas en estado PendienteEnvio encoladas para envío a MH.",
+            "empresa_id": empresa.id,
+            "reporte_contingencia": reporte_json,
+            "total_ventas_en_reporte": len(reporte_json.get("detalleDTE", [])),
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='procesar-contingencia-completa')
+    def procesar_contingencia_completa(self, request, pk=None):
+        """
+        1) Genera y ENVÍA a MH el reporte de contingencia (espera respuesta).
+        2) Si el reporte es PROCESADO, envía UNA A UNA las ventas PendienteEnvio de la empresa.
+        Devuelve resumen de aceptación/rechazo de cada factura.
+        """
+        from .services.facturacion_service import FacturacionService, FacturacionServiceError, EnvioMHError, EnvioMHTransitorioError
+
+        empresa = self.get_object()
+        r = require_empresa_allowed(request, empresa.id)
+        if r is not None:
+            return r
+
+        now_sv = timezone.localtime(timezone.now())
+
+        ventas_qs = Venta.objects.filter(
+            empresa=empresa,
+            estado_dte='PendienteEnvio',
+        ).order_by('fecha_emision', 'id')
+        ventas = list(ventas_qs)
+
+        if not ventas:
+            return Response({
+                "mensaje": "No hay ventas en estado PendienteEnvio para procesar.",
+                "empresa_id": empresa.id,
+            }, status=status.HTTP_200_OK)
+
+        # Ambiente para el evento de contingencia:
+        # empresa.ambiente: '01' = PRUEBAS, '00' = PRODUCCIÓN
+        # Manual contingencia: ambiente '00' = Pruebas, '01' = Producción
+        # Usamos el mismo mapeo que para DTE (DTE_AMBIENTE_CODE).
+        servicio = FacturacionService(empresa)
+        ambiente_mh = servicio.DTE_AMBIENTE_CODE.get(servicio.codigo_ambiente_mh, servicio.codigo_ambiente_mh)
+
+        if empresa.contingencia_f_inicio and empresa.contingencia_h_inicio:
+            f_inicio_dt = datetime.combine(
+                empresa.contingencia_f_inicio,
+                empresa.contingencia_h_inicio,
+                tzinfo=timezone.get_current_timezone(),
+            )
+        else:
+            primera = ventas[0]
+            f_inicio_dt = datetime.combine(
+                primera.fecha_emision,
+                now_sv.time().replace(microsecond=0),
+                tzinfo=timezone.get_current_timezone(),
+            )
+
+        f_fin_dt = now_sv
+
+        tipo_cont = request.data.get('tipoContingencia') or empresa.contingencia_tipo or 1
+        motivo_cont = request.data.get('motivo') or empresa.contingencia_motivo
+
+        # 1) Generar JSON de contingencia
+        reporte_json = generar_reporte_contingencia(
+            empresa=empresa,
+            ventas=ventas,
+            ambiente_mh=ambiente_mh,
+            f_inicio=f_inicio_dt,
+            f_fin=f_fin_dt,
+            tipo_contingencia=int(tipo_cont),
+            motivo=motivo_cont,
+            nombre_responsable=None,
+            tipo_doc_responsable=None,
+            numero_doc_responsable=None,
+        )
+
+        # 1b) Enviar evento de contingencia a MH y esperar respuesta
+        try:
+            resultado_cont = servicio.enviar_evento_contingencia(reporte_json)
+        except (EnvioMHError, EnvioMHTransitorioError) as e:
+            return Response({
+                "mensaje": "Error al enviar el evento de contingencia a MH.",
+                "detalle": str(e),
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if (resultado_cont or {}).get("estado") != "RECIBIDO":
+            return Response({
+                "mensaje": "MH no recibió el evento de contingencia.",
+                "resultado_contingencia": resultado_cont,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 2) Enviar todas las ventas pendientes, una por una, de forma SÍNCRONA.
+        resumen = {
+            "total": len(ventas),
+            "aceptadas": 0,
+            "rechazadas": 0,
+            "errores": 0,
+            "detalles": [],
+        }
+        for v in ventas:
+            try:
+                resultado = servicio.procesar_factura(v)
+                aceptado = resultado.get("exito") and v.estado_dte == "AceptadoMH"
+                if aceptado:
+                    resumen["aceptadas"] += 1
+                else:
+                    resumen["rechazadas"] += 1
+                resumen["detalles"].append({
+                    "venta_id": v.id,
+                    "estado_dte": v.estado_dte,
+                    "mensaje": resultado.get("mensaje"),
+                    "codigo_generacion": resultado.get("codigo_generacion"),
+                    "numero_control": resultado.get("numero_control"),
+                })
+            except FacturacionServiceError as e:
+                v.refresh_from_db()
+                resumen["errores"] += 1
+                resumen["detalles"].append({
+                    "venta_id": v.id,
+                    "estado_dte": v.estado_dte,
+                    "mensaje": str(e),
+                })
+            except Exception as e:
+                v.refresh_from_db()
+                resumen["errores"] += 1
+                resumen["detalles"].append({
+                    "venta_id": v.id,
+                    "estado_dte": v.estado_dte,
+                    "mensaje": f"Error inesperado: {str(e)}",
+                })
+
+        empresa.contingencia_activa = False
+        empresa.contingencia_f_fin = now_sv.date()
+        empresa.contingencia_h_fin = now_sv.time().replace(microsecond=0)
+        empresa.save(update_fields=[
+            'contingencia_activa',
+            'contingencia_f_fin',
+            'contingencia_h_fin',
+        ])
+
+        return Response({
+            "mensaje": "Proceso de contingencia completado.",
+            "empresa_id": empresa.id,
+            "reporte_contingencia": reporte_json,
+            "resultado_contingencia": resultado_cont,
+            "resumen_envio": resumen,
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get', 'patch'], url_path='correlativos')
     def correlativos(self, request, pk=None):
@@ -1335,7 +1617,6 @@ def crear_venta(request):
 def crear_venta_con_detalles(request):
     """Crea una venta con sus detalles y envía a Hacienda (síncrono o asíncrono según USE_ASYNC_FACTURACION)."""
     from django.conf import settings
-    from .models import TareaFacturacion
     from .services.facturacion_service import FacturacionService, FacturacionServiceError
 
     # Validar tenant: empresa_id del body debe estar permitida para el usuario
@@ -1350,6 +1631,16 @@ def crear_venta_con_detalles(request):
         return Response(serializer.errors, status=400)
 
     venta = serializer.save()
+
+    # Si la empresa está en contingencia MH, NO enviamos a Hacienda ni encolamos tarea.
+    empresa = venta.empresa
+    if empresa and getattr(empresa, 'contingencia_activa', False):
+        venta.estado_dte = 'PendienteEnvio'
+        venta.save(update_fields=['estado_dte'])
+        data = VentaSerializer(venta).data
+        data['mensaje'] = 'Documento registrado en contingencia. Se enviará a MH cuando desactives la contingencia.'
+        data['procesamiento'] = 'contingencia'
+        return Response(data, status=201)
 
     if getattr(settings, 'USE_ASYNC_FACTURACION', True):
         # Procesamiento asíncrono: encolar y responder de inmediato
@@ -1454,7 +1745,7 @@ def listar_plantillas_factura(request):
     if search:
         qs = qs.filter(nombre__icontains=search)
 
-    qs = qs.select_related('empresa', 'cliente').prefetch_related('items__producto').order_by('nombre')
+    qs = qs.select_related('empresa', 'cliente').prefetch_related('items__producto').order_by('orden', 'nombre')
     serializer = PlantillaFacturaSerializer(qs, many=True)
     return Response(serializer.data)
 

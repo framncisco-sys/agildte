@@ -66,11 +66,13 @@ class FacturacionService:
             'auth': 'https://api.dtes.mh.gob.sv/seguridad/auth',
             'recepcion': 'https://api.dtes.mh.gob.sv/fesv/recepciondte',
             'anulardte': 'https://api.dtes.mh.gob.sv/fesv/anulardte',
+            'contingencia': 'https://api.dtes.mh.gob.sv/fesv/contingencia',
         },
         '01': {  # Pruebas
             'auth': 'https://apitest.dtes.mh.gob.sv/seguridad/auth',
             'recepcion': 'https://apitest.dtes.mh.gob.sv/fesv/recepciondte',
             'anulardte': 'https://apitest.dtes.mh.gob.sv/fesv/anulardte',
+            'contingencia': 'https://apitest.dtes.mh.gob.sv/fesv/contingencia',
         }
     }
 
@@ -115,6 +117,7 @@ class FacturacionService:
         self.url_auth = self.URLS_MH[ambiente]['auth']
         self.url_recepcion = self.URLS_MH[ambiente]['recepcion']
         self.url_anulardte = self.URLS_MH[ambiente]['anulardte']
+        self.url_contingencia = self.URLS_MH[ambiente]['contingencia']
         
         # El código de ambiente MH es el mismo que el valor del campo (ya viene como '00' o '01')
         self.codigo_ambiente_mh = ambiente
@@ -123,6 +126,12 @@ class FacturacionService:
         logger.info(f"FacturacionService inicializado para empresa: {empresa.nombre} (Ambiente: {ambiente} - {ambiente_nombre})")
         logger.info(f"   🔗 URL Auth: {self.url_auth}")
         logger.info(f"   🔗 URL Recepción: {self.url_recepcion}")
+        logger.info(f"   🔗 URL Contingencia: {self.url_contingencia}")
+
+    def _nit_emisor_limpio(self) -> str:
+        """Obtiene NIT del emisor sin guiones (para envío de contingencia)."""
+        nit_emisor = (self.empresa.nit or self.empresa.nrc or "").replace('-', '').replace(' ', '')
+        return nit_emisor or "000000000"
     
     def obtener_token(self) -> Optional[str]:
         """
@@ -270,6 +279,86 @@ class FacturacionService:
             error_msg = f"Error inesperado en firma: {str(e)}"
             logger.error(f"❌ Error inesperado en firma: {error_msg}")
             raise FirmaDTEError(error_msg) from e
+
+    def enviar_evento_contingencia(self, json_evento: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Envía el evento de contingencia firmado al servicio /fesv/contingencia.
+
+        Args:
+            json_evento: dict con el JSON del evento de contingencia (sin firmar).
+
+        Returns:
+            Dict con estado, mensaje, selloRecibido, observaciones, datos_completos.
+
+        Raises:
+            EnvioMHError / EnvioMHTransitorioError en caso de error.
+        """
+        # 1. Firmar evento con el mismo firmador de DTE
+        logger.info("Firmando evento de contingencia...")
+        evento_firmado = self.firmar_dte(json_evento)
+        if not evento_firmado:
+            raise FirmaDTEError("No se pudo firmar el evento de contingencia")
+
+        # 2. Obtener token
+        token = self.obtener_token()
+        if not token:
+            raise EnvioMHError("No se pudo obtener el token de autenticación para contingencia")
+
+        # 3. Body según manual: { nit, documento }
+        nit_emisor = self._nit_emisor_limpio()
+        payload = {
+            "nit": nit_emisor,
+            "documento": evento_firmado,
+        }
+        headers = {
+            "Authorization": token,
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0",
+        }
+
+        try:
+            logger.info(f"Enviando evento de contingencia a {self.url_contingencia} para NIT {nit_emisor}...")
+            resp = requests.post(self.url_contingencia, json=payload, headers=headers, timeout=60)
+            logger.info(f"📡 Respuesta Contingencia MH: {resp.status_code}")
+
+            datos = {}
+            try:
+                datos = resp.json()
+            except Exception:
+                logger.error("❌ No se pudo parsear respuesta de contingencia: %s", resp.text[:500])
+
+            if resp.status_code in (200, 201):
+                estado = datos.get("estado")
+                mensaje = datos.get("mensaje")
+                sello = datos.get("selloRecibido")
+                observaciones = datos.get("observaciones", [])
+                logger.info(
+                    "Resultado contingencia MH: estado=%s mensaje=%s sello=%s",
+                    estado, mensaje, sello,
+                )
+                return {
+                    "estado": estado,
+                    "mensaje": mensaje,
+                    "sello_recibido": sello,
+                    "observaciones": observaciones,
+                    "datos_completos": datos,
+                }
+
+            # HTTP error
+            error_msg = f"Error HTTP {resp.status_code} contingencia: {resp.text}"
+            logger.error("❌ Error contingencia MH: %s", error_msg)
+            if resp.status_code >= 500:
+                raise EnvioMHTransitorioError(error_msg)
+            raise EnvioMHError(error_msg)
+
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Error de conexión enviando contingencia a MH: {str(e)}"
+            logger.error("❌ Error conexión contingencia MH: %s", error_msg, exc_info=True)
+            raise EnvioMHTransitorioError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Error inesperado enviando contingencia a MH: {str(e)}"
+            logger.error("❌ Error inesperado contingencia MH: %s", error_msg, exc_info=True)
+            raise EnvioMHError(error_msg) from e
     
     def enviar_dte(self, dte_firmado: str, codigo_generacion: str, tipo_dte: str = '01') -> Dict[str, Any]:
         """

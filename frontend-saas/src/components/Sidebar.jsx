@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useEmpresaStore } from '../stores/useEmpresaStore'
 import { listarPlantillas } from '../api/plantillas'
+import { ModalControlarPlantillas } from '../features/facturacion/components/ModalControlarPlantillas'
 
 const allNavItems = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -13,7 +14,7 @@ const allNavItems = [
   { to: '/facturacion/carga-masiva', label: 'Carga Masiva' },
   { to: '/contabilidad/libros-iva', label: 'Libros de IVA', roles: ['ADMIN', 'CONTADOR'] },
   { to: '/configuracion', label: 'Configuración', roles: ['ADMIN'] },
-  { to: '/items', label: 'Administración de Ítems' },
+  { to: '/items', label: 'Administración de ítems' },
 ]
 
 export function Sidebar({ open = false, onClose }) {
@@ -23,37 +24,33 @@ export function Sidebar({ open = false, onClose }) {
   const [plantillas, setPlantillas] = useState([])
   const [loadingPlantillas, setLoadingPlantillas] = useState(false)
   const [showFacturacionRapida, setShowFacturacionRapida] = useState(true)
+  const [modalControlarAbierto, setModalControlarAbierto] = useState(false)
 
   const navItems = allNavItems.filter((item) => {
     if (!item.roles) return true
     return role && item.roles.includes(role)
   })
 
+  const cargarPlantillas = () => {
+    if (!empresaId) {
+      setPlantillas([])
+      return
+    }
+    setLoadingPlantillas(true)
+    listarPlantillas({ empresa_id: empresaId })
+      .then((data) => setPlantillas(Array.isArray(data) ? data : []))
+      .catch(() => setPlantillas([]))
+      .finally(() => setLoadingPlantillas(false))
+  }
+
   useEffect(() => {
-    let cancelado = false
-    const cargar = async () => {
-      if (!empresaId) {
-        setPlantillas([])
-        return
-      }
-      setLoadingPlantillas(true)
-      try {
-        const data = await listarPlantillas({ empresa_id: empresaId })
-        if (!cancelado) {
-          setPlantillas(Array.isArray(data) ? data : [])
-        }
-      } catch (e) {
-        if (!cancelado) {
-          setPlantillas([])
-        }
-      } finally {
-        if (!cancelado) setLoadingPlantillas(false)
-      }
-    }
-    cargar()
-    return () => {
-      cancelado = true
-    }
+    cargarPlantillas()
+  }, [empresaId])
+
+  useEffect(() => {
+    const handler = () => cargarPlantillas()
+    window.addEventListener('plantillas-actualizadas', handler)
+    return () => window.removeEventListener('plantillas-actualizadas', handler)
   }, [empresaId])
 
   const navLinkClass = ({ isActive }) =>
@@ -116,6 +113,13 @@ export function Sidebar({ open = false, onClose }) {
                     {p.nombre}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setModalControlarAbierto(true)}
+                  className="w-full mt-1 text-left px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white/90 border border-white/20"
+                >
+                  Controlar plantillas rápidas
+                </button>
                 <button
                   type="button"
                   onClick={() => navigate('/facturacion/plantillas/nueva')}
@@ -204,6 +208,16 @@ export function Sidebar({ open = false, onClose }) {
                 <button
                   type="button"
                   onClick={() => {
+                    setModalControlarAbierto(true)
+                    onClose?.()
+                  }}
+                  className="w-full mt-1 text-left px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white/90 border border-white/20"
+                >
+                  Controlar plantillas rápidas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
                     navigate('/facturacion/plantillas/nueva')
                     onClose?.()
                   }}
@@ -216,6 +230,12 @@ export function Sidebar({ open = false, onClose }) {
           </div>
         </nav>
       </aside>
+
+      <ModalControlarPlantillas
+        isOpen={modalControlarAbierto}
+        onClose={() => setModalControlarAbierto(false)}
+        onCambio={cargarPlantillas}
+      />
     </>
   )
 }

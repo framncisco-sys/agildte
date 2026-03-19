@@ -7,6 +7,7 @@ Modos de envío (en orden de prioridad):
      Usa HTTPS (puerto 443), útil cuando SMTP 587/465 está bloqueado.
   2. SMTP — variables EMAIL_* o campos smtp_* del modelo Empresa.
 """
+import base64
 import json
 import logging
 import os
@@ -94,7 +95,9 @@ def _aplicar_template(template: str, venta) -> str:
         "Cliente"
     )
     numero = venta.numero_control or venta.codigo_generacion or venta.numero_documento or ""
+    codigo_gen = venta.codigo_generacion or numero or ""
     fecha = venta.fecha_emision.strftime("%d/%m/%Y") if venta.fecha_emision else ""
+    nombre_empresa = venta.empresa.nombre if venta.empresa else "AgilDTE"
     total = 0
     if venta.venta_gravada is not None:
         total += float(venta.venta_gravada)
@@ -106,6 +109,8 @@ def _aplicar_template(template: str, venta) -> str:
         template
         .replace("{{cliente}}", cliente_nombre)
         .replace("{{numero_control}}", numero)
+        .replace("{{codigo_generacion}}", codigo_gen)
+        .replace("{{nombre_empresa}}", nombre_empresa)
         .replace("{{fecha}}", fecha)
         .replace("{{total}}", total_str)
     )
@@ -157,16 +162,50 @@ def enviar_factura_email(venta) -> bool:
         logger.error(f"Error generando PDF para venta {venta.id}: {e}")
         return False
 
-    # Generar JSON DTE (adjunto opcional; si falla no cancela el envío)
+    # Generar JSON DTE legible con firmaElectronica y selloRecibido
     json_bytes = None
     try:
-        # Preferir el JWS firmado ya aceptado si está disponible
-        if getattr(venta, 'dte_firmado', None):
-            json_bytes = venta.dte_firmado.encode('utf-8') if isinstance(venta.dte_firmado, str) else venta.dte_firmado
+        dte_firmado = getattr(venta, 'dte_firmado', None)
+        sello_recepcion = getattr(venta, 'sello_recepcion', None) or ''
+        if dte_firmado:
+            dte_str = dte_firmado if isinstance(dte_firmado, str) else dte_firmado.decode('utf-8')
+            # Si es JWT, decodificar payload y agregar firmaElectronica + selloRecibido
+            if dte_str.strip().startswith('eyJ') and '.' in dte_str:
+                parts = dte_str.split('.')
+                if len(parts) >= 2:
+                    payload_b64 = parts[1]
+                    padding = 4 - len(payload_b64) % 4
+                    if padding != 4:
+                        payload_b64 += '=' * padding
+                    try:
+                        payload_bytes = base64.urlsafe_b64decode(payload_b64)
+                        dte_obj = json.loads(payload_bytes.decode('utf-8'))
+                        dte_obj['firmaElectronica'] = dte_str
+                        if sello_recepcion:
+                            dte_obj['selloRecibido'] = sello_recepcion.strip()
+                        json_bytes = json.dumps(dte_obj, indent=2, ensure_ascii=False).encode('utf-8')
+                    except (ValueError, json.JSONDecodeError):
+                        gen = DTEGenerator(venta)
+                        dte_json = gen.generar_json(ambiente=emp.ambiente or '01')
+                        dte_json['firmaElectronica'] = dte_str
+                        if sello_recepcion:
+                            dte_json['selloRecibido'] = sello_recepcion.strip()
+                        json_bytes = json.dumps(dte_json, indent=2, ensure_ascii=False).encode('utf-8')
+                else:
+                    dte_obj = {'firmaElectronica': dte_str}
+                    if sello_recepcion:
+                        dte_obj['selloRecibido'] = sello_recepcion.strip()
+                    json_bytes = json.dumps(dte_obj, indent=2, ensure_ascii=False).encode('utf-8')
+            else:
+                dte_obj = {'firmaElectronica': dte_str}
+                if sello_recepcion:
+                    dte_obj['selloRecibido'] = sello_recepcion.strip()
+                json_bytes = json.dumps(dte_obj, indent=2, ensure_ascii=False).encode('utf-8')
         else:
             gen = DTEGenerator(venta)
-            ambiente = emp.ambiente or '01'
-            dte_json = gen.generar_json(ambiente=ambiente)
+            dte_json = gen.generar_json(ambiente=emp.ambiente or '01')
+            if sello_recepcion:
+                dte_json['selloRecibido'] = sello_recepcion.strip()
             json_bytes = json.dumps(dte_json, indent=2, ensure_ascii=False).encode('utf-8')
     except Exception as e:
         logger.warning(f"No se pudo generar JSON DTE para adjuntar en correo de venta {venta.id}: {e}")
@@ -174,12 +213,13 @@ def enviar_factura_email(venta) -> bool:
     # Cuerpo del mensaje
     template = emp.email_template_html or (
         '<p>Estimado(a) {{cliente}},</p>'
-        '<p>Adjuntamos su factura electrónica {{numero_control}}.</p>'
+        '<p>Adjuntamos su factura electrónica ("{{codigo_generacion}}") por parte de {{nombre_empresa}}.</p>'
+        '<p>Puede descargar el documento PDF y el archivo JSON correspondientes que se encuentran adjuntos en este correo para sus registros.</p>'
         '<p>Saludos cordiales.</p>'
     )
     cuerpo_html = _aplicar_template(template, venta) + BRANDING_HTML
 
-    asunto_template = emp.email_asunto_default or "Factura electrónica - {{numero_control}}"
+    asunto_template = emp.email_asunto_default or "Factura electrónica de {{nombre_empresa}} - {{codigo_generacion}}"
     asunto = _aplicar_template(asunto_template, venta)
 
     msg = MIMEMultipart('alternative')

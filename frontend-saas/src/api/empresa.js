@@ -47,3 +47,31 @@ export async function updateCorrelativos(empresaId, payload) {
   const { data } = await apiClient.patch(`/empresas/${empresaId}/correlativos/`, payload)
   return data
 }
+
+/**
+ * Activa la contingencia MH para una empresa.
+ * Body opcional: { tipoContingencia, motivo }
+ */
+export async function activarContingencia(empresaId, payload = {}) {
+  const { data } = await apiClient.post(`/empresas/${empresaId}/activar-contingencia/`, payload)
+  return data
+}
+
+/**
+ * Desactiva la contingencia MH y encola las ventas pendientes.
+ * Body opcional: { tipoContingencia, motivo } para ajustar el reporte.
+ */
+export async function desactivarContingencia(empresaId, payload = {}) {
+  const { data } = await apiClient.post(`/empresas/${empresaId}/desactivar-contingencia/`, payload)
+  return data
+}
+
+/**
+ * Procesa la contingencia completa:
+ * 1) Genera y envía el reporte de contingencia.
+ * 2) Envía todas las facturas en PendienteEnvio y devuelve un resumen.
+ */
+export async function procesarContingenciaCompleta(empresaId, payload = {}) {
+  const { data } = await apiClient.post(`/empresas/${empresaId}/procesar-contingencia-completa/`, payload, { timeout: 600000 })
+  return data
+}

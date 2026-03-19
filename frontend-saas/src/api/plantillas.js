@@ -30,10 +30,19 @@ export async function obtenerPlantilla(id) {
 }
 
 /**
- * Actualiza una plantilla existente.
+ * Actualiza una plantilla existente (PUT - reemplazo completo).
  */
 export async function actualizarPlantilla(id, payload) {
   const { data } = await apiClient.put(`/plantillas-factura/${id}/`, payload)
+  return data
+}
+
+/**
+ * Actualiza parcialmente una plantilla (PATCH - solo campos enviados).
+ * Útil para reordenar (orden), etc.
+ */
+export async function actualizarPlantillaParcial(id, payload) {
+  const { data } = await apiClient.patch(`/plantillas-factura/${id}/`, payload)
   return data
 }
 

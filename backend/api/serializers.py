@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Max
 from .models import (
     Cliente,
     Compra,
@@ -323,6 +323,11 @@ class PlantillaFacturaSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'cliente_id': 'Cliente no encontrado.'})
             validated_data['cliente'] = cliente
 
+        if 'orden' not in validated_data or validated_data.get('orden', 0) == 0:
+            max_ord = PlantillaFactura.objects.filter(empresa=validated_data['empresa']).aggregate(
+                m=Max('orden')
+            )['m'] or 0
+            validated_data['orden'] = max_ord + 1
         plantilla = PlantillaFactura.objects.create(**validated_data)
 
         for idx, item_raw in enumerate(items_data):

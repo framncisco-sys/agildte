@@ -117,6 +117,43 @@ class Empresa(models.Model):
         help_text="Correo electrónico de contacto de la empresa"
     )
 
+    # --- CONTINGENCIA MH ---
+    contingencia_activa = models.BooleanField(
+        default=False,
+        help_text="Si está activa, los DTE se generan pero NO se envían a MH (quedan PendienteEnvio)."
+    )
+    contingencia_f_inicio = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Fecha de inicio de la contingencia MH."
+    )
+    contingencia_h_inicio = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Hora de inicio de la contingencia MH."
+    )
+    contingencia_f_fin = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Fecha de fin de la contingencia MH."
+    )
+    contingencia_h_fin = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Hora de fin de la contingencia MH."
+    )
+    contingencia_tipo = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="tipoContingencia (1–5) según catálogo MH."
+    )
+    contingencia_motivo = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        help_text="motivoContingencia enviado a MH."
+    )
+
     # --- CONFIGURACIÓN SMTP PARA ENVÍO DE FACTURAS ---
     smtp_host = models.CharField(max_length=255, blank=True, null=True, help_text="Host SMTP (ej: smtp.gmail.com)")
     smtp_port = models.IntegerField(default=587, help_text="Puerto SMTP (587 TLS, 465 SSL)")
@@ -125,15 +162,15 @@ class Empresa(models.Model):
     smtp_use_tls = models.BooleanField(default=True, help_text="Usar TLS para conexión SMTP")
     email_asunto_default = models.CharField(
         max_length=255,
-        default="Factura electrónica - {{numero_control}}",
+        default="Factura electrónica de {{nombre_empresa}} - {{codigo_generacion}}",
         blank=True,
-        help_text="Asunto del correo. Variables: {{numero_control}}, {{cliente}}, {{fecha}}"
+        help_text="Asunto del correo. Variables: {{numero_control}}, {{codigo_generacion}}, {{nombre_empresa}}, {{cliente}}, {{fecha}}"
     )
     email_template_html = models.TextField(
         blank=True,
         null=True,
-        default='<p>Estimado(a) {{cliente}},</p><p>Adjuntamos su factura electrónica {{numero_control}}.</p><p>Saludos cordiales.</p>',
-        help_text="Plantilla HTML del cuerpo del correo. Variables: {{cliente}}, {{numero_control}}, {{fecha}}, {{total}}"
+        default='<p>Estimado(a) {{cliente}},</p><p>Adjuntamos su factura electrónica ("{{codigo_generacion}}") por parte de {{nombre_empresa}}.</p><p>Puede descargar el documento PDF y el archivo JSON correspondientes que se encuentran adjuntos en este correo para sus registros.</p><p>Saludos cordiales.</p>',
+        help_text="Plantilla HTML del cuerpo. Variables: {{cliente}}, {{numero_control}}, {{codigo_generacion}}, {{nombre_empresa}}, {{fecha}}, {{total}}"
     )
 
     def save(self, *args, **kwargs):
@@ -609,13 +646,14 @@ class PlantillaFactura(models.Model):
         help_text="Tipo de DTE que se generará al usar la plantilla (01=CF, 03=CCF)",
     )
     activo = models.BooleanField(default=True)
+    orden = models.PositiveIntegerField(default=0, help_text='Orden de visualización (1=primero)')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Plantilla de Factura'
         verbose_name_plural = 'Plantillas de Factura'
-        ordering = ['empresa', 'nombre']
+        ordering = ['empresa', 'orden', 'nombre']
 
     def __str__(self):
         return f"{self.empresa.nombre} - {self.nombre}"
