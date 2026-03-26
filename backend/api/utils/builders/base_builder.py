@@ -214,17 +214,19 @@ class BaseDTEBuilder(ABC):
         """Construye resumen. Específico por tipo DTE."""
         pass
 
-    def generar_json(self, ambiente='00', generar_codigo=True, generar_numero_control=True):
+    def generar_json(self, ambiente='00', generar_codigo=True, generar_numero_control=True, usar_fecha_actual=False):
         """Genera el JSON completo del DTE."""
         if generar_codigo and not self.venta.codigo_generacion:
             self.venta.codigo_generacion = str(uuid.uuid4()).upper()
 
         ahora_sv = datetime.now(TZ_EL_SALVADOR)
         hora_actual = ahora_sv.strftime('%H:%M:%S')
-        # fecEmi SIEMPRE es la fecha actual: MH exige que coincida con la fecha de envío.
-        # Para NC/ND la venta puede tener fecha_emision del documento original, pero el DTE
-        # que se genera y envía AHORA debe llevar la fecha de hoy.
-        fecha_str = ahora_sv.strftime('%Y-%m-%d')
+        if usar_fecha_actual:
+            fecha_str = ahora_sv.strftime('%Y-%m-%d')
+        elif getattr(self.venta, 'fecha_emision', None):
+            fecha_str = self.venta.fecha_emision.strftime('%Y-%m-%d')
+        else:
+            fecha_str = ahora_sv.strftime('%Y-%m-%d')
 
         cuerpo_documento = self._construir_cuerpo_documento()
         dte_json = {

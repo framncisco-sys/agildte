@@ -152,6 +152,19 @@ const NuevaFactura = ({ empresa, ventaId, volverAlInicio }) => {
       return;
     }
 
+    const fechaHoy = new Date().toISOString().split('T')[0];
+    let fechaParaEmitir = fechaEmision;
+    if (fechaEmision && fechaEmision !== fechaHoy) {
+      const usarFechaActual = window.confirm(
+        `Tienes una fecha de facturación distinta a la actual (${fechaEmision}).\n\n` +
+        `¿Deseas emitir la factura con la fecha actual (${fechaHoy})?`
+      );
+      if (usarFechaActual) {
+        fechaParaEmitir = fechaHoy;
+        setFechaEmision(fechaHoy);
+      }
+    }
+
     setGuardando(true);
 
     try {
@@ -167,7 +180,7 @@ const NuevaFactura = ({ empresa, ventaId, volverAlInicio }) => {
       const ventaData = {
         empresa: empresa.id,
         cliente: tipoVenta === 'CF' ? null : nrcCliente,
-        fecha_emision: fechaEmision,
+        fecha_emision: fechaParaEmitir,
         periodo_aplicado: periodoFormateado,
         tipo_venta: tipoVenta,
         nombre_receptor: tipoVenta === 'CF' ? 'Consumidor Final' : nombreCliente,
