@@ -74,6 +74,7 @@ const UMBRAL_RETENCION = 100
 export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSeleccionada }) {
   const navigate = useNavigate()
   const empresaId = useEmpresaStore((s) => s.empresaId)
+  const hoy = new Date().toISOString().slice(0, 10)
   const [modalAbierto, setModalAbierto] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [guardandoCliente, setGuardandoCliente] = useState(false)
@@ -84,6 +85,8 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
   const [catalogRowIndex, setCatalogRowIndex] = useState(null)
   const [modalActividadAbierto, setModalActividadAbierto] = useState(false)
   const [actividadDisplay, setActividadDisplay] = useState('')
+  const [fechaFacturacion, setFechaFacturacion] = useState(hoy)
+  const [editandoFechaFacturacion, setEditandoFechaFacturacion] = useState(false)
   const [retencion1Activa, setRetencion1Activa] = useState(false)
   const [retencionMensaje, setRetencionMensaje] = useState('')
   const requiereDocumentoRelacionado = tipoDocumento === '05' || tipoDocumento === '06'
@@ -294,6 +297,7 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
       const payload = {
         tipoDocumento,
         empresaId,
+        fechaFacturacion,
         clienteId: clienteIdSeleccionado,
         documentoRelacionado: requiereDocumentoRelacionado ? documentoRelacionado : null,
         cliente: {
@@ -372,6 +376,34 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
           <h2 className="text-lg font-semibold text-gray-800">{titulo}</h2>
         </section>
 
+        {/* Sección 1a: Fecha de facturación */}
+        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+            <div className="w-full sm:max-w-xs">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Fecha de facturación
+              </label>
+              <input
+                type="date"
+                value={fechaFacturacion}
+                onChange={(e) => setFechaFacturacion(e.target.value)}
+                disabled={!editandoFechaFacturacion}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditandoFechaFacturacion((v) => !v)}
+              className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              {editandoFechaFacturacion ? 'Bloquear fecha de facturación' : 'Cambiar fecha de facturación'}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Por defecto se usa la fecha actual. Activa el botón para cambiarla.
+          </p>
+        </section>
+
         {/* Sección 1b: Documento a Modificar (solo NC/ND) */}
         {requiereDocumentoRelacionado && (
           <section className="bg-white rounded-xl shadow-sm border-2 border-amber-200 p-6">
@@ -380,7 +412,15 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
               <span className="text-sm font-normal text-amber-600">(requerido)</span>
             </h2>
             <p className="text-sm text-gray-600 mb-4">
-              Busca la factura original (CF o CCF) ya procesada por Hacienda que deseas anular o corregir.
+              {tipoDocumento === '06' ? (
+                <>
+                  Para <strong>Nota de Débito</strong>, el MH solo admite documento relacionado{' '}
+                  <strong>Comprobante de Crédito Fiscal (CCF, DTE-03)</strong> ya aceptado por Hacienda. No uses
+                  Factura Consumidor Final (DTE-01).
+                </>
+              ) : (
+                <>Busca la factura original (CF o CCF) ya procesada por Hacienda que deseas anular o corregir.</>
+              )}
             </p>
             {documentoRelacionado ? (
               <div className="flex items-center justify-between gap-3 p-4 rounded-xl border-2 border-amber-300 bg-amber-50">
@@ -428,6 +468,7 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
           isOpen={modalDocumentoAbierto}
           onClose={() => setModalDocumentoAbierto(false)}
           onSelect={handleDocumentoSeleccionado}
+          soloCcf={tipoDocumento === '06'}
         />
 
         {/* Sección 2: Datos del Receptor / Proveedor (FSE) */}

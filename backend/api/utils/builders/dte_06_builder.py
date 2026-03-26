@@ -8,9 +8,55 @@ Reglas MH para fe-nd-v3 (resumen):
 
 Reglas MH para fe-nd-v3 (cuerpoDocumento):
   PROHIBIDOS: noGravado, psv
+
+Según esquema oficial MH fe-nd-v3 (documentoRelacionado.items.tipoDocumento):
+  type: string, enum: ["03", "07"] únicamente.
+  - "03" = Comprobante de Crédito Fiscal (y equivalentes admitidos por MH)
+  - "07" = Comprobante de Retención
+  No usar "3", 3, "01", etc.
 """
+import logging
+
 from .dte_05_builder import DTE05Builder
 from .dte_03_builder import DTE03Builder
+
+logger = logging.getLogger(__name__)
+
+# Valores exactos del JSON Schema fe-nd-v3.json (MH)
+_FE_ND_TIPO_DOC_REL_ENUM = frozenset({"03", "07"})
+
+
+def _tipo_documento_relacionado_fe_nd_v3(valor) -> str:
+    """
+    Normaliza a un valor permitido por fe-nd-v3: solo '03' o '07' (strings de 2 caracteres).
+    """
+    if isinstance(valor, bool):
+        raise ValueError("tipoDocumento inválido en documentoRelacionado (fe-nd-v3).")
+    if valor is None:
+        return "03"
+    if isinstance(valor, (int, float)):
+        n = int(valor)
+        z = f"{n:02d}"
+        if z in _FE_ND_TIPO_DOC_REL_ENUM:
+            return z
+        raise ValueError(
+            "Nota de Débito (fe-nd-v3): documentoRelacionado.tipoDocumento solo permite "
+            f"'03' o '07' según MH. Valor numérico recibido: {valor!r}."
+        )
+    raw = str(valor).strip()
+    if not raw:
+        return "03"
+    if raw in _FE_ND_TIPO_DOC_REL_ENUM:
+        return raw
+    if raw.isdigit():
+        z = raw.zfill(2)
+        if z in _FE_ND_TIPO_DOC_REL_ENUM:
+            return z
+    raise ValueError(
+        "Nota de Débito (fe-nd-v3): documentoRelacionado.tipoDocumento solo permite "
+        f"'03' o '07' según MH (fe-nd-v3.json). Valor recibido: {valor!r}. "
+        "Use un CCF (DTE-03) o comprobante de retención (07) como documento relacionado."
+    )
 
 
 class DTE06Builder(DTE05Builder):
@@ -48,3 +94,22 @@ class DTE06Builder(DTE05Builder):
             item.pop("noGravado", None)
             item.pop("psv", None)
         return items
+
+    def generar_json(self, ambiente='00', generar_codigo=True, generar_numero_control=True):
+        """
+        Ajusta documentoRelacionado.tipoDocumento al enum exacto fe-nd-v3: "03" | "07" (strings).
+        """
+        dte = super().generar_json(
+            ambiente=ambiente,
+            generar_codigo=generar_codigo,
+            generar_numero_control=generar_numero_control,
+        )
+        rels = dte.get("documentoRelacionado") or []
+        for rel in rels:
+            if not isinstance(rel, dict):
+                continue
+            td = rel.get("tipoDocumento")
+            rel["tipoDocumento"] = _tipo_documento_relacionado_fe_nd_v3(td)
+        if rels:
+            logger.info("DTE-06 documentoRelacionado (fe-nd-v3): %s", rels)
+        return dte

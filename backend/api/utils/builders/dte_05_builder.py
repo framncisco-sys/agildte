@@ -8,6 +8,7 @@ import copy
 import logging
 from .dte_03_builder import DTE03Builder
 from api.dte_generator import formatear_decimal
+from api.dte_constants import codigo_documento_mh_por_tipo_venta
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,20 @@ def _val(doc, attr, default=None):
     if isinstance(doc, dict):
         return doc.get(attr, default)
     return getattr(doc, attr, default)
+
+
+def _normalizar_tipo_documento_relacionado_mh(tipo_doc) -> str:
+    """
+    MH exige códigos de catálogo con 2 dígitos ('01', '03', …). Evita '3' u otros formatos inválidos.
+    """
+    if tipo_doc is None:
+        return '03'
+    s = str(tipo_doc).strip()
+    if not s:
+        return '03'
+    if s.isdigit():
+        return s.zfill(2)[-2:] if len(s) > 2 else s.zfill(2)
+    return s[:2] if len(s) >= 2 else s.zfill(2) if s.isdigit() else '03'
 
 
 class DTE05Builder(DTE03Builder):
@@ -62,13 +77,42 @@ class DTE05Builder(DTE03Builder):
             resumen.pop(k, None)
         return resumen
 
+    def _enriquecer_documento_relacionado_desde_referencia(self):
+        """
+        Tras recargar Venta desde BD (Celery / emitir-factura), los atributos solo-en-memoria se pierden.
+        Si falta tipo pero existe codigo_generacion_referenciado, rellenar desde la venta origen.
+        """
+        venta = self.venta
+        if _val(venta, 'documento_relacionado_tipo', None):
+            return
+        ref = _val(venta, 'codigo_generacion_referenciado', None)
+        if not ref or not str(ref).strip():
+            return
+        from api.models import Venta as VentaModel
+
+        orig = VentaModel.objects.filter(codigo_generacion__iexact=str(ref).strip()).first()
+        if not orig:
+            return
+        venta.documento_relacionado_codigo = orig.codigo_generacion
+        venta.documento_relacionado_numero_control = orig.numero_control
+        venta.documento_relacionado_fecha_emision = orig.fecha_emision
+        venta.documento_relacionado_tipo = codigo_documento_mh_por_tipo_venta(orig.tipo_venta, '03')
+        venta.documento_relacionado_tipo_generacion = 2
+
     def _construir_documento_relacionado(self):
         """documentoRelacionado: documento(s) que se está(n) anulando/corrigiendo."""
         docs = _val(self.venta, 'documento_relacionado', None)
         if docs is None:
+            self._enriquecer_documento_relacionado_desde_referencia()
             tipo_doc = _val(self.venta, 'documento_relacionado_tipo', '03')
-            tipo_gen = _val(self.venta, 'documento_relacionado_tipo_generacion', 2)
-            codigo = _val(self.venta, 'documento_relacionado_codigo', None) or ''
+            tipo_gen = _val(self.venta, 'documento_relacionado_tipo_generacion', None)
+            if tipo_gen is None:
+                tipo_gen = 2
+            codigo = (
+                _val(self.venta, 'documento_relacionado_codigo', None)
+                or _val(self.venta, 'codigo_generacion_referenciado', None)
+                or ''
+            )
             if not codigo and hasattr(self.venta, 'venta_relacionada') and self.venta.venta_relacionada:
                 codigo = self.venta.venta_relacionada.codigo_generacion or ''
             num_ctrl = _val(self.venta, 'documento_relacionado_numero_control', None) or ''
@@ -100,14 +144,15 @@ class DTE05Builder(DTE03Builder):
                     "NC/ND: No se encontró el número de documento relacionado (codigoGeneracion o numeroControl). "
                     "Verifica que la venta referenciada esté correctamente enlazada."
                 )
+            tipo_mh = _normalizar_tipo_documento_relacionado_mh(tipo_doc)
             docs = [{
-                "tipoDocumento": str(tipo_doc),
+                "tipoDocumento": tipo_mh,
                 "tipoGeneracion": int(tipo_gen),
                 "numeroDocumento": str(num_doc).strip().upper(),
                 "fechaEmision": fec_emi
             }]
             logger.warning(
-                f"📎 NC documentoRelacionado → tipo={tipo_doc} gen={tipo_gen} "
+                f"📎 NC/ND documentoRelacionado → tipoDocumento={tipo_mh} (raw={tipo_doc}) gen={tipo_gen} "
                 f"numDoc={str(num_doc)[:20]}... fechaEmision={fec_emi}"
             )
         if not isinstance(docs, list):

@@ -458,6 +458,23 @@ class Venta(models.Model):
         max_length=100, blank=True, null=True,
         help_text="codigoGeneracion del DTE original referenciado (NC/ND apunta aquí al DTE que modifica)"
     )
+    # Datos del documento relacionado para JSON MH (persistidos: necesario para envío asíncrono / reintentos)
+    documento_relacionado_tipo = models.CharField(
+        max_length=2, blank=True, null=True,
+        help_text="MH documentoRelacionado.tipoDocumento: 01=CF, 03=CCF, 05=NC, 06=ND, 14=FSE"
+    )
+    documento_relacionado_tipo_generacion = models.IntegerField(
+        blank=True, null=True, default=2,
+        help_text="MH tipoGeneracion del doc. relacionado (2 = código de generación / UUID)"
+    )
+    documento_relacionado_numero_control = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text="numeroControl del DTE relacionado si aplica (31 caracteres)"
+    )
+    documento_relacionado_fecha_emision = models.DateField(
+        blank=True, null=True,
+        help_text="fechaEmision (YYYY-MM-DD) del DTE relacionado para NC/ND"
+    )
 
     # Ambiente de emisión (Pruebas vs Producción) - para filtrar dashboard/ventas
     ambiente_emision = models.CharField(

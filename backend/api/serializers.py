@@ -899,6 +899,19 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'documento_relacionado_id': 'Nota de Crédito y Nota de Débito requieren el documento relacionado (factura original).'
             })
+
+        # 2b1. ND (DTE-06): MH/fe-nd-v3 solo admite documento relacionado tipo CCF (03), no CF (01).
+        if tipo_dte == '06' and documento_relacionado_id and str(documento_relacionado_id).strip():
+            _ref = str(documento_relacionado_id).strip()
+            _orig_nd = Venta.objects.filter(codigo_generacion__iexact=_ref).first()
+            if _orig_nd and _orig_nd.tipo_venta != 'CCF':
+                raise serializers.ValidationError({
+                    'documento_relacionado_id': (
+                        'La Nota de Débito (DTE-06) debe relacionar un Comprobante de Crédito Fiscal (CCF, DTE-03) '
+                        'ya aceptado por Hacienda. No puede emitirse sobre Factura Consumidor Final (DTE-01): '
+                        'el MH rechaza documentoRelacionado.tipoDocumento en ese caso.'
+                    )
+                })
         
         # 2c. Tipo DTE para NC/ND: sobrescribir tipo_venta
         if tipo_dte in ('05', '06'):
@@ -1006,25 +1019,34 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
         venta.calcular_totales()
         venta.save()
         
-        # 6b. Documento relacionado (NC/ND): atributos para DTE05/06 builder
+        # 6b. Documento relacionado (NC/ND): persistir en BD para DTE05/06 y envío asíncrono a MH
         if documento_relacionado_id and str(documento_relacionado_id).strip():
+            from .dte_constants import codigo_documento_mh_por_tipo_venta
+
             doc_rel_id_clean = str(documento_relacionado_id).strip()
             orig = Venta.objects.filter(codigo_generacion__iexact=doc_rel_id_clean).first()
+            venta.codigo_generacion_referenciado = doc_rel_id_clean
             if orig:
-                venta.documento_relacionado_codigo = orig.codigo_generacion
                 venta.documento_relacionado_numero_control = orig.numero_control
                 venta.documento_relacionado_fecha_emision = orig.fecha_emision
-                venta.documento_relacionado_tipo = '01' if orig.tipo_venta == 'CF' else '03'
+                venta.documento_relacionado_tipo = codigo_documento_mh_por_tipo_venta(orig.tipo_venta, '03')
                 venta.documento_relacionado_tipo_generacion = 2
             else:
-                venta.documento_relacionado_codigo = doc_rel_id_clean
                 venta.documento_relacionado_numero_control = None
                 venta.documento_relacionado_fecha_emision = venta.fecha_emision
                 venta.documento_relacionado_tipo = '03'
                 venta.documento_relacionado_tipo_generacion = 2
-            # Persistir la referencia para poder detectar desde el DTE original si tiene NC/ND
-            venta.codigo_generacion_referenciado = doc_rel_id_clean
-            venta.save(update_fields=['codigo_generacion_referenciado'])
+            venta.save(
+                update_fields=[
+                    'codigo_generacion_referenciado',
+                    'documento_relacionado_tipo',
+                    'documento_relacionado_tipo_generacion',
+                    'documento_relacionado_numero_control',
+                    'documento_relacionado_fecha_emision',
+                ]
+            )
+            # En memoria para el builder en la misma petición (codigo UUID del doc. relacionado)
+            venta.documento_relacionado_codigo = orig.codigo_generacion if orig else doc_rel_id_clean
         
         # 7. Generar DTE automáticamente si estado es 'Generado'
         if venta.estado_dte == 'Generado':

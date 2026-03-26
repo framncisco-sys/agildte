@@ -8,7 +8,8 @@ function mapearPayloadFrontendADjango(payload) {
   const { cliente, items, tipoDocumento, totalGravadas, iva, ivaRetenido1, condicionOperacion, plazoPago, periodoPago } = payload
   const empresaId = payload.empresaId // desde useEmpresaStore
   const hoy = new Date().toISOString().slice(0, 10)
-  const periodo = new Date().toISOString().slice(0, 7) // YYYY-MM
+  const fechaEmisionFinal = payload.fechaFacturacion || hoy
+  const periodo = String(fechaEmisionFinal).slice(0, 7) // YYYY-MM
 
   // tipoDocumento: '01'=CF, '03'=CCF, '05'=NC, '06'=ND, '14'=FSE, '07'=CCF
   const tipoVentaMap = { '01': 'CF', '03': 'CCF', '05': 'NC', '06': 'ND', '14': 'FSE', '07': 'CCF' }
@@ -80,7 +81,7 @@ function mapearPayloadFrontendADjango(payload) {
     tipo_doc_receptor: tipoDocReceptor,
     receptor_direccion: cliente?.direccion?.trim() || null,
     receptor_correo: cliente?.correo?.trim() || null,
-    fecha_emision: hoy,
+    fecha_emision: fechaEmisionFinal,
     periodo_aplicado: periodo,
     tipo_venta: tipoVenta,
     nrc_receptor: nrcFinal,

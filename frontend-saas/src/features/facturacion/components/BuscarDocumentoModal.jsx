@@ -8,8 +8,9 @@ import toast from 'react-hot-toast'
  * Modal para buscar documentos fiscales (Factura/CCF) procesados por MH.
  * Filtros: rango de fechas, búsqueda por cliente o correlativo.
  * Tabla: Fecha, Correlativo, Tipo DTE, Cliente, Total. Botón "Seleccionar" por fila.
+ * @param {boolean} [soloCcf] - Si true (p. ej. Nota de Débito), solo lista CCF; el MH no admite ND sobre CF.
  */
-export function BuscarDocumentoModal({ isOpen, onClose, onSelect }) {
+export function BuscarDocumentoModal({ isOpen, onClose, onSelect, soloCcf = false }) {
   const empresaId = useEmpresaStore((s) => s.empresaId)
   const [fechaInicio, setFechaInicio] = useState('')
   const [fechaFin, setFechaFin] = useState('')
@@ -35,7 +36,10 @@ export function BuscarDocumentoModal({ isOpen, onClose, onSelect }) {
 
       const data = await getVentas(filters)
       const list = Array.isArray(data) ? data : (data?.results ?? data?.ventas ?? [])
-      const soloFacturas = list.filter((v) => v.estado === 'PROCESADO' && ['CF', 'CCF'].includes(v.tipo_venta))
+      const tiposPermitidos = soloCcf ? ['CCF'] : ['CF', 'CCF']
+      const soloFacturas = list.filter(
+        (v) => v.estado === 'PROCESADO' && tiposPermitidos.includes(v.tipo_venta)
+      )
       setResultados(soloFacturas)
       if (soloFacturas.length === 0) toast('No hay documentos procesados con esos filtros')
     } catch (err) {
@@ -147,7 +151,8 @@ export function BuscarDocumentoModal({ isOpen, onClose, onSelect }) {
             </div>
           ) : resultados.length === 0 ? (
             <p className="text-center text-gray-500 py-8">
-              Usa los filtros y pulsa &quot;Buscar&quot; para listar facturas/CCF procesados.
+              Usa los filtros y pulsa &quot;Buscar&quot; para listar
+              {soloCcf ? ' comprobantes de crédito fiscal (CCF) ' : ' facturas/CCF '}procesados.
             </p>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-gray-200">
