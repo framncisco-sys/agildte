@@ -28,6 +28,7 @@ urlpatterns = [
     # ZIP: registrar antes de include('api.urls') por si el include no carga (despliegues viejos).
     path('api/facturas/descarga-zip/', descargar_lote_ventas_api),
     path('api/descarga-zip/', descargar_lote_ventas_api),
+    path('api/ventas/descargar-lote/', descargar_lote_ventas_api),
     path('api/', include('api.urls')),
 ]
 if settings.DEBUG:

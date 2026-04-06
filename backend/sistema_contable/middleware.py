@@ -6,7 +6,11 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 def _path_match(path: str) -> bool:
     p = (path or '').split('?')[0].rstrip('/') or '/'
-    return p in ('/api/facturas/descarga-zip', '/api/descarga-zip')
+    return p in (
+        '/api/facturas/descarga-zip',
+        '/api/descarga-zip',
+        '/api/ventas/descargar-lote',
+    )
 
 
 class DescargaZipDirectMiddleware:

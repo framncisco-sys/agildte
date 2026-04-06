@@ -14,6 +14,9 @@ urlpatterns = [
     # ZIP masivo (Historial): mismo filtro que ventas/listar/. Debe ir antes del router.
     path('facturas/descarga-zip/', views.descargar_lote_ventas_api),
     path('descarga-zip/', views.descargar_lote_ventas_api),  # alias /api/descarga-zip/
+    # Retrocompat: front antiguo / builds en caché llamaban ventas/descargar-lote/ (el router
+    # capturaba pk=descargar-lote y devolvía 404).
+    path('ventas/descargar-lote/', views.descargar_lote_ventas_api),
     path('auth/login/', views.login_api, name='login_api'),
     path('auth/me/', views.auth_me_api, name='auth_me'),
     path('auth/change-password/', views.change_password_api, name='change_password_api'),

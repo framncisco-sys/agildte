@@ -13,6 +13,10 @@ class DescargaZipFacturasTests(TestCase):
         match = resolve('/api/descarga-zip/')
         self.assertEqual(match.func.__name__, 'descargar_lote_ventas_api')
 
+    def test_resolve_ventas_descargar_lote_retrocompat(self):
+        match = resolve('/api/ventas/descargar-lote/')
+        self.assertEqual(match.func.__name__, 'descargar_lote_ventas_api')
+
     def test_get_no_devuelve_404_ruta_inexistente(self):
         """Si ves 404 {'detail':'No encontrado.'}, la URL no está en urlpatterns."""
         c = Client()
