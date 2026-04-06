@@ -179,11 +179,13 @@ export async function downloadJSON(id, filename) {
 }
 
 /**
- * Descarga PDFs o JSONs de ventas filtradas en un archivo ZIP.
+ * Descarga un ZIP con los PDFs (o JSONs DTE) de las facturas que cumplen los filtros actuales.
+ * Backend: GET /api/facturas/descarga-zip/?format=pdf|json&...
+ *
  * @param {Object} filters - { fecha_inicio, fecha_fin, search, tipo_dte, empresa_id }
- * @param {'pdf'|'json'} format - Tipo de archivos a descargar
+ * @param {'pdf'|'json'} format - Contenido del ZIP
  */
-export async function downloadBatch(filters = {}, format = 'pdf') {
+export async function downloadFacturasFiltradasZip(filters = {}, format = 'pdf') {
   const params = new URLSearchParams()
   params.append('format', format)
   if (filters.fecha_inicio) params.append('fecha_inicio', filters.fecha_inicio)
@@ -192,9 +194,12 @@ export async function downloadBatch(filters = {}, format = 'pdf') {
   if (filters.tipo_dte) params.append('tipo_dte', filters.tipo_dte)
   if (filters.empresa_id) params.append('empresa_id', filters.empresa_id)
 
-  const url = `ventas/descargar-lote/?${params.toString()}`
+  const qs = params.toString()
   try {
-    const { data } = await apiClient.get(url, { responseType: 'blob' })
+    // Misma base que getVentas: baseURL del cliente (/api o http://host/api) + facturas/descarga-zip/
+    const { data } = await apiClient.get(`facturas/descarga-zip/?${qs}`, {
+      responseType: 'blob',
+    })
     const blob = new Blob([data], { type: 'application/zip' })
     const urlObj = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -207,16 +212,33 @@ export async function downloadBatch(filters = {}, format = 'pdf') {
   } catch (err) {
     if (err.response?.data instanceof Blob) {
       const text = await err.response.data.text()
+      const trimmed = text.trim()
+      let parsed = null
       try {
-        const j = JSON.parse(text)
-        if (j.error) throw new Error(j.error)
-      } catch (e) {
-        if (e instanceof Error && e.message !== err.message) throw e
+        parsed = JSON.parse(trimmed)
+      } catch {
+        // Respuesta no JSON (p. ej. traza Python "AssertionError: ..." o HTML de error 500)
       }
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.error) throw new Error(parsed.error)
+        if (parsed.detail) {
+          const d = parsed.detail
+          throw new Error(typeof d === 'string' ? d : JSON.stringify(d))
+        }
+      }
+      if (trimmed.startsWith('<!DOCTYPE') || trimmed.toLowerCase().startsWith('<html')) {
+        throw new Error(
+          'El servidor devolvió una página de error. Revisa los logs del backend o el modo DEBUG.'
+        )
+      }
+      throw new Error(trimmed.slice(0, 500) || 'Error al descargar el lote')
     }
     throw err
   }
 }
+
+/** Alias retrocompatible */
+export const downloadBatch = downloadFacturasFiltradasZip
 
 /**
  * Reenvía una factura pendiente de forma síncrona.

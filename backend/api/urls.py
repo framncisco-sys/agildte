@@ -11,6 +11,9 @@ router.register(r'ventas', VentaViewSet, basename='venta')
 router.register(r'actividades', ActividadEconomicaViewSet, basename='actividadeconomica')
 
 urlpatterns = [
+    # ZIP masivo (Historial): mismo filtro que ventas/listar/. Debe ir antes del router.
+    path('facturas/descarga-zip/', views.descargar_lote_ventas_api),
+    path('descarga-zip/', views.descargar_lote_ventas_api),  # alias /api/descarga-zip/
     path('auth/login/', views.login_api, name='login_api'),
     path('auth/me/', views.auth_me_api, name='auth_me'),
     path('auth/change-password/', views.change_password_api, name='change_password_api'),

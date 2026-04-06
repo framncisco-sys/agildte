@@ -59,6 +59,7 @@ SIMPLE_JWT = {
 }
 
 MIDDLEWARE = [
+    'sistema_contable.middleware.DescargaZipDirectMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware', # CORS
     'django.contrib.sessions.middleware.SessionMiddleware',

@@ -20,9 +20,14 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import RedirectView
 
+from api.views import descargar_lote_ventas_api
+
 urlpatterns = [
     path('framncisco/', admin.site.urls),
     path('admin/', RedirectView.as_view(url='/framncisco/', permanent=True)),
+    # ZIP: registrar antes de include('api.urls') por si el include no carga (despliegues viejos).
+    path('api/facturas/descarga-zip/', descargar_lote_ventas_api),
+    path('api/descarga-zip/', descargar_lote_ventas_api),
     path('api/', include('api.urls')),
 ]
 if settings.DEBUG:

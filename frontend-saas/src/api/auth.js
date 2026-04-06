@@ -1,7 +1,7 @@
 import axios from 'axios'
-import apiClient from './axios'
+import apiClient, { getApiBaseUrl } from './axios'
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
+const baseURL = getApiBaseUrl()
 
 /**
  * Login con username y password.

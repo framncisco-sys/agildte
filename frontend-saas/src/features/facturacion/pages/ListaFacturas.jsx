@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, FileText, Braces, Eye, Loader2, CircleX, FileDown, FolderDown, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { getVentas, downloadPDF, downloadJSON, downloadBatch, reenviarVenta } from '../../../api/facturas'
+import { getVentas, downloadPDF, downloadJSON, downloadFacturasFiltradasZip, reenviarVenta } from '../../../api/facturas'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 import { DetalleRechazoModal } from '../components/DetalleRechazoModal'
 import { InvalidacionModal } from '../components/InvalidacionModal'
@@ -242,14 +242,19 @@ export function ListaFacturas() {
     }
   }
 
-  const handleDownloadBatch = async (format) => {
+  /** Descarga ZIP de PDFs o JSONs según filtros (misma query que la tabla). */
+  const handleDescargaZipFiltrado = async (format) => {
     setDescargandoLote(format)
     try {
-      await downloadBatch({ ...filtros, empresa_id: empresaId }, format)
+      await downloadFacturasFiltradasZip({ ...filtros, empresa_id: empresaId }, format)
       toast.success(`ZIP de ${format.toUpperCase()} descargado`)
     } catch (err) {
-      const msg = err.response?.data?.error || err.message || 'Error al descargar'
-      toast.error(msg)
+      const d = err.response?.data
+      const msg =
+        (typeof d === 'object' && d && (d.error || d.detail)) ||
+        err.message ||
+        'Error al descargar'
+      toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg))
     } finally {
       setDescargandoLote(null)
     }
@@ -338,27 +343,27 @@ export function ListaFacturas() {
         )}
       </div>
 
-      {/* Barra descarga por lotes */}
-      <div className="mb-4 flex items-center gap-2">
+      {/* Descarga masiva según filtros (PDF o JSON DTE en ZIP) */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => handleDownloadBatch('pdf')}
+          onClick={() => handleDescargaZipFiltrado('pdf')}
           disabled={!!descargandoLote}
           className="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm"
-          title="Descargar PDFs filtrados en ZIP"
+          title="Genera un ZIP con el PDF de cada factura que coincida con los filtros (máx. 100 por lote)"
         >
           {descargandoLote === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-          Descargar PDFs (ZIP)
+          Descargar PDFs filtrados (ZIP)
         </button>
         <button
           type="button"
-          onClick={() => handleDownloadBatch('json')}
+          onClick={() => handleDescargaZipFiltrado('json')}
           disabled={!!descargandoLote}
           className="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm"
-          title="Descargar JSONs filtrados en ZIP"
+          title="Genera un ZIP con el JSON DTE de cada factura que coincida con los filtros (máx. 100 por lote)"
         >
           {descargandoLote === 'json' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderDown className="w-4 h-4" />}
-          Descargar JSONs (ZIP)
+          Descargar JSONs filtrados (ZIP)
         </button>
       </div>
 
