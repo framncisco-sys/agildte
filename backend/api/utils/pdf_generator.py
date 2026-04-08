@@ -7,7 +7,7 @@ import io
 import xml.sax.saxutils as saxutils
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import urlencode
 
 from django.conf import settings
 from reportlab.lib import colors
@@ -247,11 +247,14 @@ def generar_pdf_venta(venta):
     sello = (venta.sello_recepcion or '').strip() or 'N/A'
     empresa = venta.empresa
     codigo_gen_raw = (venta.codigo_generacion or '').strip()
-    url_consulta = (
-        f"https://portaldgii.mh.gob.sv/ssc/consulta/fe?codigoGeneracion={quote(codigo_gen_raw, safe='')}"
-        if codigo_gen_raw
-        else ''
-    )
+    fecha_iso = venta.fecha_emision.strftime('%Y-%m-%d') if venta.fecha_emision else ''
+    if codigo_gen_raw:
+        params = {'ambiente': '01', 'codGen': codigo_gen_raw}
+        if fecha_iso:
+            params['fechaEmi'] = fecha_iso
+        url_consulta = f"https://admin.factura.gob.sv/consultaPublica?{urlencode(params)}"
+    else:
+        url_consulta = ''
 
     doc = SimpleDocTemplate(
         buffer,
