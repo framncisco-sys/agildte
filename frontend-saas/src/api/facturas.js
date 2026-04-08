@@ -182,7 +182,7 @@ export async function downloadJSON(id, filename) {
  * Descarga un ZIP con los PDFs (o JSONs DTE) de las facturas que cumplen los filtros actuales.
  * Backend: GET /api/facturas/descarga-zip/?format=pdf|json&...
  *
- * @param {Object} filters - { fecha_inicio, fecha_fin, search, tipo_dte, empresa_id }
+ * @param {Object} filters - Mismos que getVentas: fecha_inicio, fecha_fin, search, tipo_dte, empresa_id, periodo, tipo, nrc, solo_procesadas
  * @param {'pdf'|'json'} format - Contenido del ZIP
  */
 export async function downloadFacturasFiltradasZip(filters = {}, format = 'pdf') {
@@ -193,6 +193,10 @@ export async function downloadFacturasFiltradasZip(filters = {}, format = 'pdf')
   if (filters.search) params.append('search', filters.search)
   if (filters.tipo_dte) params.append('tipo_dte', filters.tipo_dte)
   if (filters.empresa_id) params.append('empresa_id', filters.empresa_id)
+  if (filters.periodo) params.append('periodo', filters.periodo)
+  if (filters.tipo) params.append('tipo', filters.tipo)
+  if (filters.nrc) params.append('nrc', filters.nrc)
+  if (filters.solo_procesadas) params.append('solo_procesadas', '1')
 
   const qs = params.toString()
   try {

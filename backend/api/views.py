@@ -2005,9 +2005,15 @@ def _aplicar_filtros_ventas(queryset, request):
     if search:
         queryset = queryset.filter(
             Q(numero_control__icontains=search) |
+            Q(codigo_generacion__icontains=search) |
             Q(cliente__nombre__icontains=search) |
             Q(nombre_receptor__icontains=search)
         )
+
+    solo_procesadas = request.GET.get('solo_procesadas')
+    if solo_procesadas:
+        queryset = queryset.filter(sello_recepcion__isnull=False).exclude(sello_recepcion='')
+
     return queryset.order_by('-fecha_emision', '-id')
 
 
@@ -2025,9 +2031,11 @@ def descargar_lote_ventas_api(request):
 def download_batch_ventas(request):
     """
     Descarga PDFs o JSONs de ventas en un archivo ZIP.
-    Acepta los mismos filtros que listar: fecha_inicio, fecha_fin, search, tipo_dte, empresa_id.
+    Acepta los mismos filtros que listar_ventas: empresa_id, nrc, periodo, tipo,
+    fecha_inicio, fecha_fin, search, tipo_dte, solo_procesadas.
     GET ?format=pdf|json
 
+    Incluye todas las ventas que cumplan el filtro (sin tope artificial de 100).
     Genera archivos dinámicamente (no usa rutas de disco). Si un documento falla,
     agrega error_factura_X.txt en lugar de romper el ciclo.
 
@@ -2051,54 +2059,66 @@ def download_batch_ventas(request):
         if format_type not in ('pdf', 'json'):
             return JsonResponse({'error': 'format debe ser pdf o json'}, status=400)
 
-        ventas_qs = Venta.objects.filter(empresa_id__in=empresa_ids).select_related('empresa', 'cliente').prefetch_related('detalles__producto')
+        ventas_qs = Venta.objects.filter(empresa_id__in=empresa_ids)
         ventas_qs = _aplicar_filtros_ventas(ventas_qs, request)
-        ventas = list(ventas_qs[:100])  # Límite razonable
+        ids_ordenados = list(ventas_qs.values_list('id', flat=True))
 
-        if not ventas:
+        if not ids_ordenados:
             return JsonResponse({'error': 'No hay ventas que coincidan con los filtros'}, status=400)
 
         buffer = io.BytesIO()
         ext = 'pdf' if format_type == 'pdf' else 'json'
+        CHUNK_SIZE = 250
 
         with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for v in ventas:
-                nombre_base = v.numero_control or f"venta_{v.id}"
-                nombre_safe = "".join(c if c.isalnum() or c in '-_' else '_' for c in str(nombre_base))
-                nombre_archivo = f"{nombre_safe}.{ext}"
+            for i in range(0, len(ids_ordenados), CHUNK_SIZE):
+                chunk_ids = ids_ordenados[i : i + CHUNK_SIZE]
+                chunk_objs = (
+                    Venta.objects.filter(pk__in=chunk_ids)
+                    .select_related('empresa', 'cliente')
+                    .prefetch_related('detalles__producto')
+                )
+                by_id = {v.pk: v for v in chunk_objs}
+                for vid in chunk_ids:
+                    v = by_id.get(vid)
+                    if v is None:
+                        continue
+                    nombre_base = v.numero_control or f"venta_{v.id}"
+                    nombre_safe = "".join(c if c.isalnum() or c in '-_' else '_' for c in str(nombre_base))
+                    nombre_archivo = f"{nombre_safe}.{ext}"
 
-                try:
-                    # PDF en disco solo para descarga PDF (no confundir con JSON DTE)
-                    if format_type == 'pdf' and hasattr(v, 'archivo_pdf') and v.archivo_pdf:
-                        import os
-                        path_fisico = v.archivo_pdf.path
-                        if os.path.exists(path_fisico):
-                            with open(path_fisico, 'rb') as f:
-                                zf.writestr(nombre_archivo, f.read())
+                    try:
+                        # PDF en disco solo para descarga PDF (no confundir con JSON DTE)
+                        if format_type == 'pdf' and hasattr(v, 'archivo_pdf') and v.archivo_pdf:
+                            import os
+                            path_fisico = v.archivo_pdf.path
+                            if os.path.exists(path_fisico):
+                                with open(path_fisico, 'rb') as f:
+                                    zf.writestr(nombre_archivo, f.read())
+                            else:
+                                raise FileNotFoundError(f"Archivo no encontrado: {path_fisico}")
+                        elif format_type == 'pdf':
+                            pdf_buffer = generar_pdf_venta(v)
+                            pdf_bytes = pdf_buffer.getvalue() if hasattr(pdf_buffer, 'getvalue') else pdf_buffer.read()
+                            zf.writestr(nombre_archivo, pdf_bytes)
                         else:
-                            raise FileNotFoundError(f"Archivo no encontrado: {path_fisico}")
-                    elif format_type == 'pdf':
-                        pdf_buffer = generar_pdf_venta(v)
-                        pdf_bytes = pdf_buffer.getvalue() if hasattr(pdf_buffer, 'getvalue') else pdf_buffer.read()
-                        zf.writestr(nombre_archivo, pdf_bytes)
-                    else:
-                        # Misma lógica que GET /ventas/{id}/generar-dte/ (builders + firma MH si existe)
-                        if not v.empresa:
-                            raise ValueError('La venta debe tener empresa asociada para generar el DTE')
-                        ambiente_empresa = (v.empresa.ambiente or '01').strip()
-                        dte_ambiente_map = {'01': '00', '00': '01'}
-                        ambiente_q = request.GET.get('ambiente')
-                        ambiente_dte = ambiente_q if ambiente_q else dte_ambiente_map.get(ambiente_empresa, '00')
-                        dte_json = generar_dte(v, ambiente=ambiente_dte)
-                        if v.dte_firmado and v.sello_recepcion:
-                            dte_json['firmaElectronica'] = v.dte_firmado
-                            dte_json['selloRecibido'] = v.sello_recepcion
-                        json_bytes = json.dumps(dte_json, indent=2, ensure_ascii=False).encode('utf-8')
-                        zf.writestr(nombre_archivo, json_bytes)
-                except Exception as e:
-                    logger.warning(f"Error generando {ext} para venta {v.id}: {e}")
-                    msg_error = f"No se pudo generar este documento.\nVenta ID: {v.id}\nError: {str(e)}"
-                    zf.writestr(f"error_factura_{v.id}.txt", msg_error.encode('utf-8'))
+                            # Misma lógica que GET /ventas/{id}/generar-dte/ (builders + firma MH si existe)
+                            if not v.empresa:
+                                raise ValueError('La venta debe tener empresa asociada para generar el DTE')
+                            ambiente_empresa = (v.empresa.ambiente or '01').strip()
+                            dte_ambiente_map = {'01': '00', '00': '01'}
+                            ambiente_q = request.GET.get('ambiente')
+                            ambiente_dte = ambiente_q if ambiente_q else dte_ambiente_map.get(ambiente_empresa, '00')
+                            dte_json = generar_dte(v, ambiente=ambiente_dte)
+                            if v.dte_firmado and v.sello_recepcion:
+                                dte_json['firmaElectronica'] = v.dte_firmado
+                                dte_json['selloRecibido'] = v.sello_recepcion
+                            json_bytes = json.dumps(dte_json, indent=2, ensure_ascii=False).encode('utf-8')
+                            zf.writestr(nombre_archivo, json_bytes)
+                    except Exception as e:
+                        logger.warning(f"Error generando {ext} para venta {v.id}: {e}")
+                        msg_error = f"No se pudo generar este documento.\nVenta ID: {v.id}\nError: {str(e)}"
+                        zf.writestr(f"error_factura_{v.id}.txt", msg_error.encode('utf-8'))
 
         buffer.seek(0)
         resp = HttpResponse(buffer.getvalue(), content_type='application/zip')
