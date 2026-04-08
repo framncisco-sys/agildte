@@ -123,6 +123,19 @@ export async function crearVenta(payload) {
  * @param {Object} filters - { fecha_inicio, fecha_fin, search, tipo_dte, empresa_id, periodo, tipo, solo_procesadas, page, page_size }
  * @returns {Promise<{ count, total_pages, page, page_size, has_next, has_previous, results }>}
  */
+/**
+ * Informe consolidado de CF por día (primer/último DTE y total por fecha).
+ * GET /ventas/informe-cf-diario/
+ */
+export async function getInformeCfDiario({ empresa_id, fecha_inicio, fecha_fin }) {
+  const params = new URLSearchParams()
+  if (empresa_id) params.append('empresa_id', empresa_id)
+  if (fecha_inicio) params.append('fecha_inicio', fecha_inicio)
+  if (fecha_fin) params.append('fecha_fin', fecha_fin)
+  const { data } = await apiClient.get(`/ventas/informe-cf-diario/?${params.toString()}`)
+  return data
+}
+
 export async function getVentas(filters = {}) {
   const params = new URLSearchParams()
   if (filters.fecha_inicio) params.append('fecha_inicio', filters.fecha_inicio)

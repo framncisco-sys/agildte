@@ -11,6 +11,33 @@ from django.http import HttpResponse
 # Ventas consideradas "PROCESADAS" (aceptadas o enviadas a MH)
 ESTADO_PROCESADO = ['AceptadoMH', 'Enviado']
 
+# Encabezados Excel alineados al CSV Libro Consumidor (23 columnas, formato MH)
+ENCABEZADOS_CSV_CONSUMIDOR = [
+    'Fecha de emisión',
+    'Clase de documento',
+    'Tipo de documento',
+    'Número de documento (DTE)',
+    'Número de recepción MH (sello)',
+    'Código de generación (1)',
+    'Código de generación (2)',
+    'Código de generación (3)',
+    'Código de generación (4)',
+    'Columna 10 (vacío en CSV)',
+    'Ventas exentas',
+    'Columna 12',
+    'Ventas no sujetas',
+    'Ventas internas gravadas',
+    'Columna 15',
+    'Columna 16',
+    'Columna 17',
+    'Columna 18',
+    'Columna 19',
+    'Total ventas',
+    'Clasificación de la venta',
+    'Tipo de ingreso',
+    'Columna 23',
+]
+
 
 def _f(n):
     """Float seguro."""
@@ -18,6 +45,85 @@ def _f(n):
         return float(Decimal(str(n or 0)))
     except (TypeError, ValueError):
         return 0.0
+
+
+def registro_consumidor_desde_venta(v):
+    """
+    Un registro (dict) igual a cada elemento de get_datos_libro_consumidor.
+    """
+    clase_doc = 'Electrónico' if v.clase_documento == '4' else 'Físico'
+    venta_exenta = venta_gravada = venta_no_sujeta = 0.0
+    debito = _f(v.debito_fiscal)
+    total_venta = _f(v.venta_gravada) + _f(v.venta_exenta) + _f(v.venta_no_sujeta) + debito
+    if (v.clasificacion_venta or '').strip() == '2':
+        venta_exenta = total_venta
+    elif (v.clasificacion_venta or '').strip() == '3':
+        venta_no_sujeta = total_venta
+    else:
+        venta_gravada = _f(v.venta_gravada) + debito
+    total_venta = venta_exenta + venta_gravada + venta_no_sujeta
+    codigo_limpio = (str(v.codigo_generacion or '')).replace('-', '').upper()
+    sello_limpio = (str(v.sello_recepcion or '')).replace('-', '').upper()
+    numero_dte = (v.numero_control or v.numero_documento or '').strip()
+    clase_raw = v.clase_documento or '4'
+    return {
+        'fecha_emision': v.fecha_emision.strftime('%d/%m/%Y'),
+        'clase_documento': clase_doc,
+        'tipo_documento': '01',
+        'numero_resolucion': v.numero_resolucion or '',
+        'serie': v.serie_documento if v.clase_documento != '4' else 'DTE',
+        'numero_control': v.numero_control or v.numero_documento or '',
+        'ventas_exentas': round(venta_exenta, 2),
+        'ventas_internas_gravadas': round(venta_gravada, 2),
+        'ventas_no_sujetas': round(venta_no_sujeta, 2),
+        'total_ventas': round(total_venta, 2),
+        'clase_raw': clase_raw,
+        'numero_dte': numero_dte,
+        'codigo_generacion': codigo_limpio,
+        'sello_recepcion': sello_limpio,
+        'clasificacion_venta': (v.clasificacion_venta or '1').strip(),
+        'tipo_ingreso': (v.tipo_ingreso or '2').strip(),
+    }
+
+
+def fila_csv_consumidor_desde_registro(r):
+    """Lista de 23 valores idénticos a una fila del CSV Libro Consumidor (delimiter ;)."""
+    sello = r.get('sello_recepcion', '') or ''
+    codigo_gen = r.get('codigo_generacion', '') or ''
+    return [
+        r['fecha_emision'],
+        r.get('clase_raw', '4'),
+        '01',
+        r.get('numero_dte', r['numero_control']),
+        sello,
+        codigo_gen, codigo_gen, codigo_gen, codigo_gen,
+        '',
+        f"{r['ventas_exentas']:.2f}",
+        '0.00',
+        f"{r['ventas_no_sujetas']:.2f}",
+        f"{r['ventas_internas_gravadas']:.2f}",
+        '0.00', '0.00', '0.00', '0', '0',
+        f"{r['total_ventas']:.2f}",
+        r.get('clasificacion_venta', '1'),
+        r.get('tipo_ingreso', '2'),
+        '2',
+    ]
+
+
+def fila_csv_consumidor_informe_diario_codigos(r_primer: dict, r_ultimo: dict) -> list:
+    """
+    Misma fila 23 cols que el libro, tomando montos y demás del **primer** DTE del día.
+    En las cuatro posiciones de «Código de generación» del CSV MH: (1) y (3) = código del
+    primer DTE; (2) y (4) = código del último DTE del día (ambos sin guiones, como el CSV).
+    """
+    row = list(fila_csv_consumidor_desde_registro(r_primer))
+    cp = (r_primer.get('codigo_generacion') or '').strip()
+    cu = (r_ultimo.get('codigo_generacion') or '').strip()
+    row[5] = cp
+    row[6] = cu
+    row[7] = cp
+    row[8] = cu
+    return row
 
 
 def get_datos_libro_consumidor(empresa_id, mes, anio):
@@ -36,46 +142,12 @@ def get_datos_libro_consumidor(empresa_id, mes, anio):
     datos = []
     t_exentas = t_gravadas = t_no_sujetas = t_total = 0.0
     for v in ventas:
-        clase_doc = 'Electrónico' if v.clase_documento == '4' else 'Físico'
-        venta_exenta = venta_gravada = venta_no_sujeta = 0.0
-        debito = _f(v.debito_fiscal)
-        # Total de la línea: en CF el gravado suele ir con IVA incluido
-        total_venta = _f(v.venta_gravada) + _f(v.venta_exenta) + _f(v.venta_no_sujeta) + debito
-        if (v.clasificacion_venta or '').strip() == '2':
-            venta_exenta = total_venta
-        elif (v.clasificacion_venta or '').strip() == '3':
-            venta_no_sujeta = total_venta
-        else:
-            venta_gravada = _f(v.venta_gravada) + debito
-        total_venta = venta_exenta + venta_gravada + venta_no_sujeta
-        t_exentas += venta_exenta
-        t_gravadas += venta_gravada
-        t_no_sujetas += venta_no_sujeta
-        t_total += total_venta
-        # Para CSV formato MH: codigo/sello sin guiones, numero DTE style
-        codigo_limpio = (str(v.codigo_generacion or '')).replace('-', '').upper()
-        sello_limpio = (str(v.sello_recepcion or '')).replace('-', '').upper()
-        numero_dte = (v.numero_control or v.numero_documento or '').strip()
-        clase_raw = v.clase_documento or '4'
-        datos.append({
-            'fecha_emision': v.fecha_emision.strftime('%d/%m/%Y'),
-            'clase_documento': clase_doc,
-            'tipo_documento': '01',
-            'numero_resolucion': v.numero_resolucion or '',
-            'serie': v.serie_documento if v.clase_documento != '4' else 'DTE',
-            'numero_control': v.numero_control or v.numero_documento or '',
-            'ventas_exentas': round(venta_exenta, 2),
-            'ventas_internas_gravadas': round(venta_gravada, 2),
-            'ventas_no_sujetas': round(venta_no_sujeta, 2),
-            'total_ventas': round(total_venta, 2),
-            # Campos para CSV formato MH (VentaConsumidor)
-            'clase_raw': clase_raw,
-            'numero_dte': numero_dte,
-            'codigo_generacion': codigo_limpio,
-            'sello_recepcion': sello_limpio,
-            'clasificacion_venta': (v.clasificacion_venta or '1').strip(),
-            'tipo_ingreso': (v.tipo_ingreso or '2').strip(),
-        })
+        r = registro_consumidor_desde_venta(v)
+        t_exentas += r['ventas_exentas']
+        t_gravadas += r['ventas_internas_gravadas']
+        t_no_sujetas += r['ventas_no_sujetas']
+        t_total += r['total_ventas']
+        datos.append(r)
     totales = {
         'ventas_exentas': round(t_exentas, 2),
         'ventas_internas_gravadas': round(t_gravadas, 2),
@@ -152,26 +224,7 @@ def generar_csv_libro(tipo_libro, resultado, empresa):
     if tipo_libro == 'consumidor':
         # 23 columnas: 5 = Nº Recepción (sello), 6-9 = Código generación (x4)
         for r in datos:
-            sello = r.get('sello_recepcion', '') or ''
-            codigo_gen = r.get('codigo_generacion', '') or ''
-            writer.writerow([
-                r['fecha_emision'],
-                r.get('clase_raw', '4'),
-                '01',
-                r.get('numero_dte', r['numero_control']),
-                sello,
-                codigo_gen, codigo_gen, codigo_gen, codigo_gen,
-                '',
-                f"{r['ventas_exentas']:.2f}",
-                '0.00',
-                f"{r['ventas_no_sujetas']:.2f}",
-                f"{r['ventas_internas_gravadas']:.2f}",
-                '0.00', '0.00', '0.00', '0', '0',
-                f"{r['total_ventas']:.2f}",
-                r.get('clasificacion_venta', '1'),
-                r.get('tipo_ingreso', '2'),
-                '2',
-            ])
+            writer.writerow(fila_csv_consumidor_desde_registro(r))
     else:
         # 20 columnas: 5 = Nº Recepción (sello), 6 = Código generación
         for r in datos:

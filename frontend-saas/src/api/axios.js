@@ -55,7 +55,8 @@ apiClient.interceptors.response.use(
         cfg?.responseType === 'arraybuffer' ||
         url.includes('descarga-zip') ||
         url.includes('generar-pdf') ||
-        url.includes('generar-dte')
+        url.includes('generar-dte') ||
+        url.includes('informe-cf-diario')
       if (!esDescargaBlob) {
         useAuthStore.getState().logout()
         window.location.href = '/login'

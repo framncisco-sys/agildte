@@ -376,6 +376,23 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
           <h2 className="text-lg font-semibold text-gray-800">{titulo}</h2>
         </section>
 
+        {esCF && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-950">
+            <p className="font-medium mb-1">Informe consolidado por día (solo CF)</p>
+            <p className="text-emerald-900/90 mb-2">
+              En el historial, elige Factura (CF), define fechas inicio/fin y usa el botón de informe para ver por cada día el
+              primer y último código de generación y el total del día.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/facturacion/lista')}
+              className="text-emerald-800 font-semibold underline hover:text-emerald-950"
+            >
+              Ir al historial de documentos
+            </button>
+          </div>
+        )}
+
         {/* Sección 1a: Fecha de facturación */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex flex-col sm:flex-row sm:items-end gap-3">

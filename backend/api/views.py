@@ -9,7 +9,7 @@ from django.http import HttpResponse, JsonResponse
 from django.db.models import Q, F, Sum
 from django.db.models.functions import TruncDay
 from django.utils import timezone
-from datetime import datetime
+from datetime import datetime, timedelta
 from rest_framework.decorators import api_view, action, permission_classes as drf_permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status, viewsets, permissions
@@ -974,7 +974,7 @@ class VentaViewSet(viewsets.ModelViewSet):
 
 # --- CLIENTES ---
 # --- CLIENTES (UNIFICADO) ---
-from .permissions import IsVendedorUser
+from .permissions import IsVendedorUser, IsContadorUser
 
 @api_view(['GET', 'POST'])
 @drf_permission_classes([DRFIsAuthenticated, IsVendedorUser])
@@ -1967,6 +1967,228 @@ def listar_ventas(request):
         'has_previous': page > 1,
         'results': serializer.data,
     })
+
+
+def _venta_tiene_sello_recepcion_mh(venta) -> bool:
+    """DTE aceptado por MH: sello de recepción presente (no vacío)."""
+    return bool((getattr(venta, 'sello_recepcion', None) or '').strip())
+
+
+def _informe_cf_diario_dias_list(empresa_ids, empresa_id, d0, d1):
+    """
+    Lista de dicts por día con primer/último CF y total.
+
+    - Orden del día: por fecha de emisión e id (orden de emisión).
+    - Primer DTE: el **primer** documento del día que **tenga sello de recepción MH**.
+      Si el primero cronológico fue rechazado u omitido, se toma el siguiente con sello.
+    - Último DTE: el **último** del día **con sello** (último aceptado por MH ese día).
+    - Si ningún CF del día tiene sello: se usa el primero y último cronológico (fallback).
+    - Total consolidado: suma de "total a pagar" **solo de documentos con sello**; si no hay
+      ninguno con sello, suma de todos los CF del día.
+    empresa_id obligatorio (int/str).
+    """
+    qs = Venta.objects.filter(
+        empresa_id__in=empresa_ids,
+        tipo_venta='CF',
+        fecha_emision__gte=d0,
+        fecha_emision__lte=d1,
+    ).only(
+        'id', 'fecha_emision', 'hora_emision', 'codigo_generacion', 'numero_control',
+        'sello_recepcion',
+        'venta_gravada', 'venta_exenta', 'venta_no_sujeta', 'debito_fiscal',
+        'iva_retenido_1', 'iva_retenido_2',
+    )
+    qs = qs.filter(empresa_id=int(empresa_id))
+    try:
+        emp = Empresa.objects.get(pk=int(empresa_id))
+        qs = qs.filter(ambiente_emision=emp.ambiente)
+    except (Empresa.DoesNotExist, ValueError):
+        pass
+
+    by_day = {}
+    for v in qs.order_by('fecha_emision', 'id'):
+        d = v.fecha_emision
+        if d not in by_day:
+            by_day[d] = []
+        by_day[d].append(v)
+
+    dias = []
+    cur = d0
+    while cur <= d1:
+        lista = by_day.get(cur)
+        if lista:
+            con_sello = [x for x in lista if _venta_tiene_sello_recepcion_mh(x)]
+            if con_sello:
+                primero = con_sello[0]
+                ultimo = con_sello[-1]
+                total_dia = sum(_total_pagar_venta(x) for x in con_sello)
+                cantidad_con_sello = len(con_sello)
+            else:
+                primero = lista[0]
+                ultimo = lista[-1]
+                total_dia = sum(_total_pagar_venta(x) for x in lista)
+                cantidad_con_sello = 0
+
+            dias.append({
+                'fecha': cur.isoformat(),
+                'cantidad_documentos': len(lista),
+                'cantidad_con_sello': cantidad_con_sello,
+                'total_consolidado': round(total_dia, 2),
+                'primer_dte': {
+                    'venta_id': primero.id,
+                    'codigo_generacion': (primero.codigo_generacion or '').strip(),
+                    'numero_control': (primero.numero_control or '').strip(),
+                    'hora_emision': (primero.hora_emision or '').strip(),
+                    'sello_recepcion': (primero.sello_recepcion or '').strip(),
+                },
+                'ultimo_dte': {
+                    'venta_id': ultimo.id,
+                    'codigo_generacion': (ultimo.codigo_generacion or '').strip(),
+                    'numero_control': (ultimo.numero_control or '').strip(),
+                    'hora_emision': (ultimo.hora_emision or '').strip(),
+                    'sello_recepcion': (ultimo.sello_recepcion or '').strip(),
+                },
+            })
+        cur += timedelta(days=1)
+    return dias
+
+
+@api_view(['GET'])
+def informe_cf_diario_api(request):
+    """
+    Informe consolidado de facturas CF (DTE-01) por día operativo.
+    Primer/último DTE: entre documentos **con sello de recepción MH** (aceptados);
+    si el primero cronológico no tiene sello, el "primer" informado es el primero que sí lo tenga.
+    Total consolidado: suma de totales de los CF **con sello**; si ninguno tiene sello, suma de todos.
+
+    GET ?empresa_id=&fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD
+    """
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return Response({"error": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    empresa_id = request.query_params.get('empresa_id')
+    fecha_inicio = request.query_params.get('fecha_inicio')
+    fecha_fin = request.query_params.get('fecha_fin')
+    if not empresa_id:
+        return Response(
+            {"error": "Indique empresa_id."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not fecha_inicio or not fecha_fin:
+        return Response(
+            {"error": "Indique fecha_inicio y fecha_fin (YYYY-MM-DD)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    r = require_empresa_allowed(request, int(empresa_id))
+    if r is not None:
+        return r
+
+    try:
+        d0 = datetime.strptime(str(fecha_inicio)[:10], '%Y-%m-%d').date()
+        d1 = datetime.strptime(str(fecha_fin)[:10], '%Y-%m-%d').date()
+    except ValueError:
+        return Response({"error": "Fechas inválidas."}, status=status.HTTP_400_BAD_REQUEST)
+    if d1 < d0:
+        return Response(
+            {"error": "fecha_fin debe ser mayor o igual a fecha_inicio."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    dias = _informe_cf_diario_dias_list(empresa_ids, empresa_id, d0, d1)
+
+    return Response({
+        'fecha_inicio': d0.isoformat(),
+        'fecha_fin': d1.isoformat(),
+        'empresa_id': int(empresa_id) if empresa_id else None,
+        'dias': dias,
+    })
+
+
+@api_view(['GET'])
+@drf_permission_classes([DRFIsAuthenticated, IsContadorUser])
+def informe_cf_diario_xlsx_api(request):
+    """
+    Exporta el informe CF a Excel (.xlsx): una fila por día, 23 columnas = mismo layout que CSV Libro MH.
+    Cada fila es el primer CF del día con sello (ver _informe_cf_diario_dias_list).
+    GET ?empresa_id=&mes=1-12&anio=YYYY
+    """
+    empresa, err = get_and_validate_empresa(request)
+    if err is not None:
+        return err
+
+    mes_raw = request.query_params.get('mes')
+    anio_raw = request.query_params.get('anio')
+    try:
+        mes = int(mes_raw)
+        anio = int(anio_raw)
+    except (TypeError, ValueError):
+        return Response({'error': 'Indique mes (1-12) y año válidos.'}, status=status.HTTP_400_BAD_REQUEST)
+    if mes < 1 or mes > 12:
+        return Response({'error': 'mes debe estar entre 1 y 12.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    import calendar
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    from .utils.reportes_iva import (
+        ENCABEZADOS_CSV_CONSUMIDOR,
+        fila_csv_consumidor_informe_diario_codigos,
+        registro_consumidor_desde_venta,
+    )
+
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return Response({'error': 'Autenticación requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    ultimo = calendar.monthrange(anio, mes)[1]
+    d0 = datetime(anio, mes, 1).date()
+    d1 = datetime(anio, mes, ultimo).date()
+
+    dias = _informe_cf_diario_dias_list(empresa_ids, str(empresa.id), d0, d1)
+    nombre_emp = (empresa.nombre or '').strip() or f'Empresa #{empresa.id}'
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'CF por día'
+    ws.append([f'Informe CF consolidado por día — {nombre_emp}'])
+    ws.append([
+        f'Periodo: {anio}-{mes:02d} ({d0.isoformat()} a {d1.isoformat()}). '
+        f'23 columnas CSV MH: fila basada en el primer CF con sello del día; '
+        f'Código generación (1) y (3) = primer DTE; (2) y (4) = último DTE del día.'
+    ])
+    ws.append([])
+    headers = list(ENCABEZADOS_CSV_CONSUMIDOR)
+    ws.append(headers)
+    header_row = 4
+    for c in range(1, len(headers) + 1):
+        ws.cell(row=header_row, column=c).font = Font(bold=True)
+
+    for bloque in dias:
+        pid = bloque['primer_dte'].get('venta_id')
+        uid = bloque['ultimo_dte'].get('venta_id')
+        try:
+            vp = Venta.objects.get(pk=pid)
+            r_p = registro_consumidor_desde_venta(vp)
+            if uid == pid:
+                r_u = r_p
+            else:
+                vu = Venta.objects.get(pk=uid)
+                r_u = registro_consumidor_desde_venta(vu)
+            ws.append(fila_csv_consumidor_informe_diario_codigos(r_p, r_u))
+        except Venta.DoesNotExist:
+            continue
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fn = f'informe_cf_diario_{anio}_{mes:02d}.xlsx'
+    resp = HttpResponse(
+        buf.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{fn}"'
+    return resp
 
 
 def _aplicar_filtros_ventas(queryset, request):
@@ -3743,11 +3965,8 @@ def reporte_pdf_ventas_cf_empresa(request):
 
 
 # --- LIBROS DE IVA UNIFICADO (mes / anio / tipo_libro / format) ---
-from rest_framework.permissions import IsAuthenticated
-from .permissions import IsContadorUser
-
 @api_view(['GET'])
-@drf_permission_classes([IsAuthenticated, IsContadorUser])
+@drf_permission_classes([DRFIsAuthenticated, IsContadorUser])
 def libros_iva_reporte_api(request):
     """
     Vista unificada Libros de IVA.

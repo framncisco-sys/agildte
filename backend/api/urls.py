@@ -37,6 +37,7 @@ urlpatterns = [
     path('ventas/crear/', views.crear_venta),
     path('ventas/crear-con-detalles/', views.crear_venta_con_detalles),
     path('ventas/listar/', views.listar_ventas),
+    path('ventas/informe-cf-diario/', views.informe_cf_diario_api),
     path('ventas/<int:pk>/', views.obtener_venta),
     path('ventas/<int:pk>/generar-dte/', views.generar_dte_venta),
     path('ventas/<int:pk>/generar-pdf/', views.generar_pdf_venta_endpoint),
@@ -105,6 +106,7 @@ urlpatterns = [
     path('libros-iva/pdf-ventas-cf/', views.reporte_pdf_ventas_cf_empresa),
     # Libros IVA unificado: mes, anio, tipo_libro, format=pdf|csv (opcional)
     path('libros-iva/reporte/', views.libros_iva_reporte_api),
+    path('libros-iva/informe-cf-diario.xlsx/', views.informe_cf_diario_xlsx_api),
 ]
 
 urlpatterns += router.urls

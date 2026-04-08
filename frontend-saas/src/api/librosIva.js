@@ -34,3 +34,17 @@ export async function getLibroIvaBlob(mes, anio, tipoLibro, format) {
   })
   return response.data
 }
+
+/**
+ * Informe CF consolidado por día (primer/último DTE y total por fecha) en Excel .xlsx
+ * Mismo mes/año que Libro Consumidor Final. Requiere rol contador (igual que Libros IVA).
+ */
+export async function downloadInformeCfDiarioXlsx(mes, anio) {
+  const empresaId = useEmpresaStore.getState().empresaId
+  if (!empresaId) throw new Error('Seleccione una empresa')
+  const { data } = await apiClient.get('/libros-iva/informe-cf-diario.xlsx/', {
+    params: { mes, anio, empresa_id: empresaId },
+    responseType: 'blob',
+  })
+  return data
+}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, FileText, Braces, Eye, Loader2, CircleX, FileDown, FolderDown, Send } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, FileText, Braces, Eye, Loader2, CircleX, FileDown, FolderDown, Send, BarChart3 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { getVentas, downloadPDF, downloadJSON, downloadFacturasFiltradasZip, reenviarVenta } from '../../../api/facturas'
+import { getVentas, downloadPDF, downloadJSON, downloadFacturasFiltradasZip, reenviarVenta, getInformeCfDiario } from '../../../api/facturas'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 import { DetalleRechazoModal } from '../components/DetalleRechazoModal'
 import { InvalidacionModal } from '../components/InvalidacionModal'
@@ -123,6 +123,9 @@ export function ListaFacturas() {
   const [modalInvalidacion, setModalInvalidacion] = useState(null)
   const [descargandoLote, setDescargandoLote] = useState(null)
   const [reenviandoId, setReenviandoId] = useState(null)
+  const [modalInformeCf, setModalInformeCf] = useState(false)
+  const [informeCfDias, setInformeCfDias] = useState([])
+  const [cargandoInformeCf, setCargandoInformeCf] = useState(false)
 
   const [filtros, setFiltros] = useState({
     fecha_inicio: '',
@@ -242,6 +245,36 @@ export function ListaFacturas() {
     }
   }
 
+  const handleInformeCfDiario = async () => {
+    if (!empresaId) {
+      toast.error('Seleccione una empresa')
+      return
+    }
+    if (!filtros.fecha_inicio || !filtros.fecha_fin) {
+      toast.error('En los filtros avanzados indique fecha inicio y fecha fin')
+      return
+    }
+    setCargandoInformeCf(true)
+    try {
+      const data = await getInformeCfDiario({
+        empresa_id: empresaId,
+        fecha_inicio: filtros.fecha_inicio,
+        fecha_fin: filtros.fecha_fin,
+      })
+      setInformeCfDias(Array.isArray(data.dias) ? data.dias : [])
+      setModalInformeCf(true)
+    } catch (err) {
+      const msg =
+        err.response?.data?.error ||
+        err.response?.data?.detail ||
+        err.message ||
+        'No se pudo cargar el informe'
+      toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg))
+    } finally {
+      setCargandoInformeCf(false)
+    }
+  }
+
   /** Descarga ZIP de PDFs o JSONs según filtros (misma query que la tabla). */
   const handleDescargaZipFiltrado = async (format) => {
     setDescargandoLote(format)
@@ -345,12 +378,24 @@ export function ListaFacturas() {
 
       {/* Descarga masiva según filtros (PDF o JSON DTE en ZIP) */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        {filtros.tipo_dte === '01' && (
+          <button
+            type="button"
+            onClick={handleInformeCfDiario}
+            disabled={!!cargandoInformeCf || !!descargandoLote}
+            className="px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2 text-sm"
+            title="Solo CF: consolidado por día (primer y último DTE del día y total)"
+          >
+            {cargandoInformeCf ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
+            Informe CF consolidado (por día)
+          </button>
+        )}
         <button
           type="button"
           onClick={() => handleDescargaZipFiltrado('pdf')}
           disabled={!!descargandoLote}
           className="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm"
-          title="Genera un ZIP con el PDF de cada factura que coincida con los filtros (máx. 100 por lote)"
+          title="Genera un ZIP con el PDF de cada factura que coincida con los filtros"
         >
           {descargandoLote === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
           Descargar PDFs filtrados (ZIP)
@@ -360,7 +405,7 @@ export function ListaFacturas() {
           onClick={() => handleDescargaZipFiltrado('json')}
           disabled={!!descargandoLote}
           className="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm"
-          title="Genera un ZIP con el JSON DTE de cada factura que coincida con los filtros (máx. 100 por lote)"
+          title="Genera un ZIP con el JSON DTE de cada factura que coincida con los filtros"
         >
           {descargandoLote === 'json' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderDown className="w-4 h-4" />}
           Descargar JSONs filtrados (ZIP)
@@ -549,6 +594,72 @@ export function ListaFacturas() {
         venta={modalInvalidacion || {}}
         onExito={handleInvalidacionExito}
       />
+
+      {modalInformeCf && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="informe-cf-titulo"
+        >
+          <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+              <h2 id="informe-cf-titulo" className="text-lg font-semibold text-gray-800">
+                Informe CF consolidado por día
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalInformeCf(false)}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="overflow-auto p-4">
+              {informeCfDias.length === 0 ? (
+                <p className="text-sm text-gray-500 py-6 text-center">
+                  No hay facturas CF en el rango de fechas seleccionado.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[720px]">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-left text-xs uppercase text-gray-600">
+                        <th className="py-2 pr-2">Fecha</th>
+                        <th className="py-2 pr-2">Docs</th>
+                        <th className="py-2 pr-2 text-right">Total día</th>
+                        <th className="py-2 pr-2">Primer DTE (código generación)</th>
+                        <th className="py-2 pr-2">Último DTE (código generación)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {informeCfDias.map((row) => (
+                        <tr key={row.fecha} className="border-b border-gray-100 align-top">
+                          <td className="py-3 pr-2 whitespace-nowrap text-gray-800">{row.fecha}</td>
+                          <td className="py-3 pr-2">{row.cantidad_documentos}</td>
+                          <td className="py-3 pr-2 text-right font-medium">{formatMoneda(row.total_consolidado)}</td>
+                          <td className="py-3 pr-2 break-all max-w-[200px]">
+                            <span className="text-gray-700">{row.primer_dte?.codigo_generacion || '—'}</span>
+                            {row.primer_dte?.numero_control ? (
+                              <span className="block text-xs text-gray-500 mt-0.5">{row.primer_dte.numero_control}</span>
+                            ) : null}
+                          </td>
+                          <td className="py-3 pr-2 break-all max-w-[200px]">
+                            <span className="text-gray-700">{row.ultimo_dte?.codigo_generacion || '—'}</span>
+                            {row.ultimo_dte?.numero_control ? (
+                              <span className="block text-xs text-gray-500 mt-0.5">{row.ultimo_dte.numero_control}</span>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

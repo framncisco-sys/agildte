@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Search, FileDown, FileSpreadsheet } from 'lucide-react'
-import { getLibroIvaPreview, getLibroIvaBlob } from '../../../api/librosIva'
+import { getLibroIvaPreview, getLibroIvaBlob, downloadInformeCfDiarioXlsx } from '../../../api/librosIva'
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -22,6 +22,7 @@ export default function LibrosIva() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [downloading, setDownloading] = useState(null)
+  const [downloadingCfXlsx, setDownloadingCfXlsx] = useState(false)
 
   const handleGenerar = () => {
     setError(null)
@@ -51,6 +52,41 @@ export default function LibrosIva() {
       setError(err.response?.data?.error ?? err.message ?? `Error al descargar ${format.toUpperCase()}`)
     } finally {
       setDownloading(null)
+    }
+  }
+
+  const handleInformeCfDiarioXlsx = async () => {
+    if (tipoLibro !== 'consumidor') return
+    setError(null)
+    setDownloadingCfXlsx(true)
+    try {
+      const blob = await downloadInformeCfDiarioXlsx(mes, anio)
+      const nombre = `informe_cf_diario_${anio}_${String(mes).padStart(2, '0')}.xlsx`
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = nombre
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      const msg = err.response?.data
+      if (msg instanceof Blob) {
+        try {
+          const t = await msg.text()
+          try {
+            const j = JSON.parse(t)
+            setError(j.error || j.detail || t)
+          } catch {
+            setError(t || 'Error al descargar Excel')
+          }
+        } catch {
+          setError('Error al descargar Excel')
+        }
+      } else {
+        setError(err.response?.data?.error ?? err.message ?? 'Error al descargar Excel')
+      }
+    } finally {
+      setDownloadingCfXlsx(false)
     }
   }
 
@@ -116,6 +152,18 @@ export default function LibrosIva() {
             <Search className="h-4 w-4" />
             {loading ? 'Cargando…' : 'Generar vista previa'}
           </button>
+          {isConsumidor && (
+            <button
+              type="button"
+              onClick={handleInformeCfDiarioXlsx}
+              disabled={downloadingCfXlsx || loading}
+              title="Exporta un Excel con el consolidado diario CF: primer y último código de generación por día y total del día"
+              className="inline-flex items-center gap-2 rounded-lg border-2 border-emerald-600 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              {downloadingCfXlsx ? 'Generando…' : 'Excel: consolidado diario CF'}
+            </button>
+          )}
         </div>
       </div>
 
