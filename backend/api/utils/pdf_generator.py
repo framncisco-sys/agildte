@@ -7,6 +7,7 @@ import io
 import xml.sax.saxutils as saxutils
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import quote
 
 from django.conf import settings
 from reportlab.lib import colors
@@ -245,12 +246,11 @@ def generar_pdf_venta(venta):
     numero_control = (venta.numero_control or venta.numero_documento or '').strip() or 'N/A'
     sello = (venta.sello_recepcion or '').strip() or 'N/A'
     empresa = venta.empresa
-    ambiente = getattr(empresa, 'ambiente', None) or '01'
-    # Hacienda exige fecha en formato ISO 8601 (YYYY-MM-DD) para el QR
-    fecha_iso = venta.fecha_emision.strftime('%Y-%m-%d') if venta.fecha_emision else ''
+    codigo_gen_raw = (venta.codigo_generacion or '').strip()
     url_consulta = (
-        f"https://admin.factura.gob.sv/consultaPublica?"
-        f"ambiente={ambiente}&codGen={codigo_gen}&fechaEmi={fecha_iso}"
+        f"https://portaldgii.mh.gob.sv/ssc/consulta/fe?codigoGeneracion={quote(codigo_gen_raw, safe='')}"
+        if codigo_gen_raw
+        else ''
     )
 
     doc = SimpleDocTemplate(
@@ -484,7 +484,7 @@ def generar_pdf_venta(venta):
         filas_izq.append([Spacer(1, 8)])
         filas_izq.append([obs_p])
     filas_izq.append([Spacer(1, 10)])
-    qr_buf = _generar_qr_imagen_reportlab(url_consulta, size_pt=70)
+    qr_buf = _generar_qr_imagen_reportlab(url_consulta, size_pt=70) if url_consulta else None
     if qr_buf:
         try:
             img_qr = Image(qr_buf, width=70, height=70)
