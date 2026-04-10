@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { usePeriodo } from '../contexts/PeriodoContext';
 
+const TZ_SV = 'America/El_Salvador'
+
 const GestionRetenciones = ({ clienteInfo, volverAlInicio }) => {
   const { periodoFormateado } = usePeriodo();
   const [retenciones, setRetenciones] = useState([]);
@@ -60,9 +62,9 @@ const GestionRetenciones = ({ clienteInfo, volverAlInicio }) => {
     const hoy = new Date();
     const hace3Meses = new Date();
     hace3Meses.setMonth(hace3Meses.getMonth() - 3);
-    
-    setFechaDesde(hace3Meses.toISOString().split('T')[0]);
-    setFechaHasta(hoy.toISOString().split('T')[0]);
+
+    setFechaDesde(hace3Meses.toLocaleDateString('en-CA', { timeZone: TZ_SV }));
+    setFechaHasta(hoy.toLocaleDateString('en-CA', { timeZone: TZ_SV }));
   };
 
   const cerrarModal = () => {

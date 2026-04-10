@@ -496,7 +496,7 @@ class EmpresaViewSet(viewsets.ModelViewSet):
         r = require_empresa_allowed(request, empresa.id)
         if r is not None:
             return r
-        anio = timezone.now().year
+        anio = timezone.localdate().year
 
         if request.method == 'GET':
             tipos = ['01', '03', '14', '05', '06']
@@ -1083,7 +1083,7 @@ def dashboard_stats_api(request):
             return r
         empresa_ids = [int(empresa_id)]
 
-    now = timezone.now().date()
+    now = timezone.localdate()
     year, month = now.year, now.month
     first_day = timezone.datetime(year, month, 1).date()
     _, last_day_num = calendar.monthrange(year, month)

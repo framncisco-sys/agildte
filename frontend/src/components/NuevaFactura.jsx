@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { usePeriodo } from '../contexts/PeriodoContext';
+import { fechaHoyElSalvadorISO } from '../utils/fechaElSalvador';
 
 const NuevaFactura = ({ empresa, ventaId, volverAlInicio }) => {
   const { periodoFormateado } = usePeriodo();
   
   // Estados del formulario
-  const [fechaEmision, setFechaEmision] = useState(new Date().toISOString().split('T')[0]);
+  const [fechaEmision, setFechaEmision] = useState(fechaHoyElSalvadorISO());
   const [tipoVenta, setTipoVenta] = useState('CCF');
   const [nrcCliente, setNrcCliente] = useState('');
   const [nombreCliente, setNombreCliente] = useState('');
@@ -152,7 +153,7 @@ const NuevaFactura = ({ empresa, ventaId, volverAlInicio }) => {
       return;
     }
 
-    const fechaHoy = new Date().toISOString().split('T')[0];
+    const fechaHoy = fechaHoyElSalvadorISO();
     let fechaParaEmitir = fechaEmision;
     if (fechaEmision && fechaEmision !== fechaHoy) {
       const usarFechaActual = window.confirm(

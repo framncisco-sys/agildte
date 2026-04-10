@@ -14,6 +14,7 @@ import { DEPARTAMENTOS, MUNICIPIOS_POR_DEPARTAMENTO } from '../../../data/depart
 import { crearVenta } from '../../../api/facturas'
 import { createCliente } from '../../../api/clientes'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
+import { fechaHoyElSalvadorISO } from '../../../utils/format'
 
 const TITULOS_POR_TIPO = {
   '01': 'NUEVA FACTURA CONSUMIDOR FINAL',
@@ -74,7 +75,7 @@ const UMBRAL_RETENCION = 100
 export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSeleccionada }) {
   const navigate = useNavigate()
   const empresaId = useEmpresaStore((s) => s.empresaId)
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = fechaHoyElSalvadorISO()
   const [modalAbierto, setModalAbierto] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [guardandoCliente, setGuardandoCliente] = useState(false)

@@ -1,4 +1,5 @@
 import apiClient from './axios'
+import { fechaHoyElSalvadorISO } from '../utils/format'
 
 /**
  * Mapea datos del formulario frontend al payload que espera Django.
@@ -7,7 +8,7 @@ import apiClient from './axios'
 function mapearPayloadFrontendADjango(payload) {
   const { cliente, items, tipoDocumento, totalGravadas, iva, ivaRetenido1, condicionOperacion, plazoPago, periodoPago } = payload
   const empresaId = payload.empresaId // desde useEmpresaStore
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = fechaHoyElSalvadorISO()
   const fechaEmisionFinal = payload.fechaFacturacion || hoy
   const periodo = String(fechaEmisionFinal).slice(0, 7) // YYYY-MM
 

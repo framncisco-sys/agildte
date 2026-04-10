@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { subirArchivoCargaMasiva, descargarPlantillaEjemplo } from '../../../api/cargaMasiva'
 import apiClient from '../../../api/axios'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
+import { fechaHoyElSalvadorISO } from '../../../utils/format'
 
 /**
  * Convierte una fila de carga masiva al payload esperado por POST /ventas/crear-con-detalles/
@@ -55,7 +56,7 @@ function filaToPayload(fila, empresaId) {
     detalles.push(det)
   })
 
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = fechaHoyElSalvadorISO()
   const periodo = (fila.fecha || hoy).slice(0, 7)
   const tipoVenta = tipo === '01' ? 'CF' : 'CCF'
   const nombreReceptor = esCF

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { usePeriodo } from '../contexts/PeriodoContext';
+import { fechaHoyElSalvadorISO } from '../utils/fechaElSalvador';
 
 const FormularioVentas = ({ clienteInfo, volverAlInicio, ventaId = null }) => {
   // --- CONTEXTO GLOBAL ---
@@ -36,8 +37,7 @@ const FormularioVentas = ({ clienteInfo, volverAlInicio, ventaId = null }) => {
   // --- USE EFFECT: Cargar Fecha Automática ---
   useEffect(() => {
     if (!ventaId) {
-      const hoy = new Date();
-      setFechaFactura(hoy.toISOString().slice(0, 10));
+      setFechaFactura(fechaHoyElSalvadorISO());
     }
   }, []);
 
