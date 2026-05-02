@@ -1,0 +1,36 @@
+<!-- Programador: Oscar Amaya Romero -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Comprobante de Invalidación — DTE #{{ venta_id }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 400px; margin: 20px auto; padding: 20px; font-size: 12px; }
+        .titulo { text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 15px; color: #b91c1c; }
+        .linea { border-top: 1px dashed #000; margin: 10px 0; }
+        .etq { font-weight: bold; display: inline-block; min-width: 120px; }
+        .caja { border: 2px solid #b91c1c; padding: 12px; margin: 10px 0; background: #fef2f2; }
+        .no-print { margin-top: 15px; text-align: center; }
+        @media print { .no-print { display: none; } }
+    </style>
+</head>
+<body onload="window.print()">
+    <div class="titulo">COMPROBANTE DE INVALIDACIÓN DE DTE</div>
+    <div class="linea"></div>
+    <p><span class="etq">Documento original:</span> #{{ venta_id }}</p>
+    <p><span class="etq">Tipo:</span> {{ tipo_comprobante|default('—') }}</p>
+    <p><span class="etq">Total del documento:</span> $ {{ "{:,.2f}".format(total|float) }}</p>
+    <p><span class="etq">Fecha emisión:</span> {{ fecha_registro|default('—') }}</p>
+    <p><span class="etq">Cliente:</span> {{ cliente_nombre|default('—') }}</p>
+    <div class="caja">
+        <p class="mb-1"><span class="etq">Código de Generación:</span></p>
+        <p class="small mb-0" style="word-break: break-all; font-family: monospace;">{{ codigo_generacion|default('—') }}</p>
+    </div>
+    <p><span class="etq">Motivo de invalidación:</span> {{ motivo_anulacion|default('—') }}</p>
+    <p><span class="etq">Anuló:</span> {{ usuario_anulo|default('—') }}</p>
+    <p><span class="etq">Fecha anulación:</span> {{ fecha_anulacion|default('—') }}</p>
+    <div class="linea"></div>
+    <p class="text-muted small">Este comprobante justifica contablemente la venta que no genera ingreso en caja. Entregar al supervisor/contador.</p>
+    <div class="no-print"><a href="/reporte/facturacion/documentos_anulados">Volver a Documentos Anulados</a></div>
+</body>
+</html>

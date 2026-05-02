@@ -1,0 +1,263 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark"><i class="bi bi-truck text-primary"></i> Proveedores</h2>
+            <p class="text-muted small mb-0">Gestión de proveedores que suministran productos. Relacionados con compras e inventario.</p>
+        </div>
+        <div>
+            <a href="{{ url_for('admin.reporte_lista_compras') }}" class="btn btn-outline-success btn-sm rounded-pill me-2"><i class="bi bi-cart-check"></i> Lista de compras</a>
+            <a href="{{ url_for('admin.compras_nueva') }}" class="btn btn-primary rounded-pill"><i class="bi bi-plus-lg"></i> Registrar compra</a>
+        </div>
+    </div>
+
+    {% if es_super and empresas %}
+    <div class="mb-3">
+        <form method="GET" class="d-inline">
+            <select name="empresa_id" class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="this.form.submit()">
+                {% for e in empresas %}
+                <option value="{{ e[0] }}" {{ 'selected' if emp_id == e[0] else '' }}>{{ e[1] }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white py-3 border-bottom">
+                    <h6 class="mb-0 fw-bold">{{ 'Editar Proveedor' if proveedor else 'Nuevo Proveedor' }}</h6>
+                </div>
+                <div class="card-body">
+                    <form action="{{ url_for('admin.guardar_proveedor') }}" method="POST">
+                        <input type="hidden" name="proveedor_id" value="{{ proveedor.id if proveedor else '' }}">
+                        {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
+
+                        <!-- Identificación -->
+                        <div class="mb-4">
+                            <p class="small text-uppercase fw-bold text-muted mb-2"><i class="bi bi-building me-1"></i> Identificación</p>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Nombre / Razón social <span class="text-danger">*</span></label>
+                                <input type="text" name="nombre" class="form-control" value="{{ proveedor.nombre if proveedor else '' }}" required placeholder="Razón social del proveedor">
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-12 col-sm-4">
+                                    <label class="form-label small fw-bold">Tipo documento</label>
+                                    <select name="tipo_documento" id="tipo_documento" class="form-select" required>
+                                        <option value="NIT" {{ 'selected' if (proveedor and proveedor.tipo_documento == 'NIT') or not proveedor else '' }}>NIT</option>
+                                        <option value="DUI" {{ 'selected' if proveedor and proveedor.tipo_documento == 'DUI' else '' }}>DUI</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 col-sm-4">
+                                    <label class="form-label small fw-bold">Número</label>
+                                    <input type="text" name="nit" id="nit_dui" class="form-control" placeholder="{{ '0000-000000-000-0' if (proveedor and proveedor.tipo_documento == 'NIT') or not proveedor else '00000000-0' }}" value="{{ proveedor.nit if proveedor else '' }}" maxlength="17" inputmode="numeric" autocomplete="off">
+                                    <small class="text-muted" id="nit_dui_hint">0000-000000-000-0</small>
+                                </div>
+                                <div class="col-12 col-sm-4">
+                                    <label class="form-label small fw-bold">NRC</label>
+                                    <input type="text" name="nrc" id="nrc" class="form-control" placeholder="123456-7" value="{{ proveedor.nrc if proveedor else '' }}" maxlength="8" inputmode="numeric" title="6-7 dígitos">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Datos fiscales -->
+                        <div class="mb-4 pb-3 border-bottom">
+                            <p class="small text-uppercase fw-bold text-muted mb-2"><i class="bi bi-file-earmark-text me-1"></i> Datos fiscales</p>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Giro o Actividad Económica (MH)</label>
+                                <input type="text" list="actividades_proveedor" name="giro_actividad" class="form-control" value="{{ proveedor.giro_actividad if proveedor else '' }}" placeholder="Busque código o descripción">
+                                {% if actividades %}
+                                <datalist id="actividades_proveedor">
+                                    {% for a in actividades %}
+                                    <option value="{{ a[0] }}">{{ a[0] }} — {{ (a[1] or '')[:70] }}</option>
+                                    {% endfor %}
+                                </datalist>
+                                {% endif %}
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-12 col-sm-6">
+                                    <label class="form-label small fw-bold">Clasificación</label>
+                                    <select name="clasificacion_contribuyente" class="form-select">
+                                        <option value="PEQUEÑO" {{ 'selected' if (proveedor and proveedor.clasificacion_contribuyente == 'PEQUEÑO') or not proveedor else '' }}>Pequeño</option>
+                                        <option value="MEDIANO" {{ 'selected' if proveedor and proveedor.clasificacion_contribuyente == 'MEDIANO' else '' }}>Mediano</option>
+                                        <option value="GRANDE" {{ 'selected' if proveedor and proveedor.clasificacion_contribuyente == 'GRANDE' else '' }}>Grande</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 col-sm-6 d-flex align-items-end pb-2">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="es_gran_contribuyente" class="form-check-input" id="es_gran" {{ 'checked' if proveedor and proveedor.es_gran_contribuyente else '' }}>
+                                        <label class="form-check-label small" for="es_gran">Gran Contribuyente</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="small text-muted mb-0 mt-1"><i class="bi bi-info-circle me-1"></i> Retención IVA 1% aplica cuando uno es Grande y el otro no (base &gt; $100).</p>
+                        </div>
+
+                        <!-- Contacto y comunicación -->
+                        <div class="mb-4">
+                            <p class="small text-uppercase fw-bold text-muted mb-2"><i class="bi bi-person-lines-fill me-1"></i> Contacto</p>
+                            <div class="row g-2">
+                                <div class="col-12 col-sm-6">
+                                    <label class="form-label small fw-bold">Nombre del contacto</label>
+                                    <input type="text" name="contacto" class="form-control" value="{{ proveedor.contacto if proveedor else '' }}" placeholder="Persona de referencia">
+                                </div>
+                                <div class="col-12 col-sm-6">
+                                    <label class="form-label small fw-bold">Teléfono directo</label>
+                                    <input type="text" name="telefono" id="telefono" class="form-control" value="{{ proveedor.telefono if proveedor else '' }}" placeholder="2222-2222" maxlength="9">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small fw-bold">Correo</label>
+                                    <input type="email" name="correo" class="form-control" value="{{ proveedor.correo if proveedor else '' }}" placeholder="correo@proveedor.com">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small fw-bold">Dirección</label>
+                                    <textarea name="direccion" class="form-control" rows="2" placeholder="Dirección del proveedor">{{ proveedor.direccion if proveedor else '' }}</textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        {% if proveedor %}
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" name="activo" class="form-check-input" id="activo" {{ 'checked' if proveedor.activo else '' }}>
+                            <label class="form-check-label" for="activo">Proveedor activo</label>
+                        </div>
+                        {% endif %}
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">{{ 'Actualizar' if proveedor else 'Guardar proveedor' }}</button>
+                            {% if proveedor %}<a href="{{ url_for('admin.proveedores') }}" class="btn btn-outline-secondary">Cancelar</a>{% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold">Listado de proveedores</h6>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Nombre</th>
+                                <th>NIT</th>
+                                <th>Contacto</th>
+                                <th>Teléfono</th>
+                                <th>Estado</th>
+                                <th class="text-end">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in proveedores %}
+                            <tr class="{{ '' if p[5] else 'text-muted' }}">
+                                <td>{{ p[1] }}</td>
+                                <td>{{ p[2] or '—' }}</td>
+                                <td>{{ p[4] or '—' }}</td>
+                                <td>{{ p[3] or '—' }}</td>
+                                <td><span class="badge {{ 'bg-success' if p[5] else 'bg-secondary' }}">{{ 'Activo' if p[5] else 'Inactivo' }}</span></td>
+                                <td class="text-end">
+                                    <a href="{{ url_for('admin.proveedores_editar', id=p[0]) }}{% if es_super %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                                    <form action="{{ url_for('admin.eliminar_proveedor', id=p[0]) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar este proveedor?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-center py-5 text-muted">No hay proveedores. Cree uno para registrar compras.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function() {
+    var sel = document.getElementById('tipo_documento');
+    var inp = document.getElementById('nit_dui');
+    var hint = document.getElementById('nit_dui_hint');
+    if (!sel || !inp) return;
+
+    function formatoNIT(val) {
+        var d = (val || '').replace(/\D/g, '').slice(0, 14);
+        if (d.length <= 4) return d;
+        if (d.length <= 10) return d.slice(0,4) + '-' + d.slice(4);
+        if (d.length <= 13) return d.slice(0,4) + '-' + d.slice(4,10) + '-' + d.slice(10);
+        return d.slice(0,4) + '-' + d.slice(4,10) + '-' + d.slice(10,13) + '-' + d.slice(13);
+    }
+    function formatoDUI(val) {
+        var d = (val || '').replace(/\D/g, '').slice(0, 9);
+        if (d.length <= 8) return d;
+        return d.slice(0,8) + '-' + d.slice(8);
+    }
+
+    function aplicarMascara() {
+        var tipo = sel.value;
+        var val = inp.value.replace(/\D/g, '');
+        if (tipo === 'NIT') {
+            inp.value = formatoNIT(inp.value);
+            inp.placeholder = '0000-000000-000-0';
+            inp.maxLength = 17;
+            hint.textContent = 'Formato: 0000-000000-000-0';
+        } else {
+            inp.value = formatoDUI(inp.value);
+            inp.placeholder = '00000000-0';
+            inp.maxLength = 10;
+            hint.textContent = 'Formato: 00000000-0';
+        }
+    }
+
+    sel.addEventListener('change', function() {
+        aplicarMascara();
+    });
+
+    inp.addEventListener('input', function() {
+        aplicarMascara();
+    });
+
+    inp.addEventListener('paste', function(e) {
+        e.preventDefault();
+        var txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+        inp.value = sel.value === 'NIT' ? formatoNIT(txt) : formatoDUI(txt);
+        aplicarMascara();
+    });
+
+    aplicarMascara();
+})();
+(function() {
+    var nrc = document.getElementById('nrc');
+    if (!nrc) return;
+    function formatearNRC() {
+        var v = nrc.value.replace(/\D/g, '').slice(0, 7);
+        nrc.value = v.length > 6 ? v.slice(0, 6) + '-' + v.slice(6) : v;
+    }
+    nrc.addEventListener('input', formatearNRC);
+    nrc.addEventListener('paste', function(e) {
+        e.preventDefault();
+        var txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 7);
+        nrc.value = txt.length > 6 ? txt.slice(0, 6) + '-' + txt.slice(6) : txt;
+    });
+    formatearNRC();
+})();
+(function() {
+    var tel = document.getElementById('telefono');
+    if (!tel) return;
+    function formatearTel() {
+        var v = tel.value.replace(/\D/g, '').slice(0, 8);
+        tel.value = v.length > 4 ? v.slice(0, 4) + '-' + v.slice(4) : v;
+    }
+    tel.addEventListener('input', formatearTel);
+    tel.addEventListener('paste', function(e) {
+        e.preventDefault();
+        var txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 8);
+        tel.value = txt.length > 4 ? txt.slice(0, 4) + '-' + txt.slice(4) : txt;
+    });
+    formatearTel();
+})();
+</script>
+{% endblock %}

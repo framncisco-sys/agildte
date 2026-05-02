@@ -1,0 +1,90 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
+            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-file-earmark-spreadsheet text-success"></i> Informe F-983</h2>
+            <p class="text-muted small mb-0">Inventario físico anual — Presentar a más tardar el 28 de febrero</p>
+        </div>
+    </div>
+
+    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
+        <form method="GET" action="{{ url_for('admin.reporte_f983') }}" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Ejercicio fiscal</label>
+                <input type="number" name="ejercicio" class="form-control" value="{{ ejercicio }}" min="2020" max="2030" id="filtro_ejercicio_f983">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-filter"></i> Actualizar</button>
+            </div>
+            <div class="col-md-2 d-flex gap-1">
+                <a href="#" class="btn btn-success fw-bold text-white" id="btn_excel_f983"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+                <a href="#" class="btn btn-danger fw-bold text-white" id="btn_pdf_f983"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+            </div>
+        </form>
+    </div>
+    <script>
+    (function() {
+        var excelBase = '{{ url_for("admin.reporte_f983_exportar_excel") }}';
+        var pdfBase = '{{ url_for("admin.reporte_f983_exportar_pdf") }}';
+        function update() {
+            var ej = document.getElementById('filtro_ejercicio_f983').value || '{{ ejercicio }}';
+            document.getElementById('btn_excel_f983').href = excelBase + '?ejercicio=' + encodeURIComponent(ej);
+            document.getElementById('btn_pdf_f983').href = pdfBase + '?ejercicio=' + encodeURIComponent(ej);
+        }
+        update();
+        var inp = document.getElementById('filtro_ejercicio_f983');
+        if (inp) inp.addEventListener('change', update);
+    })();
+    </script>
+
+    <div class="alert alert-info small">
+        <strong>F-983:</strong> Obligatorio para contribuyentes con ingresos ≥ 2,753 salarios mínimos (~$991,080). Solo se incluyen productos con existencia final &gt; 0. El costo unitario no puede ser cero.
+    </div>
+
+    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h6 class="m-0 fw-bold text-primary">Formato F-983 — Inventario físico</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle m-0 table-hover table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Denominación</th>
+                        <th>Código</th>
+                        <th>Unidad</th>
+                        <th class="text-end">Inv. Inicial</th>
+                        <th class="text-end">Compras</th>
+                        <th class="text-end">Ventas</th>
+                        <th class="text-end">Inv. Final</th>
+                        <th class="text-end">Costo Unit.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in filas %}
+                    <tr>
+                        <td class="ps-4">{{ (r[0] or '')[:50] }}</td>
+                        <td>{{ (r[1] or '')[:25] }}</td>
+                        <td>{{ (r[2] or 'UNI')[:5] }}</td>
+                        <td class="text-end">{{ "%.2f"|format(r[3]|float) }}</td>
+                        <td class="text-end">{{ "%.2f"|format(r[4]|float) }}</td>
+                        <td class="text-end">{{ "%.2f"|format(r[5]|float) }}</td>
+                        <td class="text-end fw-bold">{{ "%.2f"|format(r[6]|float) }}</td>
+                        <td class="text-end">$ {{ "%.4f"|format(r[7]|float) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay productos con existencia. Configure costo_unitario y unidad_medida en productos.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

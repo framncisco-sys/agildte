@@ -1,5 +1,7 @@
 import { Outlet, Navigate } from 'react-router-dom'
 import { RequireAuth } from './RequireAuth'
+import { RequireFacturacionNativa } from './RequireFacturacionNativa'
+import { ROLES_CONFIG_ADMIN, ROLES_LIBROS_IVA } from '../constants/roles'
 import { MainLayout } from '../layouts/MainLayout'
 import { AuthLayout } from '../layouts/AuthLayout'
 import { LoginPage } from '../features/auth/LoginPage'
@@ -27,16 +29,44 @@ export const router = {
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: 'dashboard', element: <DashboardPage /> },
         { path: 'facturacion', element: <Navigate to="/facturacion/nueva" replace /> },
-        { path: 'facturacion/nueva', element: <NuevaFactura /> },
-        { path: 'facturacion/lista', element: <ListaFacturas /> },
-        { path: 'facturacion/plantillas/nueva', element: <PlantillasRapidasPage /> },
-        { path: 'facturacion/carga-masiva', element: <CargaMasiva /> },
+        {
+          path: 'facturacion/nueva',
+          element: (
+            <RequireFacturacionNativa>
+              <NuevaFactura />
+            </RequireFacturacionNativa>
+          ),
+        },
+        {
+          path: 'facturacion/lista',
+          element: (
+            <RequireFacturacionNativa>
+              <ListaFacturas />
+            </RequireFacturacionNativa>
+          ),
+        },
+        {
+          path: 'facturacion/plantillas/nueva',
+          element: (
+            <RequireFacturacionNativa>
+              <PlantillasRapidasPage />
+            </RequireFacturacionNativa>
+          ),
+        },
+        {
+          path: 'facturacion/carga-masiva',
+          element: (
+            <RequireFacturacionNativa>
+              <CargaMasiva />
+            </RequireFacturacionNativa>
+          ),
+        },
         { path: 'clientes', element: <Clientes /> },
         { path: 'contabilidad', element: <PlaceholderPage title="Contabilidad" /> },
         {
           path: 'configuracion',
           element: (
-            <RequireAuth allowedRoles={['ADMIN']}>
+            <RequireAuth allowedRoles={ROLES_CONFIG_ADMIN}>
               <ConfiguracionPage />
             </RequireAuth>
           ),
@@ -45,7 +75,7 @@ export const router = {
         {
           path: 'contabilidad/libros-iva',
           element: (
-            <RequireAuth allowedRoles={['ADMIN', 'CONTADOR']}>
+            <RequireAuth allowedRoles={ROLES_LIBROS_IVA}>
               <LibrosIva />
             </RequireAuth>
           ),

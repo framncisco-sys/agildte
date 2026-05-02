@@ -1,0 +1,179 @@
+<!-- Programador: Oscar Amaya Romero -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket #{{ venta[0] }}</title>
+    <style>
+        /* Pantalla */
+        html { box-sizing: border-box; }
+        *, *::before, *::after { box-sizing: inherit; }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            max-width: 80mm;
+            margin: 0 auto;
+            padding: 10px;
+            font-size: 12px;
+        }
+        .text-center { text-align: center; }
+        .bold { font-weight: bold; }
+        .linea { border-top: 1px dashed #000; margin: 5px 0; }
+        table { width: 100%; border-collapse: collapse; }
+        .total-row { display: flex; justify-content: space-between; padding: 2px 0; }
+        .copia-etiqueta { font-size: 10px; margin-bottom: 4px; font-weight: bold; }
+        .ticket-root { min-height: 0; }
+        .qr-dte-img { width: 46mm; max-width: 100%; height: auto; min-width: 160px; }
+        .ticket-head h3 { margin: 0 0 4px 0; font-size: 14px; line-height: 1.15; }
+        .ticket-head p { margin: 2px 0; line-height: 1.2; }
+
+        @page {
+            size: 80mm auto;
+            margin: 0;
+        }
+        @media print {
+            @page { size: 80mm auto; margin: 0; }
+            html, body {
+                width: 80mm !important;
+                max-width: 80mm !important;
+                margin: 0 !important;
+                padding: 1mm 2mm !important;
+                height: auto !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .ticket-head h3 { font-size: 11pt !important; margin: 0 0 1mm 0 !important; }
+            .ticket-head p { margin: 0 0 1mm 0 !important; font-size: 9px !important; }
+            .linea { margin: 2px 0 !important; }
+            table { font-size: 9px !important; }
+            table th, table td { padding: 1px 2px !important; }
+            .total-container { margin-top: 2px !important; }
+            .total-row { padding: 0 !important; }
+            .pie-ticket { margin-top: 2mm !important; }
+            .qr-dte-img { width: 38mm !important; min-width: 38mm !important; max-width: 42mm !important; }
+            .consulta-url-larga { display: none !important; }
+            .banner-contingencia-print { padding: 2px !important; margin: 2px 0 !important; border-width: 1px !important; font-size: 8px !important; }
+            .ticket-root {
+                height: auto !important;
+                page-break-after: avoid !important;
+                page-break-inside: avoid !important;
+            }
+            .copia-separador {
+                page-break-before: always;
+                break-before: page;
+            }
+            .no-print { display: none !important; }
+        }
+        /* Opción estrecha 58mm: ?ancho=58 en URL o clase en body vía servidor */
+        @media print {
+            body.ancho-58, body.ancho-58 html {
+                width: 58mm !important;
+                max-width: 58mm !important;
+            }
+        }
+    </style>
+</head>
+<body class="{% if request.args.get('ancho') == '58' %}ancho-58{% endif %}">
+    <div class="ticket-root">
+    {% for i in range(copias|default(1)) %}
+    {% if i > 0 %}<div class="copia-separador"></div>{% endif %}
+    {% if (copias|default(1)) > 1 %}<div class="text-center copia-etiqueta">{% if i == 0 %}— COPIA CLIENTE —{% else %}— COPIA ESTABLECIMIENTO —{% endif %}</div>{% endif %}
+    <div class="text-center ticket-head">
+        <h3 class="bold">{{ empresa_fiscal.nombre_comercial if empresa_fiscal is defined else (empresa[1] if empresa else 'Empresa') }}</h3>
+        <p>NIT: {{ empresa_fiscal.nit if empresa_fiscal is defined else '—' }} | NRC: {{ empresa_fiscal.nrc if empresa_fiscal is defined else '—' }}</p>
+        {% if empresa_fiscal is defined %}
+        <p>{% if empresa_fiscal.actividad %}{{ empresa_fiscal.actividad }}{% endif %}{% if empresa_fiscal.giro %}{% if empresa_fiscal.actividad %} — {% endif %}{{ empresa_fiscal.giro }}{% endif %}</p>
+        {% if empresa_fiscal.direccion %}<p style="font-size:10px;">{{ empresa_fiscal.direccion }}</p>{% endif %}
+        {% else %}
+        <p>{{ (empresa[5] if empresa and empresa|length > 5 else '') or '' }}</p>
+        {% endif %}
+        <div class="linea"></div>
+        <p class="bold">TICKET / COMPROBANTE #{{ venta[0] }}</p>
+        <p>FECHA: {{ venta[1] }}</p>
+        {% if estado_dte is defined and estado_dte in ('CONTINGENCIA', 'PENDIENTE_TRANSMISION') %}
+        <div class="banner-contingencia-print" style="background:#fff3cd;border:2px solid #856404;padding:4px;margin:4px 0;text-align:center;font-weight:bold;font-size:10px;">
+            DOCUMENTO EN CONTINGENCIA — PENDIENTE MH
+        </div>
+        {% endif %}
+        {% if codigo_generacion is defined and codigo_generacion and codigo_generacion != '—' %}
+        <div class="linea"></div>
+        <div style="font-size:9px;text-align:left;margin-top:4px;font-family:system-ui,sans-serif;">
+            <div><strong>Cód. generación (MH):</strong> {{ codigo_generacion }}</div>
+            {% if numero_control is defined %}<div><strong>N° control:</strong> {{ numero_control }}</div>{% endif %}
+            {% if sello_recepcion_texto is defined %}<div><strong>Sello recepción:</strong> {{ sello_recepcion_texto }}</div>{% endif %}
+        </div>
+        <div class="text-center" style="margin:8px 0 4px;font-size:8px;">
+            <div class="bold" style="margin-bottom:3px;">Consulta pública DTE (MH)</div>
+            {% if qr_base64 %}
+            <div style="margin:6px 0;"><img src="{{ qr_base64 }}" alt="QR consulta DTE Ministerio de Hacienda" class="qr-dte-img"></div>
+            {% endif %}
+            {% if consulta_dte_url is defined and consulta_dte_url %}
+            <p class="consulta-url-larga" style="font-size:7px;word-break:break-all;margin:4px 0 0;line-height:1.2;text-align:left;">{{ consulta_dte_url }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if venta|length > 6 and (venta[6] or venta[3]) %}
+        <p>Cliente: {{ venta[8] if venta|length > 8 else venta[3] }}</p>
+        {% if venta[6] %}<p>Doc.: {{ venta[6] }}{% if venta|length > 7 and venta[7] %} ({{ venta[7] }}){% endif %}</p>{% endif %}
+        {% endif %}
+    </div>
+    <table>
+        <thead>
+            <tr><th align="left">CANT</th><th align="left">DESC</th><th align="right">SUB</th></tr>
+        </thead>
+        <tbody>
+            {% for d in detalles %}
+            <tr><td>{% if d|length > 3 and d[3] %}{{ d[3] }}{% else %}{{ d[1] }}{% endif %}</td><td>{{ d[0] }}</td><td align="right">${{ "{:,.2f}".format(d[1] * d[2]) }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="linea"></div>
+    <div class="total-container">
+        {% set total_num = venta[2] | float %}
+        {% if venta|length > 9 and venta[9] %}<p class="text-center">Pago: {{ venta[9] }}</p>{% endif %}
+        {% set gravadas = total_num / 1.13 %}
+        {% set iva = total_num - gravadas %}
+        <div class="total-row"><span>GRAVADAS:</span><span>${{ "{:,.2f}".format(gravadas) }}</span></div>
+        <div class="total-row"><span>IVA (13%):</span><span>${{ "{:,.2f}".format(iva) }}</span></div>
+        <div class="total-row bold"><span>TOTAL:</span><span>${{ "{:,.2f}".format(total_num) }}</span></div>
+    </div>
+    <div class="text-center pie-ticket" style="margin-top: 6px;">
+        <p style="margin:0;">¡GRACIAS POR SU COMPRA!</p>
+    </div>
+    {% endfor %}
+    </div>
+    <div class="text-center no-print" style="margin-top: 12px;"><a href="/ventas_pos">Volver a Ventas</a></div>
+    <script>
+(function () {
+    var q = window.location.search || '';
+    if (!/[?&]autoprint=1(?:&|$)/.test(q) && !/[?&]autoprint=true(?:&|$)/i.test(q)) return;
+    function runPrint() {
+        setTimeout(function () { window.print(); }, 200);
+    }
+    window.addEventListener('load', function () {
+        var imgs = document.images;
+        var pending = 0;
+        for (var i = 0; i < imgs.length; i++) {
+            if (!imgs[i].complete) pending++;
+        }
+        if (pending === 0) {
+            runPrint();
+            return;
+        }
+        function done() {
+            pending--;
+            if (pending <= 0) runPrint();
+        }
+        for (var j = 0; j < imgs.length; j++) {
+            if (!imgs[j].complete) {
+                imgs[j].addEventListener('load', done);
+                imgs[j].addEventListener('error', done);
+            }
+        }
+    });
+})();
+    </script>
+</body>
+</html>

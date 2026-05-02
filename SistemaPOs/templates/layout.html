@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<!-- Programador: Oscar Amaya Romero -->
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Sistema de Gestión{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            color: #e2e8f0;
+            z-index: 1000;
+            box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .sidebar-header { padding: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
+        .sidebar-header h4 { font-weight: 700; margin: 0; font-size: 1.1rem; color: white; }
+        .sidebar-header small { opacity: 0.7; font-size: 0.75rem; }
+        .sidebar-menu { padding: 1rem 0; flex: 1; overflow-y: auto; min-height: 0; }
+        .menu-item {
+            display: block;
+            padding: 0.75rem 1.5rem;
+            color: #cbd5e1;
+            text-decoration: none;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        .menu-item:hover { color: white; }
+        .menu-item.active { color: white; }
+        .menu-item i { font-size: 1.2rem; width: 28px; margin-right: 12px; }
+        .menu-item .menu-nombre { font-weight: 600; font-size: 0.95rem; display: block; }
+        .menu-item .menu-rubro { font-size: 0.75rem; opacity: 0.75; margin-left: 40px; margin-top: 2px; }
+        .sidebar-footer { flex-shrink: 0; padding: 1rem 1.5rem; border-top: 1px solid rgba(255,255,255,0.06); }
+        .main-content { margin-left: 280px; min-height: 100vh; padding: 1.5rem 2rem; transition: margin 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .top-bar {
+            background: white;
+            padding: 0.85rem 1.5rem;
+            margin: -1.5rem -2rem 1.5rem -2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            border-bottom: 1px solid #e2e8f0;
+            transition: all 0.3s ease;
+        }
+        .user-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0.5rem 1rem 0.5rem 0.5rem;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .user-pill .avatar {
+            width: 36px; height: 36px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem; color: white;
+        }
+        /* Indicador sesión activa (junto al usuario) */
+        .user-active-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            flex-shrink: 0;
+            box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.4);
+            animation: user-active-pulse 2.2s ease-in-out infinite;
+        }
+        @keyframes user-active-pulse {
+            0%, 100% { box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.45); opacity: 1; }
+            50% { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.15); opacity: 0.95; }
+        }
+        .user-badge .user-active-dot {
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 6px;
+            margin-top: -2px;
+        }
+        .sidebar-toggle { display: none; }
+        @media (max-width: 992px) {
+            .sidebar { transform: translateX(-100%); transition: transform 0.3s; }
+            .sidebar.show { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .sidebar-toggle { display: inline-block; }
+        }
+
+        /* === TEMA SUPERUSUARIO: Limpio, elegante y profesional === */
+        body.layout-superuser {
+            background: #f8fafc;
+            min-height: 100vh;
+        }
+        body.layout-superuser .sidebar {
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            border-right: 1px solid rgba(148, 163, 184, 0.1);
+            box-shadow: 2px 0 24px rgba(0,0,0,0.08);
+        }
+        body.layout-superuser .sidebar-header h4 {
+            color: #f8fafc;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        body.layout-superuser .sidebar-header small { color: #94a3b8; }
+        body.layout-superuser .menu-item {
+            margin: 0 0.75rem 0.15rem;
+            border-radius: 10px;
+            border-left: none;
+            transition: all 0.25s ease;
+        }
+        body.layout-superuser .menu-item:hover {
+            background: rgba(99, 102, 241, 0.12);
+            color: #f1f5f9;
+        }
+        body.layout-superuser .menu-item.active {
+            background: rgba(99, 102, 241, 0.2);
+            color: #e0e7ff;
+        }
+        body.layout-superuser .menu-item.active i { color: #818cf8; }
+        body.layout-superuser .sidebar-footer {
+            background: rgba(0,0,0,0.15);
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        body.layout-superuser .user-pill {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            border: none;
+            color: white;
+            box-shadow: 0 2px 12px rgba(99, 102, 241, 0.35);
+        }
+        body.layout-superuser .user-pill:hover { box-shadow: 0 4px 20px rgba(99, 102, 241, 0.45); }
+        body.layout-superuser .user-pill .avatar {
+            background: rgba(255,255,255,0.3);
+        }
+        body.layout-superuser .badge-rol {
+            background: rgba(255,255,255,0.9);
+            color: #4f46e5;
+            font-weight: 700;
+        }
+        body.layout-superuser .top-bar {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+
+        /* === TEMA GERENTE (azul corporativo) === */
+        body.layout-gerente { background: #f1f5f9; }
+        body.layout-gerente .sidebar { background: linear-gradient(180deg, #1e3a5f 0%, #0f172a 100%); }
+        body.layout-gerente .menu-item:hover { background: rgba(59, 130, 246, 0.2); }
+        body.layout-gerente .menu-item.active { background: rgba(59, 130, 246, 0.25); border-left: 3px solid #3b82f6; }
+        body.layout-gerente .menu-item.active i { color: #60a5fa; }
+        body.layout-gerente .sidebar-footer { background: rgba(0,0,0,0.3); }
+        body.layout-gerente .user-pill { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border: 1px solid #93c5fd; color: #1d4ed8; }
+        body.layout-gerente .user-pill .avatar { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); }
+        body.layout-gerente .badge-rol { background: #3b82f6; color: white; }
+
+        /* === TEMA CONTADOR (ámbar / reportes) === */
+        body.layout-contador { background: #fffbeb; }
+        body.layout-contador .sidebar { background: linear-gradient(180deg, #92400e 0%, #78350f 100%); }
+        body.layout-contador .menu-item:hover { background: rgba(245, 158, 11, 0.2); }
+        body.layout-contador .menu-item.active { background: rgba(245, 158, 11, 0.25); border-left: 3px solid #f59e0b; }
+        body.layout-contador .menu-item.active i { color: #fbbf24; }
+        body.layout-contador .sidebar-footer { background: rgba(0,0,0,0.25); }
+        body.layout-contador .user-pill { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #fcd34d; color: #b45309; }
+        body.layout-contador .user-pill .avatar { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+        body.layout-contador .badge-rol { background: #d97706; color: white; }
+
+        /* === TEMA BODEGUERO (naranja / inventario) === */
+        body.layout-bodeguero { background: #fff7ed; }
+        body.layout-bodeguero .sidebar { background: linear-gradient(180deg, #c2410c 0%, #9a3412 100%); }
+        body.layout-bodeguero .menu-item:hover { background: rgba(234, 88, 12, 0.2); }
+        body.layout-bodeguero .menu-item.active { background: rgba(234, 88, 12, 0.25); border-left: 3px solid #ea580c; }
+        body.layout-bodeguero .menu-item.active i { color: #fb923c; }
+        body.layout-bodeguero .sidebar-footer { background: rgba(0,0,0,0.25); }
+        body.layout-bodeguero .user-pill { background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%); border: 1px solid #fdba74; color: #9a3412; }
+        body.layout-bodeguero .user-pill .avatar { background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%); }
+        body.layout-bodeguero .badge-rol { background: #c2410c; color: white; }
+
+        /* === TEMA CAJERO (verde POS) === */
+        body.layout-cajero { background: #f0fdf4; }
+        body.layout-cajero .sidebar { background: linear-gradient(180deg, #166534 0%, #14532d 100%); }
+        body.layout-cajero .menu-item:hover { background: rgba(34, 197, 94, 0.25); }
+        body.layout-cajero .menu-item.active { background: rgba(34, 197, 94, 0.3); border-left: 3px solid #22c55e; }
+        body.layout-cajero .menu-item.active i { color: #4ade80; }
+        body.layout-cajero .sidebar-footer { background: rgba(0,0,0,0.25); }
+        body.layout-cajero .user-pill { background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 1px solid #86efac; color: #166534; }
+        body.layout-cajero .user-pill .avatar { background: linear-gradient(135deg, #22c55e 0%, #15803d 100%); }
+        body.layout-cajero .badge-rol { background: #22c55e; color: white; }
+
+        /* === Modal Autorización Supervisor (diseño premium) === */
+        .modal-supervisor-auth .modal-dialog { max-width: 400px; }
+        .modal-supervisor-auth .modal-content {
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 24px 48px -12px rgba(0,0,0,0.18), 0 12px 24px -8px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .modal-supervisor-auth .modal-header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            color: #fff;
+            border: none;
+            padding: 1.5rem 1.75rem;
+        }
+        .modal-supervisor-auth .modal-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .modal-supervisor-auth .modal-title .icon-shield {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+        }
+        .modal-supervisor-auth .modal-header .btn-close {
+            filter: invert(1);
+            opacity: 0.7;
+        }
+        .modal-supervisor-auth .modal-header .btn-close:hover { opacity: 1; }
+        .modal-supervisor-auth .modal-body {
+            padding: 1.75rem 1.75rem;
+            background: #fff;
+        }
+        .modal-supervisor-auth .modal-body .form-label-sup {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #64748b;
+            margin-bottom: 0.4rem;
+            display: block;
+        }
+        .modal-supervisor-auth .modal-body .form-control {
+            border-radius: 10px;
+            padding: 0.7rem 1rem;
+            border: 1px solid #e2e8f0;
+            background: #fff !important;
+            font-size: 0.95rem;
+            color: #1e293b;
+        }
+        .modal-supervisor-auth .modal-body .form-control::placeholder { color: #94a3b8; }
+        .modal-supervisor-auth .modal-body .form-control:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+            outline: none;
+        }
+        .modal-supervisor-auth .modal-body .form-control:-webkit-autofill,
+        .modal-supervisor-auth .modal-body .form-control:-webkit-autofill:hover,
+        .modal-supervisor-auth .modal-body .form-control:-webkit-autofill:focus {
+            -webkit-box-shadow: 0 0 0 30px #fff inset;
+        }
+        .modal-supervisor-auth .modal-body > p {
+            font-size: 0.9rem;
+            color: #64748b;
+            line-height: 1.5;
+            margin-bottom: 1.5rem;
+        }
+        .modal-supervisor-auth .modal-footer {
+            border: none;
+            padding: 0 1.75rem 1.5rem;
+            background: #fff;
+            gap: 0.6rem;
+        }
+        .modal-supervisor-auth .btn-autorizar {
+            background: #1e293b;
+            color: #fff;
+            border: none;
+            padding: 0.65rem 1.4rem;
+            border-radius: 10px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .modal-supervisor-auth .btn-autorizar:hover {
+            background: #334155;
+            color: #fff;
+        }
+        .modal-supervisor-auth .modal-footer .btn-light {
+            border-radius: 10px;
+            font-weight: 500;
+            border: 1px solid #e2e8f0;
+        }
+        .modal-supervisor-auth #modal_clave_error {
+            border-radius: 10px;
+            font-size: 0.85rem;
+        }
+
+        /* === Dispositivo: móvil, tablet, laptop, TV (data-device + clase en body) === */
+        html[data-device="mobile"] { font-size: 15px; }
+        html[data-device="tablet"] { font-size: 16px; }
+        html[data-device="laptop"] { font-size: 16px; }
+        html[data-device="tv"] { font-size: 18px; }
+
+        body.device-mobile .main-content { padding: 0.75rem 1rem; }
+        body.device-mobile .top-bar {
+            margin: -0.75rem -1rem 1rem -1rem;
+            padding: 0.6rem 0.85rem;
+        }
+        body.device-mobile .sidebar { width: min(300px, 90vw); }
+        body.device-mobile .sidebar-toggle {
+            min-width: 44px;
+            min-height: 44px;
+            font-size: 1.2rem;
+        }
+        body.device-mobile .menu-item {
+            padding: 0.85rem 1.2rem;
+            min-height: 46px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        body.device-mobile .user-pill { font-size: 0.8rem; flex-wrap: wrap; max-width: 100%; }
+        body.device-mobile .user-pill .avatar { width: 32px; height: 32px; }
+
+        body.device-tablet .main-content { padding: 1rem 1.35rem; }
+        body.device-tablet .top-bar { margin: -1rem -1.35rem 1.25rem -1.35rem; }
+
+        body.device-tv .sidebar { width: 300px; }
+        body.device-tv .main-content { margin-left: 300px; padding: 1.65rem 2.2rem; }
+        body.device-tv .menu-item { padding: 0.95rem 1.45rem; }
+        body.device-tv .menu-item i { font-size: 1.3rem; width: 30px; }
+        body.device-tv .sidebar-header h4 { font-size: 1.2rem; }
+        body.device-tv .user-pill { font-size: 0.95rem; padding: 0.5rem 1.05rem; }
+        body.device-tv .user-pill .avatar { width: 40px; height: 40px; }
+        body.device-tv .btn-sm { padding: 0.4rem 0.75rem; font-size: 0.9rem; }
+
+        @media (max-width: 992px) {
+            body.device-tv .main-content { margin-left: 0; }
+            body.device-tv .sidebar { width: min(300px, 90vw); }
+        }
+    </style>
+</head>
+<body class="layout-{% if es_super %}superuser{% elif (rol_actual or session.get('rol')) == 'GERENTE' %}gerente{% elif (rol_actual or session.get('rol')) == 'CONTADOR' %}contador{% elif (rol_actual or session.get('rol')) == 'BODEGUERO' %}bodeguero{% else %}cajero{% endif %}">
+<script>
+(function () {
+    function detectDevice(w, h, ua) {
+        ua = (ua || "").toLowerCase();
+        var tvUa = /smart-tv|smarttv|googletv|hbbtv|appletv|tvos|roku|tizen|web0s|netcast|bravia|viera|playstation|xbox|aftm|aftb|crkey|googletv/i.test(ua);
+        var coarse = false;
+        try { coarse = window.matchMedia("(pointer: coarse)").matches; } catch (e) {}
+        var looksPhone = /mobile|iphone|ipod|android.*mobile|iemobile|blackberry|opera mini/i.test(ua);
+        if (tvUa) return "tv";
+        if (w >= 1920 && h >= 1080 && coarse && !looksPhone) return "tv";
+        if (w < 768) return "mobile";
+        if (w < 1200) return "tablet";
+        return "laptop";
+    }
+    function applyDeviceClasses() {
+        var w = window.innerWidth, h = window.innerHeight;
+        var d = detectDevice(w, h, navigator.userAgent);
+        var html = document.documentElement;
+        var body = document.body;
+        if (!body) return;
+        html.dataset.device = d;
+        html.dataset.viewportWidth = String(w);
+        html.dataset.viewportHeight = String(h);
+        body.classList.remove("device-mobile", "device-tablet", "device-laptop", "device-tv");
+        body.classList.add("device-" + d);
+    }
+    document.documentElement.dataset.device = detectDevice(window.innerWidth, window.innerHeight, navigator.userAgent);
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", applyDeviceClasses);
+    } else {
+        applyDeviceClasses();
+    }
+    var t;
+    window.addEventListener("resize", function () {
+        clearTimeout(t);
+        t = setTimeout(applyDeviceClasses, 120);
+    });
+    window.addEventListener("orientationchange", function () {
+        setTimeout(applyDeviceClasses, 280);
+    });
+})();
+</script>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h4>{% if es_super %}Panel Superusuario{% elif (rol_actual or session.get('rol')) == 'GERENTE' %}Panel Gerente{% elif (rol_actual or session.get('rol')) == 'CONTADOR' %}Reportes Contables{% elif (rol_actual or session.get('rol')) == 'BODEGUERO' %}Inventario y Stock{% else %}Punto de Venta{% endif %}</h4>
+            <small>{% if es_super %}Control total del sistema{% elif (rol_actual or session.get('rol')) == 'GERENTE' %}Gestión de su empresa{% elif (rol_actual or session.get('rol')) == 'CONTADOR' %}Reportes contables{% elif (rol_actual or session.get('rol')) == 'BODEGUERO' %}Inventario y movimientos{% else %}Ventas y clientes{% endif %}</small>
+            {% if session.get('empresa_nombre') %}
+            <div class="mt-2 small text-white-50"><i class="bi bi-building"></i> {{ session.empresa_nombre }}</div>
+            {% if es_super %}
+            <a href="/" class="small text-warning d-block mt-1"><i class="bi bi-arrow-repeat"></i> Cambiar empresa</a>
+            {% endif %}
+            {% endif %}
+            {% if suscripcion and (es_super or (rol_actual or session.get('rol')) == 'GERENTE') %}
+            <div class="mt-2 small">
+                {% if suscripcion.vigente %}
+                    <span class="badge bg-success bg-opacity-75"><i class="bi bi-shield-check"></i> Activa</span>
+                    {% if suscripcion.dias_restantes >= 0 and suscripcion.dias_restantes <= 30 %}
+                    <span class="text-warning d-block mt-1">{{ suscripcion.dias_restantes }} día(s) restantes</span>
+                    {% elif suscripcion.vencimiento %}
+                    <span class="text-white-50 d-block mt-1">Vence: {{ suscripcion.vencimiento.strftime('%d/%m/%Y') }}</span>
+                    {% endif %}
+                {% else %}
+                    <span class="badge bg-danger"><i class="bi bi-shield-x"></i> Expirada</span>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        <nav class="sidebar-menu">
+            <a href="/" class="menu-item {{ 'active' if request.path in ('/', '/dashboard') else '' }}">
+                <i class="bi bi-house-door-fill"></i>
+                <span class="menu-nombre">Inicio</span>
+                <span class="menu-rubro">{% if es_super %}Panel de control{% else %}Escritorio{% endif %}</span>
+            </a>
+            {% if puede_ver_ventas %}
+            <div class="px-3 py-1 mt-2"><small class="text-uppercase opacity-50">Ventas</small></div>
+            <a href="/ventas_pos" class="menu-item {{ 'active' if request.path == '/ventas_pos' else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-cart3"></i>
+                <span class="menu-nombre">Punto de venta</span>
+            </a>
+            <a href="/reporte/facturacion/corte_caja" class="menu-item {{ 'active' if '/reporte/facturacion/corte_caja' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-cash-stack"></i>
+                <span class="menu-nombre">Corte de Caja</span>
+                <span class="menu-rubro">X/Z DTE y método de pago</span>
+            </a>
+            <a href="/cierre_caja" class="menu-item {{ 'active' if '/cierre_caja' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-cash-coin"></i>
+                <span class="menu-nombre">Cierre de Caja</span>
+                <span class="menu-rubro">Apertura / Cierre a ciegas</span>
+            </a>
+            {% endif %}
+            {% if puede_gestionar_ventas %}
+            <a href="/gestion_ventas" class="menu-item {{ 'active' if '/gestion_ventas' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-receipt-cutoff"></i>
+                <span class="menu-nombre">Gestión de ventas</span>
+                <span class="menu-rubro">Editar / anular ventas</span>
+            </a>
+            {% endif %}
+            {% if puede_gestionar_ventas %}
+            <div class="px-3 py-1 mt-2"><small class="text-uppercase opacity-50">Compras</small></div>
+            <a href="/proveedores" class="menu-item {{ 'active' if '/proveedores' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-truck"></i>
+                <span class="menu-nombre">Proveedores</span>
+                <span class="menu-rubro">Catálogo de proveedores</span>
+            </a>
+            <a href="/compras" class="menu-item {{ 'active' if '/compras' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-receipt"></i>
+                <span class="menu-nombre">Compras</span>
+                <span class="menu-rubro">Registrar facturas</span>
+            </a>
+            <a href="/reporte/inventario/lista_compras" class="menu-item {{ 'active' if '/reporte/inventario/lista_compras' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-cart-check"></i>
+                <span class="menu-nombre">Lista de compras</span>
+                <span class="menu-rubro">Reponer y precios justos</span>
+            </a>
+            {% endif %}
+            {% if puede_ver_inventario %}
+            <a href="/inventario" class="menu-item {{ 'active' if '/inventario' in request.path else '' }}">
+                <i class="bi bi-box-seam"></i>
+                <span class="menu-nombre">Inventario</span>
+                <span class="menu-rubro">Productos y stock</span>
+            </a>
+            {% endif %}
+            {% if puede_ver_administracion %}
+            <a href="/promociones" class="menu-item {{ 'active' if '/promociones' in request.path else '' }}">
+                <i class="bi bi-tag"></i>
+                <span class="menu-nombre">Promociones</span>
+                <span class="menu-rubro">Ofertas por fechas</span>
+            </a>
+            {% endif %}
+            {% if puede_ver_reportes_contables %}
+            <div class="px-3 py-1 mt-2"><small class="text-uppercase opacity-50">Facturación y Ventas</small></div>
+            <a href="/reporte" class="menu-item {{ 'active' if request.path == '/reporte' else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-graph-up"></i>
+                <span class="menu-nombre">Ventas</span>
+                <span class="menu-rubro">Panel de control</span>
+            </a>
+            <a href="/reporte/facturacion/libro_iva" class="menu-item {{ 'active' if '/reporte/facturacion/libro_iva' in request.path and 'compras' not in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-journal-bookmark"></i>
+                <span class="menu-nombre">Libro de IVA (Ventas)</span>
+                <span class="menu-rubro">Contribuyentes y CF</span>
+            </a>
+            <a href="/reporte/facturacion/libro_iva_compras" class="menu-item {{ 'active' if '/reporte/facturacion/libro_iva_compras' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-cart-check"></i>
+                <span class="menu-nombre">Libro de IVA Compras</span>
+                <span class="menu-rubro">Proveedores y retención 1%</span>
+            </a>
+            <a href="/reporte/facturacion/ventas_producto" class="menu-item {{ 'active' if '/reporte/facturacion/ventas_producto' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-bar-chart-line"></i>
+                <span class="menu-nombre">Ventas por Producto</span>
+                <span class="menu-rubro">Costeo y rentabilidad</span>
+            </a>
+            <a href="/reporte/facturacion/documentos_anulados" class="menu-item {{ 'active' if '/reporte/facturacion/documentos_anulados' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-x-circle"></i>
+                <span class="menu-nombre">Documentos Anulados</span>
+                <span class="menu-rubro">Control DTE invalidados</span>
+            </a>
+            <a href="/contingencia" class="menu-item {{ 'active' if '/contingencia' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-shield-exclamation"></i>
+                <span class="menu-nombre">Contingencia DTE</span>
+                <span class="menu-rubro">Plan MH y sincronización</span>
+            </a>
+            <a href="/reporte/facturacion/cuentas_cobrar" class="menu-item {{ 'active' if '/reporte/facturacion/cuentas_cobrar' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-wallet2"></i>
+                <span class="menu-nombre">Cuentas por Cobrar</span>
+                <span class="menu-rubro">Cartera de clientes</span>
+            </a>
+            {% endif %}
+            {% if puede_ver_inventario or puede_ver_reportes_contables %}
+            <div class="px-3 py-1 mt-2"><small class="text-uppercase opacity-50">Inventario</small></div>
+            <a href="/reporte/inventario/kardex" class="menu-item {{ 'active' if '/reporte/inventario/kardex' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-journal-text"></i>
+                <span class="menu-nombre">Kardex Detallado</span>
+                <span class="menu-rubro">Art. 142 y 142-A CT</span>
+            </a>
+            <a href="/reporte/inventario/f983" class="menu-item {{ 'active' if '/reporte/inventario/f983' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-file-earmark-spreadsheet"></i>
+                <span class="menu-nombre">Informe F-983</span>
+                <span class="menu-rubro">Inventario físico anual</span>
+            </a>
+            <a href="/reporte/inventario/valuacion" class="menu-item {{ 'active' if '/reporte/inventario/valuacion' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-calculator"></i>
+                <span class="menu-nombre">Valuación</span>
+                <span class="menu-rubro">NIC 2 Costo Promedio / PEPS</span>
+            </a>
+            <a href="/reporte/inventario/movimientos" class="menu-item {{ 'active' if '/reporte/inventario/movimientos' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-arrow-left-right"></i>
+                <span class="menu-nombre">Movimientos</span>
+                <span class="menu-rubro">Ajustes, traslados, bajas</span>
+            </a>
+            <a href="/inventario/conteo-fisico" class="menu-item {{ 'active' if '/inventario/conteo-fisico' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-clipboard-data"></i>
+                <span class="menu-nombre">Conteo físico</span>
+                <span class="menu-rubro">Sistema vs. bodega, ajustes</span>
+            </a>
+            {% endif %}
+            <div class="px-3 py-2 mt-2"><small class="text-uppercase opacity-50">Administración</small></div>
+            {% if puede_ver_ventas %}
+            <a href="/clientes" class="menu-item {{ 'active' if '/clientes' in request.path else '' }}">
+                <i class="bi bi-people-fill"></i>
+                <span class="menu-nombre">Clientes</span>
+                <span class="menu-rubro">{% if puede_ver_administracion %}Catálogo fiscal{% else %}Consulta de clientes{% endif %}</span>
+            </a>
+            {% endif %}
+            {% if es_super %}
+            <a href="/configuracion" class="menu-item {{ 'active' if '/configuracion' in request.path else '' }}">
+                <i class="bi bi-building"></i>
+                <span class="menu-nombre">Empresa</span>
+                <span class="menu-rubro">Configuración fiscal</span>
+            </a>
+            {% endif %}
+            {% if puede_ver_administracion %}
+            <a href="/sucursales" class="menu-item {{ 'active' if '/sucursales' in request.path else '' }}">
+                <i class="bi bi-geo-alt-fill"></i>
+                <span class="menu-nombre">Sucursales</span>
+                <span class="menu-rubro">Puntos de venta</span>
+            </a>
+            <a href="/usuarios" class="menu-item {{ 'active' if '/usuarios' in request.path and '/historial' not in request.path else '' }}">
+                <i class="bi bi-person-badge-fill"></i>
+                <span class="menu-nombre">Usuarios</span>
+                <span class="menu-rubro">Accesos y roles</span>
+            </a>
+            <a href="/usuarios/historial" class="menu-item {{ 'active' if '/usuarios/historial' in request.path else '' }}">
+                <i class="bi bi-clock-history"></i>
+                <span class="menu-nombre">Historial de usuarios</span>
+                <span class="menu-rubro">Logins y accesos</span>
+            </a>
+            {% endif %}
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-badge mb-2">
+                <span class="user-active-dot" title="Sesión activa" aria-hidden="true"></span>
+                <i class="bi bi-person-circle me-1"></i> {{ session.get('username', 'Usuario') }}
+                <span class="badge badge-rol ms-1" style="font-size:0.65rem;">{% set r = (rol_actual or session.get('rol')) or 'CAJERO' %}{% if r in ('ADMIN', 'SUPERADMIN') %}Superusuario{% else %}{{ r }}{% endif %}</span>
+            </div>
+            <a href="/cambiar_password" class="btn btn-sm btn-outline-light w-100 mb-1">
+                <i class="bi bi-key me-1"></i> Cambiar contraseña
+            </a>
+            <a href="/logout" class="btn btn-sm btn-outline-light w-100">
+                <i class="bi bi-box-arrow-right me-1"></i> Cerrar sesión
+            </a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, msg in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show mx-4 mt-2 mb-0" role="alert">
+            {{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+        {% if alertas_inventario and puede_ver_inventario %}
+        <div class="alert alert-warning alert-dismissible fade show mx-4 mt-2 mb-0" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <strong>Inventario bajo:</strong> {{ alertas_inventario|length }} producto(s) con stock &lt; 5.
+            <a href="/inventario" class="alert-link ms-1">Ver inventario</a>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+        {% endif %}
+        <div class="top-bar d-flex justify-content-end align-items-center">
+            <button class="btn btn-outline-secondary btn-sm sidebar-toggle me-auto" type="button" onclick="document.getElementById('sidebar').classList.toggle('show')" aria-label="Menú">
+                <i class="bi bi-list"></i>
+            </button>
+            {% if alertas_inventario and puede_ver_inventario %}
+            <a href="/inventario" class="btn btn-sm btn-warning me-2" title="Productos con stock bajo">
+                <i class="bi bi-exclamation-triangle"></i> {{ alertas_inventario|length }}
+            </a>
+            {% endif %}
+            <div class="user-pill">
+                <span class="avatar"><i class="bi bi-person-fill"></i></span>
+                <span class="user-active-dot" title="Sesión activa" aria-hidden="true"></span>
+                <span>{{ session.get('username', 'Usuario') }}</span>
+                <span class="badge badge-rol ms-1" style="font-size:0.7rem;">{% set r = (rol_actual or session.get('rol')) or 'CAJERO' %}{% if r in ('ADMIN', 'SUPERADMIN') %}Superusuario{% else %}{{ r }}{% endif %}</span>
+            </div>
+        </div>
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/imask@7.6.1/dist/imask.min.js"></script>
+    <script>
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'F1') { e.preventDefault(); window.location.href = '/ventas_pos'; }
+    });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

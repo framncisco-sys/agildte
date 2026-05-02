@@ -1,0 +1,98 @@
+# PosAgil — compose de pruebas locales.
+#
+# Requisitos:
+# 1) Red externa compartida con AgilDTE:
+#       docker network create agildte_net
+# 2) Conectar el backend Django de AgilDTE a esa misma red.
+# 3) Copiar .env.example → .env (credenciales y nombre de BD coherentes con AZ_DB_*).
+#
+# Levantar PosAgil + PostgreSQL en Docker:
+#   docker compose up -d --build
+#
+# Aplicar/actualizar tablas en una BD ya existente (ejecutar en la carpeta SistemaPOs):
+#   docker compose build posagil && docker compose up -d posagil
+#   docker compose exec posagil python scripts/bootstrap_bd.py
+#
+# PostgreSQL: por defecto servicio `db` en la misma red (AZ_DB_HOST=db).
+# Para usar Postgres instalado en Windows en lugar del contenedor: en .env poner
+#   POSAGIL_DB_HOST=host.docker.internal
+# y comenta o elimina `depends_on: db` si quitas el servicio db (no recomendado).
+#
+# Puerto host del Postgres del contenedor: 5433→5432 (evita choque con Postgres nativo en :5432).
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: posagil_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${AZ_DB_USER:-postgres}"
+      POSTGRES_PASSWORD: "${AZ_DB_PASSWORD:-postgres}"
+      POSTGRES_DB: "${AZ_DB_NAME:-posagil}"
+    volumes:
+      - posagil_pgdata:/var/lib/postgresql/data
+      # Primera vez que se crea el volumen: esquema mínimo + tablas POS (sucursales, ventas, etc.).
+      - ./scripts/schema_bootstrap_min.sql:/docker-entrypoint-initdb.d/01-posagil-schema.sql:ro
+      - ./scripts/schema_bootstrap_pos_extensions.sql:/docker-entrypoint-initdb.d/02-posagil-pos.sql:ro
+      - ./scripts/schema_bootstrap_compras_proveedores.sql:/docker-entrypoint-initdb.d/03-posagil-compras.sql:ro
+      - ./scripts/schema_bootstrap_kardex_promos_contingencia.sql:/docker-entrypoint-initdb.d/04-posagil-kardex.sql:ro
+    ports:
+      - "${POSAGIL_PG_HOST_PORT:-5433}:5432"
+    healthcheck:
+      # $$ = escape para que el contenedor expanda $POSTGRES_USER / $POSTGRES_DB
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - agildte_net
+
+  posagil:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: posagil
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${POSAGIL_HOST_PORT:-5001}:5000"
+    environment:
+      # --- App Flask ---
+      AZ_DEBUG: "0"
+      AZ_TRUST_PROXY: "1"
+      AZ_HOST: "0.0.0.0"
+      AZ_PORT: "5000"
+      AZ_SECRET_KEY: "${AZ_SECRET_KEY:-change-me-in-local-testing}"
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost:8080/pos}"
+      AZ_PUBLIC_BASE_URL: "${AZ_PUBLIC_BASE_URL:-http://localhost:8080/pos}"
+      # --- PostgreSQL: por defecto el servicio `db` (misma red Docker). Override: POSAGIL_DB_HOST=host.docker.internal
+      AZ_DB_HOST: "${POSAGIL_DB_HOST:-db}"
+      AZ_DB_PORT: "5432"
+      AZ_DB_NAME: "${AZ_DB_NAME:-posagil}"
+      AZ_DB_USER: "${AZ_DB_USER:-postgres}"
+      AZ_DB_PASSWORD: "${AZ_DB_PASSWORD:-postgres}"
+      # --- Integración AgilDTE: nombre DNS del servicio Django en agildte_net (compose raíz: servicio «backend») ---
+      AGILDTE_BASE_URL: "${AGILDTE_DOCKER_API_URL:-http://backend:8000}"
+      VITE_AGILDTE_BASE_URL: "${AGILDTE_DOCKER_API_URL:-http://backend:8000}"
+      AGILDTE_PORTAL_LOGIN_URL: "${AGILDTE_PORTAL_LOGIN_URL:-http://localhost:3000/login}"
+      # Obligatorias para sync de ventas, contingencia y llamadas API: usuario Django con acceso a la empresa (no superusuario root).
+      AGILDTE_USERNAME: "${AGILDTE_USERNAME:-}"
+      AGILDTE_PASSWORD: "${AGILDTE_PASSWORD:-}"
+      AGILDTE_EMPRESA_ID: "${AGILDTE_EMPRESA_ID:-}"
+      POSAGIL_ALLOW_LOCAL_LOGIN: "${POSAGIL_ALLOW_LOCAL_LOGIN:-0}"
+      AGILDTE_SYNC_ENABLED: "${AGILDTE_SYNC_ENABLED:-0}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - agildte_net
+
+networks:
+  agildte_net:
+    external: true
+    name: ${AGILDTE_EXTERNAL_NETWORK:-agildte_net}
+
+volumes:
+  posagil_pgdata:

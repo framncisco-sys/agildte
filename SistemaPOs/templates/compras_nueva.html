@@ -1,0 +1,241 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="{{ url_for('admin.compras') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Volver</a>
+            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-cart-plus text-primary"></i> Registrar compra</h2>
+            <p class="text-muted small mb-0">Factura de proveedor. La cantidad puede ir en cajas u otra presentación; el stock y Kardex se actualizan en <strong>unidad base</strong> (UMB).</p>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('admin.compras_nueva') }}" id="formCompra">
+        {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm rounded-4 h-100">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-3">Datos de la factura</h6>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Proveedor <span class="text-danger">*</span></label>
+                            <select name="proveedor_id" class="form-select" required>
+                                <option value="">— Seleccione proveedor —</option>
+                                {% for p in proveedores %}
+                                <option value="{{ p[0] }}">{{ p[1] }}{% if p[2] %} ({{ p[2] }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                            {% if not proveedores %}<small class="text-danger">Cree proveedores primero.</small>{% endif %}
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label fw-bold">N° Factura</label>
+                                <input type="text" name="numero_factura" class="form-control" placeholder="S/N">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-bold">Fecha</label>
+                                <input type="date" name="fecha" class="form-control" value="{{ today }}">
+                            </div>
+                        </div>
+                        <div class="mb-0 mt-3">
+                            <label class="form-label fw-bold">Notas</label>
+                            <textarea name="notas" class="form-control" rows="2" placeholder="Opcional"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h6 class="mb-0 fw-bold">Detalle de productos</h6>
+                <button type="button" class="btn btn-sm btn-success" id="btnAgregarLinea"><i class="bi bi-plus-lg"></i> Agregar línea</button>
+            </div>
+            <div class="table-responsive">
+                <table class="table align-middle mb-0" id="tablaDetalle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Producto</th>
+                            <th style="min-width: 160px;">Presentación</th>
+                            <th style="width: 110px;">Cant. recibida</th>
+                            <th style="width: 110px;">Costo / presentación</th>
+                            <th style="width: 130px;" class="text-end">Equiv. UMB</th>
+                            <th style="width: 100px;" class="text-end">Subtotal</th>
+                            <th style="width: 52px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyDetalle">
+                        <tr class="fila-detalle">
+                            <td>
+                                <select name="producto_id" class="form-select form-select-sm producto-select">
+                                    <option value="">— Producto —</option>
+                                    {% for prod in productos %}
+                                    <option value="{{ prod[0] }}">{{ prod[2] }} ({{ prod[1] or prod[0] }})</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm pres-select" disabled>
+                                    <option value="">— Elija producto —</option>
+                                </select>
+                                <input type="hidden" name="factor_compra" class="factor-hidden" value="1">
+                                <input type="hidden" name="presentacion_nombre" class="pres-nombre-hidden" value="">
+                            </td>
+                            <td><input type="text" name="cantidad" class="form-control form-control-sm inp-cant" placeholder="0" value="" inputmode="decimal"></td>
+                            <td><input type="text" name="costo" class="form-control form-control-sm inp-costo" placeholder="0.00" value="" inputmode="decimal"></td>
+                            <td class="text-end small text-muted td-equiv"><span class="equiv-val">—</span></td>
+                            <td class="text-end small fw-bold td-sub">$0.00</td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer bg-light small text-muted">
+                Ejemplo café: <strong>60</strong> en presentación <strong>Caja (×50)</strong>, costo <strong>$5.00</strong> por caja → inventario <strong>+3 000</strong> UMB, inversión <strong>$300.00</strong>.
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary px-4"><i class="bi bi-check-lg"></i> Guardar compra</button>
+            <a href="{{ url_for('admin.compras') }}" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+
+<script>
+(function() {
+    var COMPRA_PRES = {{ compra_presentaciones_opts|tojson }};
+    function fmtMoney(n) {
+        var x = isNaN(n) ? 0 : n;
+        return '$' + x.toFixed(2);
+    }
+    function parseNum(s) {
+        if (s == null || s === '') return NaN;
+        return parseFloat(String(s).replace(',', '.'));
+    }
+    function fillPresSelect(sel, pid) {
+        sel.innerHTML = '';
+        var opts = COMPRA_PRES[String(pid)] || [];
+        if (!opts.length) {
+            var o = document.createElement('option');
+            o.value = '';
+            o.textContent = 'Sin presentaciones';
+            sel.appendChild(o);
+            sel.disabled = true;
+            return;
+        }
+        sel.disabled = false;
+        opts.forEach(function(p) {
+            var o = document.createElement('option');
+            o.value = String(p.factor);
+            o.setAttribute('data-nombre', p.nombre || '');
+            o.textContent = p.nombre + ' (×' + p.factor + ')';
+            sel.appendChild(o);
+        });
+        sel.selectedIndex = 0;
+    }
+    function syncRow(tr) {
+        var hidF = tr.querySelector('.factor-hidden');
+        var hidN = tr.querySelector('.pres-nombre-hidden');
+        var psel = tr.querySelector('.pres-select');
+        var cant = parseNum(tr.querySelector('.inp-cant').value);
+        var costo = parseNum(tr.querySelector('.inp-costo').value);
+        var fac = 1;
+        if (psel && !psel.disabled && psel.selectedOptions.length) {
+            fac = parseFloat(psel.value) || 1;
+            var opt = psel.selectedOptions[0];
+            hidN.value = opt.getAttribute('data-nombre') || '';
+        } else {
+            hidN.value = '';
+        }
+        if (hidF) hidF.value = String(fac);
+        var umb = (isNaN(cant) || isNaN(costo)) ? NaN : cant * fac;
+        var sub = (isNaN(cant) || isNaN(costo)) ? NaN : cant * costo;
+        var ev = tr.querySelector('.equiv-val');
+        if (ev) ev.textContent = isNaN(umb) ? '—' : umb.toLocaleString(undefined, { maximumFractionDigits: 4 });
+        var ts = tr.querySelector('.td-sub');
+        if (ts) ts.textContent = isNaN(sub) ? '—' : fmtMoney(sub);
+    }
+    function onProductChange(tr) {
+        var pid = tr.querySelector('.producto-select').value;
+        var psel = tr.querySelector('.pres-select');
+        if (!psel) return;
+        if (!pid) {
+            psel.innerHTML = '<option value="">— Elija producto —</option>';
+            psel.disabled = true;
+            syncRow(tr);
+            return;
+        }
+        fillPresSelect(psel, pid);
+        syncRow(tr);
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        var tbody = document.getElementById('tbodyDetalle');
+        var hoy = new Date().toISOString().slice(0, 10);
+        var inpFecha = document.querySelector('input[name="fecha"]');
+        if (inpFecha && !inpFecha.value) inpFecha.value = hoy;
+
+        function bindRow(tr) {
+            tr.querySelector('.producto-select').addEventListener('change', function() { onProductChange(tr); });
+            var psel = tr.querySelector('.pres-select');
+            if (psel) psel.addEventListener('change', function() { syncRow(tr); });
+            tr.querySelector('.inp-cant').addEventListener('input', function() { syncRow(tr); });
+            tr.querySelector('.inp-costo').addEventListener('input', function() { syncRow(tr); });
+        }
+        tbody.querySelectorAll('.fila-detalle').forEach(bindRow);
+
+        document.getElementById('btnAgregarLinea').addEventListener('click', function() {
+            var first = tbody.querySelector('.fila-detalle');
+            var tr = first.cloneNode(true);
+            tr.querySelectorAll('input.inp-cant, input.inp-costo').forEach(function(inp) { inp.value = ''; });
+            tr.querySelector('.equiv-val').textContent = '—';
+            tr.querySelector('.td-sub').textContent = '$0.00';
+            var lastTd = tr.querySelector('td:last-child');
+            lastTd.innerHTML = '<button type="button" class="btn btn-sm btn-outline-danger btn-quitar"><i class="bi bi-trash"></i></button>';
+            tbody.appendChild(tr);
+            bindRow(tr);
+            onProductChange(tr);
+            tr.querySelector('.btn-quitar').addEventListener('click', function() {
+                if (tbody.querySelectorAll('.fila-detalle').length > 1) tr.remove();
+            });
+        });
+
+        tbody.addEventListener('click', function(e) {
+            if (e.target.closest('.btn-quitar')) {
+                var tr = e.target.closest('tr');
+                if (tbody.querySelectorAll('.fila-detalle').length > 1) tr.remove();
+            }
+        });
+
+        document.getElementById('formCompra').addEventListener('submit', function() {
+            var filas = tbody.querySelectorAll('.fila-detalle');
+            var tieneDatos = false;
+            filas.forEach(function(tr) {
+                var prod = tr.querySelector('.producto-select').value;
+                var cant = (tr.querySelector('.inp-cant').value || '').trim();
+                var costo = (tr.querySelector('.inp-costo').value || '').trim();
+                syncRow(tr);
+                if (prod && parseFloat(cant.replace(',', '.')) > 0) {
+                    tr.querySelector('.producto-select').name = 'producto_id';
+                    tr.querySelector('.inp-cant').name = 'cantidad';
+                    tr.querySelector('.inp-costo').name = 'costo';
+                    tr.querySelector('.factor-hidden').name = 'factor_compra';
+                    tr.querySelector('.pres-nombre-hidden').name = 'presentacion_nombre';
+                    tieneDatos = true;
+                } else {
+                    tr.querySelector('.producto-select').name = 'producto_id_skip';
+                    tr.querySelector('.inp-cant').name = 'cantidad_skip';
+                    tr.querySelector('.inp-costo').name = 'costo_skip';
+                    tr.querySelector('.factor-hidden').name = 'factor_compra_skip';
+                    tr.querySelector('.pres-nombre-hidden').name = 'presentacion_nombre_skip';
+                }
+            });
+            if (!tieneDatos) {
+                alert('Agregue al menos un producto con cantidad mayor a 0.');
+                return false;
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

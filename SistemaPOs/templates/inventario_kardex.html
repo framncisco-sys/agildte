@@ -1,0 +1,211 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid mt-2">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <a href="{{ url_for('admin.inventario') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Inventario</a>
+            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-journal-text text-primary"></i> Kardex</h2>
+            <p class="text-muted small mb-0">{{ codigo }} — <strong>{{ nombre }}</strong></p>
+            <p class="small mb-0"><span class="badge bg-light text-dark border">UMB: {{ umb_nombre|default('Unidad base') }}</span> Todas las cantidades en Kardex y stock son en esta unidad mínima.</p>
+        </div>
+    </div>
+
+    {% if not tiene_kardex %}
+    <div class="alert alert-warning">
+        <strong>Kardex no disponible.</strong> Ejecute una vez en el servidor:
+        <code>python scripts/alter_inventario_kardex.py</code>
+    </div>
+    {% else %}
+
+    <div class="row g-4">
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-header bg-white fw-bold border-0 pt-3"><i class="bi bi-geo-alt text-primary"></i> Stock por sucursal</div>
+                <div class="card-body p-0">
+                    {% if stock_suc %}
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Sucursal</th><th class="text-end">Cantidad ({{ umb_nombre|default('UMB') }})</th></tr></thead>
+                        <tbody>
+                            {% for s in stock_suc %}
+                            <tr><td>{{ s[1] }}</td><td class="text-end fw-bold">{{ "%.2f"|format(s[2]|float) }}</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-muted small p-3 mb-0">Sin filas en bodega por sucursal. Guarde el producto desde inventario o registre una entrada.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4 mt-3">
+                <div class="card-header bg-white fw-bold border-0 pt-3"><i class="bi bi-plus-slash-minus text-success"></i> Registrar movimiento</div>
+                <div class="card-body">
+                    {% if not sucursales_movimiento %}
+                    <p class="text-muted small">No hay sucursales para esta empresa. Cree sucursales primero.</p>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('admin.inventario_registrar_movimiento') }}">
+                        <input type="hidden" name="producto_id" value="{{ producto_id }}">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Tipo</label>
+                            <select name="tipo" id="tipo_mov" class="form-select" required>
+                                <option value="ENTRADA">Entrada (compra, devolución, etc.)</option>
+                                <option value="SALIDA">Salida manual (merma, uso interno)</option>
+                                <option value="TRASLADO">Traslado entre sucursales</option>
+                            </select>
+                        </div>
+                        {% if unidades_por_caja %}
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">¿Cómo ingresa la cantidad?</label>
+                            <select name="cantidad_en" id="cantidad_en" class="form-select" aria-describedby="kardex_cant_help">
+                                <option value="UMB">En {{ umb_nombre|default('unidad base') }} (lo que suma al stock)</option>
+                                <option value="CAJA">En cajas (el sistema multiplica × {{ unidades_por_caja }})</option>
+                            </select>
+                            <small class="text-muted d-block mt-1">Ej.: 60 cajas × {{ unidades_por_caja }} = <strong>{{ 60 * unidades_por_caja }}</strong> {{ umb_nombre|default('UMB') }} en Kardex.</small>
+                        </div>
+                        {% endif %}
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold" id="lbl_cantidad">Cantidad (<span id="lbl_cantidad_unidad">{{ umb_nombre|default('UMB') }}</span>)</label>
+                            <input type="text" name="cantidad" id="kardex_cantidad" class="form-control" placeholder="0" required inputmode="decimal">
+                            <small class="text-muted" id="kardex_cant_help">{% if unidades_por_caja %}Si elige «cajas», escriba solo el número de cajas; el stock sube en {{ umb_nombre|default('UMB') }}.{% else %}Use la unidad mínima del producto (igual que en inventario).{% endif %}</small>
+                        </div>
+                        <div class="mb-3" id="wrap_origen">
+                            <label class="form-label small fw-bold"><span id="lbl_origen">Sucursal</span></label>
+                            <select name="sucursal_id" class="form-select" required>
+                                <option value="">— Elegir —</option>
+                                {% for s in sucursales_movimiento %}
+                                <option value="{{ s[0] }}">{{ s[1] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3 d-none" id="wrap_destino">
+                            <label class="form-label small fw-bold">Sucursal destino</label>
+                            <select name="sucursal_destino_id" class="form-select" id="sel_destino">
+                                <option value="">— Elegir —</option>
+                                {% for s in sucursales_movimiento %}
+                                <option value="{{ s[0] }}">{{ s[1] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Notas (opcional)</label>
+                            <textarea name="notas" class="form-control" rows="2" placeholder="Referencia, factura, etc."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 fw-bold">Registrar</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-header bg-white fw-bold border-0 pt-3"><i class="bi bi-clock-history"></i> Historial de movimientos</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Tipo</th>
+                                    <th class="text-end">Cant. ({{ umb_nombre|default('UMB') }})</th>
+                                    <th>Origen / Destino</th>
+                                    <th>Usuario</th>
+                                    <th>Motivo</th>
+                                    <th>Notas</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for k in kardex_rows %}
+                                <tr>
+                                    <td class="small text-nowrap">{{ k[6] }}</td>
+                                    <td>
+                                        {% if k[1] == 'SALIDA_VENTA' %}
+                                        <span class="badge bg-secondary">Venta</span>
+                                        {% elif k[1] == 'ENTRADA' %}
+                                        <span class="badge bg-success">Entrada</span>
+                                        {% elif k[1] == 'SALIDA' %}
+                                        <span class="badge bg-warning text-dark">Salida</span>
+                                        {% elif k[1] == 'TRASLADO' %}
+                                        <span class="badge bg-info text-dark">Traslado</span>
+                                        {% elif k[1] == 'AJUSTE_ENTRADA' %}
+                                        <span class="badge bg-primary">Ajuste +</span>
+                                        {% elif k[1] == 'AJUSTE_SALIDA' %}
+                                        <span class="badge bg-danger">Ajuste −</span>
+                                        {% else %}
+                                        <span class="badge bg-light text-dark">{{ k[1] }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end fw-bold">{{ "%.2f"|format(k[2]|float) }}</td>
+                                    <td class="small">
+                                        {% if k[1] == 'TRASLADO' %}
+                                        {{ k[8] or '—' }} <i class="bi bi-arrow-right"></i> {{ k[9] or '—' }}
+                                        {% else %}
+                                        {{ k[8] or '—' }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="small">{{ k[7] or '—' }}</td>
+                                    <td class="small">{% if k|length > 10 and k[10] and etiqueta_motivo is defined %}{{ etiqueta_motivo(k[10]) }}{% elif k|length > 10 and k[10] %}{{ k[10] }}{% else %}—{% endif %}</td>
+                                    <td class="small text-muted">{{ k[5] or '' }}</td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="7" class="text-center text-muted py-4">Sin movimientos aún.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var tipo = document.getElementById('tipo_mov');
+    var wrapD = document.getElementById('wrap_destino');
+    var selD = document.getElementById('sel_destino');
+    var lblO = document.getElementById('lbl_origen');
+    var cantEn = document.getElementById('cantidad_en');
+    var cantIn = document.getElementById('kardex_cantidad');
+    var lblU = document.getElementById('lbl_cantidad_unidad');
+    var help = document.getElementById('kardex_cant_help');
+    var facCaja = parseInt('{{ unidades_por_caja|default(0) }}', 10) || 0;
+    var umb = {{ (umb_nombre|default('unidad base'))|tojson }};
+    if (tipo && wrapD) {
+        function sync() {
+            var t = tipo.value;
+            if (t === 'TRASLADO') {
+                wrapD.classList.remove('d-none');
+                if (selD) selD.required = true;
+                if (lblO) lblO.textContent = 'Sucursal origen';
+            } else {
+                wrapD.classList.add('d-none');
+                if (selD) { selD.required = false; selD.value = ''; }
+                if (lblO) lblO.textContent = 'Sucursal';
+            }
+        }
+        tipo.addEventListener('change', sync);
+        sync();
+    }
+    function syncCantidadModo() {
+        if (!cantEn || !lblU || facCaja <= 0) return;
+        var enCaja = cantEn.value === 'CAJA';
+        lblU.textContent = enCaja ? 'cajas' : umb;
+        if (help) {
+            if (enCaja) {
+                var v = parseFloat(String(cantIn && cantIn.value ? cantIn.value : '0').replace(',', '.'));
+                var tot = (isNaN(v) ? 0 : v) * facCaja;
+                help.textContent = 'Se registrarán ' + (isNaN(v) || v === 0 ? '…' : String(tot)) + ' ' + umb + ' en Kardex (cantidad × ' + facCaja + ').';
+            } else {
+                help.textContent = 'Cantidad directa en ' + umb + ' (unidad mínima de inventario).';
+            }
+        }
+    }
+    if (cantEn) {
+        cantEn.addEventListener('change', syncCantidadModo);
+        if (cantIn) cantIn.addEventListener('input', syncCantidadModo);
+        syncCantidadModo();
+    }
+});
+</script>
+{% endblock %}

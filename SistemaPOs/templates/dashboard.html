@@ -1,0 +1,351 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<style>
+    .accion-card { cursor: pointer; transition: all 0.25s ease; }
+    .accion-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.1) !important; }
+    .card { border: 1px solid rgba(0,0,0,0.04); border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); transition: box-shadow 0.25s; }
+    .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+    body.layout-superuser .page-title { color: #1e293b; font-weight: 800; letter-spacing: -0.02em; }
+    body.layout-superuser .page-subtitle { color: #64748b; }
+    body.layout-superuser .card { border: 1px solid #e2e8f0; }
+    .acceso-rapido { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); border: none; color: white; }
+</style>
+<div class="container-fluid px-4 mt-4">
+    <div class="mb-4 d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+            <h1 class="page-title fw-bold mb-1" style="font-size: 1.75rem;">Panel de Control</h1>
+            <p class="page-subtitle small mb-0">Resumen operativo · {{ session.get('username', 'admin') }}</p>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <div id="mh-semaforo" class="d-flex align-items-center gap-1 px-2 py-1 rounded-pill bg-light" style="font-size: 0.85rem;">
+                <span class="semaforo-dot" style="width:8px;height:8px;border-radius:50%;background:#94a3b8;"></span>
+                <span class="text-muted">Servidor MH: Verificando...</span>
+            </div>
+        {% if suscripcion and suscripcion.vigente %}
+        <div class="card border-0 shadow-sm px-3 py-2" style="border-radius: 12px;">
+            <small class="text-muted d-block">Suscripción</small>
+            <span class="badge bg-success me-1"><i class="bi bi-shield-check"></i> Activa</span>
+            {% if suscripcion.dias_restantes is defined and suscripcion.dias_restantes >= 0 %}
+                {% if suscripcion.dias_restantes <= 7 %}
+                <span class="text-warning fw-bold">{{ suscripcion.dias_restantes }} día(s) restantes</span>
+                {% elif suscripcion.dias_restantes <= 30 %}
+                <span class="text-muted">{{ suscripcion.dias_restantes }} días restantes</span>
+                {% endif %}
+            {% endif %}
+            {% if suscripcion.vencimiento %}
+            <small class="text-muted d-block mt-1">Vence: {{ suscripcion.vencimiento.strftime('%d/%m/%Y') }}</small>
+            {% endif %}
+        </div>
+        {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-md-3">
+            <div class="card border-0 rounded-4 shadow-sm p-4">
+                <div class="d-flex align-items-center">
+                    <div class="rounded-4 me-3 p-3" style="background: rgba(99, 102, 241, 0.1); color: #6366f1;">
+                        <i class="bi bi-wallet2 fs-2"></i>
+                    </div>
+                    <div>
+                        <span class="text-uppercase text-muted small fw-bold">Ventas del día</span>
+                        <h2 class="fw-bold mb-0 text-dark">${{ "{:,.2f}".format(resumen.total_ventas) }}</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 rounded-4 shadow-sm p-4">
+                <div class="d-flex align-items-center">
+                    <div class="rounded-4 me-3 p-3" style="background: rgba(59, 130, 246, 0.15); color: #2563eb;">
+                        <i class="bi bi-calendar-month fs-2"></i>
+                    </div>
+                    <div>
+                        <span class="text-uppercase text-muted small fw-bold">Ventas del mes</span>
+                        <h2 class="fw-bold mb-0 text-dark">${{ "{:,.2f}".format(ventas_mes|default(0)|float) }}</h2>
+                        <small class="text-muted">{{ dias_transcurridos|default(1) }}/{{ dias_en_mes|default(30) }} días</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 rounded-4 shadow-sm p-4">
+                <div class="d-flex align-items-center">
+                    <div class="rounded-4 me-3 p-3" style="background: rgba(34, 197, 94, 0.15); color: #059669;">
+                        <i class="bi bi-graph-up-arrow fs-2"></i>
+                    </div>
+                    <div>
+                        <span class="text-uppercase text-muted small fw-bold">Proyección mes</span>
+                        <h2 class="fw-bold mb-0 text-dark">${{ "{:,.2f}".format(proyeccion_mes|default(0)|float) }}</h2>
+                        <small class="text-muted">según tendencia actual</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 rounded-4 shadow-sm p-4 h-100 acceso-rapido">
+                <span class="text-uppercase small fw-bold mb-2 d-block opacity-90">Acceso rápido</span>
+                <button class="btn btn-light w-100 fw-bold py-2 rounded-3" style="color: #4f46e5;" onclick="location.href='/ventas_pos'">
+                    <i class="bi bi-cart-plus me-2"></i>Nueva venta (F1)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {% if ventas_mes_anterior|default(0)|float > 0 %}
+    <div class="row g-4 mt-0">
+        <div class="col-12">
+            <div class="card border-0 rounded-4 shadow-sm p-3" style="background: #f8fafc;">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="text-muted small">vs mes anterior:</span>
+                    <span class="fw-bold {% if (ventas_mes|default(0)|float) >= (ventas_mes_anterior|float) %}text-success{% else %}text-warning{% endif %}">
+                        {% set ratio = (ventas_mes|default(0)|float) / ventas_mes_anterior * 100 if ventas_mes_anterior else 0 %}
+                        {{ "{:,.1f}".format(ratio) }}% del mes anterior
+                    </span>
+                    <span class="text-muted small">(${{ "{:,.2f}".format(ventas_mes_anterior) }} en {{ (dias_en_mes|default(30)) - 1 }} días)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row g-4 mt-2">
+        {% if dte_rechazados|default(0) > 0 %}
+        <div class="col-12">
+            <a href="/reporte" class="text-decoration-none">
+                <div class="card border-0 rounded-4 shadow-sm p-3 border-start border-danger border-4" style="background: #fef2f2;">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i><strong>DTE Rechazados:</strong> {{ dte_rechazados }} documento(s) requieren atención</span>
+                        <span class="badge bg-danger">Corregir antes de 24h</span>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endif %}
+        {% if dte_pendientes|default(0) > 0 %}
+        <div class="col-12">
+            <div class="card border-0 rounded-4 shadow-sm p-3 border-start border-warning border-4" style="background: #fffbeb;">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <span><i class="bi bi-clock-history text-warning me-2"></i><strong>DTEs pendientes de envío:</strong> {{ dte_pendientes }} documento(s) en cola</span>
+                    <a href="{{ url_for('admin.contingencia') }}" class="btn btn-warning btn-sm fw-bold text-dark">
+                        <i class="bi bi-shield-exclamation me-1"></i>Sincronizar con Hacienda
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="row g-4 mt-2">
+        <div class="col-lg-8">
+            <div class="card border-0 rounded-4 shadow-sm p-4">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <h6 class="fw-bold mb-0" style="color: #475569;">Ventas últimos 7 días</h6>
+                    <a href="/reporte" class="btn btn-sm btn-outline-primary">Ver reporte completo</a>
+                </div>
+                <div style="height: 220px;"><canvas id="graficaVentas"></canvas></div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 rounded-4 shadow-sm p-4">
+                <h6 class="fw-bold mb-3" style="color: #475569;">Productos más vendidos</h6>
+                <div style="height: 220px;"><canvas id="graficaProductos"></canvas></div>
+                {% if top_productos %}
+                <ul class="list-unstyled small mt-2 mb-0">
+                    {% for p in (top_productos or [])[:5] %}
+                    <li class="d-flex justify-content-between py-1"><span>{{ (p[0] if p|length > 0 else '')[:25] }}{% if (p[0] if p|length > 0 else '')|length > 25 %}...{% endif %}</span><strong>{{ p[1] if p|length > 1 else '' }}</strong></li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted small mb-0">Sin datos aún.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-2">
+        <div class="col-lg-4">
+            <div class="card border-0 rounded-4 shadow-sm p-4">
+                <h6 class="fw-bold mb-3" style="color: #475569;"><i class="bi bi-percent text-primary me-1"></i> Posición IVA (mes)</h6>
+                <div class="small">
+                    <div class="d-flex justify-content-between py-2 border-bottom"><span>IVA Débito (Ventas)</span><strong class="text-success">${{ "{:,.2f}".format(iva_debito|default(0)|float) }}</strong></div>
+                    <div class="d-flex justify-content-between py-2 border-bottom"><span>IVA Crédito (Compras)</span><strong class="text-info">${{ "{:,.2f}".format(iva_credito|default(0)|float) }}</strong></div>
+                    <div class="d-flex justify-content-between py-2"><span>Estimado a pagar</span><strong class="{% if (iva_estimado|default(0)|float) > 0 %}text-danger{% else %}text-secondary{% endif %}">${{ "{:,.2f}".format(iva_estimado|default(0)|float) }}</strong></div>
+                </div>
+                <a href="/reporte/facturacion/libro_iva" class="btn btn-sm btn-outline-primary mt-2 w-100">Ver Libro IVA</a>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 rounded-4 shadow-sm p-4">
+                <h6 class="fw-bold mb-3" style="color: #475569;"><i class="bi bi-wallet2 text-amber me-1"></i> Retenciones 1% (crédito fiscal)</h6>
+                <h4 class="fw-bold mb-0" style="color: #d97706;">${{ "{:,.2f}".format(retenciones_acumuladas|default(0)|float) }}</h4>
+                <p class="text-muted small mb-0 mt-1">Acumulado del mes. Crédito para declaración.</p>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 rounded-4 shadow-sm p-4">
+                <h6 class="fw-bold mb-3" style="color: #475569;"><i class="bi bi-exclamation-octagon text-warning me-1"></i> Stock bajo (&lt;5 und)</h6>
+                {% if stock_bajo and stock_bajo|length > 0 %}
+                <ul class="list-unstyled small mb-0" style="max-height: 120px; overflow-y: auto;">
+                    {% for p in stock_bajo[:8] %}
+                    <li class="d-flex justify-content-between py-1">
+                        <a href="/inventario" class="text-dark text-decoration-none">{{ (p[1] if p|length > 1 else '')[:22] }}{% if (p[1] if p|length > 1 else '')|length > 22 %}...{% endif %}</a>
+                        <span class="badge bg-warning text-dark">{{ p[2] if p|length > 2 else 0 }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <a href="/reporte/inventario/lista_compras" class="btn btn-sm btn-warning mt-2 w-100">Ver lista de compras</a>
+                {% else %}
+                <p class="text-muted small mb-0"><i class="bi bi-check-circle text-success"></i> Sin alertas de stock.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 rounded-4 shadow-sm p-4">
+                <h6 class="fw-bold mb-3" style="color: #475569;"><i class="bi bi-building text-primary me-1"></i> Top Clientes (Crédito Fiscal)</h6>
+                {% if top_clientes_cf and top_clientes_cf|length > 0 %}
+                <ul class="list-unstyled small mb-0">
+                    {% for c in top_clientes_cf %}
+                    <li class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                        <span>{{ (c[0] if c|length > 0 else '')[:28] }}{% if (c[0] if c|length > 0 else '')|length > 28 %}...{% endif %}</span>
+                        <strong class="text-primary">${{ "{:,.2f}".format(c[1]|float if c|length > 1 else 0) }}</strong>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <a href="/clientes" class="btn btn-sm btn-outline-primary mt-2 w-100">Ver clientes</a>
+                {% else %}
+                <p class="text-muted small mb-0"><i class="bi bi-info-circle"></i> Sin ventas CCF este mes.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if ventas_sucursal and ventas_sucursal|length > 1 %}
+    <div class="row g-4 mt-2">
+        <div class="col-12">
+            <div class="card border-0 rounded-4 shadow-sm p-4">
+                <h6 class="fw-bold mb-3" style="color: #475569;"><i class="bi bi-geo-alt me-1"></i> Ventas por sucursal (mes)</h6>
+                <div style="height: 180px;"><canvas id="graficaSucursales"></canvas></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row g-4 mt-2">
+        <div class="col-md-3">
+            <a href="/inventario" class="text-decoration-none">
+                <div class="card border-0 rounded-4 shadow-sm p-4 text-center accion-card">
+                    <div class="text-warning fs-1 mb-2"><i class="bi bi-stack"></i></div>
+                    <h2 class="fw-bold mb-1">{{ resumen.total_productos }}</h2>
+                    <span class="text-uppercase text-muted small fw-bold">Inventario</span>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-3">
+            <a href="/usuarios" class="text-decoration-none">
+                <div class="card border-0 rounded-4 shadow-sm p-4 text-center accion-card">
+                    <div class="text-danger fs-1 mb-2"><i class="bi bi-people"></i></div>
+                    <h2 class="fw-bold mb-1">{{ resumen.total_usuarios }}</h2>
+                    <span class="text-uppercase text-muted small fw-bold">Usuarios</span>
+                </div>
+            </a>
+        </div>
+        {% if (rol_actual or session.get('rol')) in ('ADMIN', 'SUPERADMIN') %}
+        <div class="col-md-3">
+            <a href="/configuracion" class="text-decoration-none">
+                <div class="card border-0 rounded-4 shadow-sm p-4 text-center accion-card">
+                    <div class="text-secondary fs-1 mb-2"><i class="bi bi-gear-fill"></i></div>
+                    <h2 class="fw-bold mb-1">{{ resumen.total_empresas }}</h2>
+                    <span class="text-uppercase text-muted small fw-bold">DTE / Hacienda</span>
+                </div>
+            </a>
+        </div>
+        {% endif %}
+        <div class="col-md-3">
+            <a href="/sucursales" class="text-decoration-none">
+                <div class="card border-0 rounded-4 shadow-sm p-4 text-center accion-card">
+                    <div class="text-info fs-1 mb-2"><i class="bi bi-geo-alt-fill"></i></div>
+                    <h2 class="fw-bold mb-1">{{ resumen.total_sucursales }}</h2>
+                    <span class="text-uppercase text-muted small fw-bold">Sucursales</span>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function() {
+    const labelsVentas = {{ (labels_ventas or []) | tojson }};
+    const valoresVentas = {{ (valores_ventas or []) | tojson }};
+    const nombresTop = {{ (nombres_top or []) | tojson }};
+    const cantidadesTop = {{ (cantidades_top or []) | tojson }};
+    const ventasSucursal = {{ (ventas_sucursal or []) | tojson }};
+
+    const isSuper = document.body.classList.contains('layout-superuser');
+    const barColor = isSuper ? 'rgba(99, 102, 241, 0.7)' : 'rgba(234, 88, 12, 0.6)';
+    const barBorder = isSuper ? '#6366f1' : '#ea580c';
+    const doughnutColors = isSuper ? ['#6366f1','#8b5cf6','#a78bfa','#c4b5fd','#e9d5ff'] : ['#ea580c','#f97316','#fb923c','#fdba74','#fed7aa'];
+    const ctxV = document.getElementById('graficaVentas');
+    if (ctxV && labelsVentas.length) {
+        new Chart(ctxV.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labelsVentas,
+                datasets: [{ label: 'Ventas ($)', data: valoresVentas, backgroundColor: barColor, borderColor: barBorder, borderWidth: 1, borderRadius: 6 }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+        });
+    }
+    const ctxP = document.getElementById('graficaProductos');
+    if (ctxP && nombresTop.length) {
+        new Chart(ctxP.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: nombresTop,
+                datasets: [{ data: cantidadesTop, backgroundColor: doughnutColors }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } }, cutout: '60%' }
+        });
+    }
+    const ctxS = document.getElementById('graficaSucursales');
+    if (ctxS && ventasSucursal.length > 1) {
+        const labelsSuc = ventasSucursal.map(x => x[0]);
+        const valoresSuc = ventasSucursal.map(x => parseFloat(x[1]) || 0);
+        new Chart(ctxS.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labelsSuc,
+                datasets: [{ label: 'Ventas ($)', data: valoresSuc, backgroundColor: 'rgba(34, 197, 94, 0.6)', borderColor: '#16a34a', borderWidth: 1, borderRadius: 6 }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } }, indexAxis: 'y' }
+        });
+    }
+
+    // Semáforo MH: estado del servidor Hacienda
+    const mhEl = document.getElementById('mh-semaforo');
+    if (mhEl) {
+        const dot = mhEl.querySelector('.semaforo-dot');
+        const txt = mhEl.querySelector('span:last-child');
+        fetch('/api/mh_status')
+            .then(r => r.json())
+            .then(data => {
+                if (data.online) {
+                    if (dot) dot.style.background = '#22c55e';
+                    if (txt) { txt.textContent = 'Servidor MH: En Línea'; txt.classList.remove('text-muted'); txt.classList.add('text-success'); }
+                } else {
+                    if (dot) dot.style.background = '#ef4444';
+                    if (txt) { txt.textContent = 'Servidor MH: Fuera de línea'; txt.classList.remove('text-muted'); txt.classList.add('text-danger'); }
+                }
+            })
+            .catch(() => {
+                if (dot) dot.style.background = '#ef4444';
+                if (txt) { txt.textContent = 'Servidor MH: Sin conexión'; txt.classList.remove('text-muted'); txt.classList.add('text-danger'); }
+            });
+    }
+})();
+</script>
+{% endblock %}

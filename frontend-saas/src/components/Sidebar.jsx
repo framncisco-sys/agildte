@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { ROLES_CONFIG_ADMIN, ROLES_LIBROS_IVA } from '../constants/roles'
 import { useEmpresaStore } from '../stores/useEmpresaStore'
 import { listarPlantillas } from '../api/plantillas'
 import { ModalControlarPlantillas } from '../features/facturacion/components/ModalControlarPlantillas'
@@ -12,8 +13,8 @@ const allNavItems = [
   { to: '/facturacion/nueva', label: 'Facturación' },
   { to: '/facturacion/lista', label: 'Lista Facturas' },
   { to: '/facturacion/carga-masiva', label: 'Carga Masiva' },
-  { to: '/contabilidad/libros-iva', label: 'Libros de IVA', roles: ['ADMIN', 'CONTADOR'] },
-  { to: '/configuracion', label: 'Configuración', roles: ['ADMIN'] },
+  { to: '/contabilidad/libros-iva', label: 'Libros de IVA', roles: ROLES_LIBROS_IVA },
+  { to: '/configuracion', label: 'Configuración', roles: ROLES_CONFIG_ADMIN },
   { to: '/items', label: 'Administración de ítems' },
 ]
 
@@ -27,6 +28,9 @@ export function Sidebar({ open = false, onClose }) {
   const [modalControlarAbierto, setModalControlarAbierto] = useState(false)
 
   const navItems = allNavItems.filter((item) => {
+    if (user?.facturacion_solo_pos && item.to.startsWith('/facturacion')) {
+      return false
+    }
     if (!item.roles) return true
     return role && item.roles.includes(role)
   })
@@ -78,7 +82,8 @@ export function Sidebar({ open = false, onClose }) {
             </NavLink>
           ))}
 
-          {/* Sección Facturación Rápida (desktop) */}
+          {/* Sección Facturación Rápida (desktop) — oculta si la emisión es solo por PosAgil */}
+          {!user?.facturacion_solo_pos && (
           <div className="mt-4 pt-3 border-t border-white/15">
             <button
               type="button"
@@ -130,6 +135,7 @@ export function Sidebar({ open = false, onClose }) {
               </div>
             )}
           </div>
+          )}
         </nav>
       </aside>
 
@@ -167,7 +173,7 @@ export function Sidebar({ open = false, onClose }) {
             </NavLink>
           ))}
 
-          {/* Sección Facturación Rápida (móvil) */}
+          {!user?.facturacion_solo_pos && (
           <div className="mt-4 pt-3 border-t border-white/15">
             <button
               type="button"
@@ -228,6 +234,7 @@ export function Sidebar({ open = false, onClose }) {
               </div>
             )}
           </div>
+          )}
         </nav>
       </aside>
 

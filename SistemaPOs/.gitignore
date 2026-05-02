@@ -1,0 +1,36 @@
+# Programador: Oscar Amaya Romero
+# Archivos y carpetas que no deben subirse a control de versiones
+
+# Variables de entorno (contienen secretos)
+.env
+.env.local
+.env.*.local
+web_pos/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+
+# Bases de datos locales
+*.db
+*.sqlite3
+
+# Logs
+*.log
+server.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

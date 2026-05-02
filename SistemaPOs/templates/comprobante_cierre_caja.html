@@ -1,0 +1,133 @@
+<!-- Programador: Oscar Amaya Romero -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Comprobante de Cierre de Caja</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 12px; font-size: 12px; color: #1e293b; }
+        .ticket-80mm { width: 80mm; margin: 0 auto; max-width: 100%; }
+        .ticket-80mm body { font-size: 10px; padding: 8px; }
+        .text-center { text-align: center; }
+        .text-end { text-align: right; }
+        .fw-bold { font-weight: bold; }
+        .linea { border-top: 1px dashed #64748b; margin: 8px 0; }
+        .linea-doble { border-top: 2px solid #1e293b; margin: 10px 0; }
+        table { width: 100%; border-collapse: collapse; font-size: inherit; }
+        table td { padding: 2px 4px; vertical-align: top; }
+        .seccion { margin-bottom: 14px; }
+        .seccion-titulo { font-size: 11px; font-weight: bold; text-transform: uppercase; margin-bottom: 6px; color: #475569; }
+        .firmas { margin-top: 20px; }
+        .firma-linea { border-bottom: 1px solid #000; display: inline-block; min-width: 120px; margin: 4px 0; }
+        .no-print { margin-top: 16px; }
+        @media print {
+            body { padding: 4px; }
+            .no-print { display: none !important; }
+            .ticket-80mm { width: 80mm !important; }
+        }
+        @media (max-width: 300px) { body { font-size: 9px; } }
+    </style>
+</head>
+<body class="ticket-80mm">
+    {% if not cierre %}
+    <p class="text-center text-danger fw-bold">Comprobante no encontrado.</p>
+    <div class="no-print text-center mt-3"><a href="{{ url_for('admin.cierre_caja') }}" class="btn btn-outline-secondary btn-sm">Volver</a></div>
+    {% else %}
+    {% set c = cierre %}
+    {% set d = datos %}
+    {% set det = d.ventas_por_tipo_dte_detalle|default({}) %}
+    {% set pagos = d.ventas_por_pago|default({}) %}
+    {% set f_cierre = c.fecha_cierre if c and c.fecha_cierre else none %}
+    {% set f_cierre_str = f_cierre.strftime('%d/%m/%Y %I:%M %p') if f_cierre else '—' %}
+
+    <!-- 1. Encabezado de Identificación -->
+    <div class="seccion">
+        <div class="text-center fw-bold" style="font-size: 12px;">{{ c.empresa_nombre|default('Empresa') }}{% if c.sucursal_nombre %} / {{ c.sucursal_nombre }}{% endif %}</div>
+        <div class="linea"></div>
+        <table>
+            <tr><td>Nombre del Cajero:</td><td class="fw-bold">{{ c.cajero_nombre|default('—') }}</td></tr>
+            <tr><td>Fecha y Hora de Cierre:</td><td>{{ f_cierre_str }}</td></tr>
+            <tr><td>Estado del Turno:</td><td class="fw-bold">{{ 'Cerrado' if c.estado == 'CERRADO' else ('Auditado' if c.estado == 'AUDITADO' else (c.estado|default('Cerrado'))) }}</td></tr>
+        </table>
+    </div>
+
+    <!-- 2. Resumen de Documentos Emitidos (Fiscal) -->
+    <div class="seccion">
+        <div class="seccion-titulo">Resumen de Documentos Emitidos (Fiscal)</div>
+        <p class="small text-muted mb-2" style="font-size: 9px;">Cuadre con reportes Ministerio de Hacienda.</p>
+        <table>
+            {% set f = det.FACTURA|default({'cantidad':0,'total':0}) %}
+            {% set cf = det.CREDITO_FISCAL|default({'cantidad':0,'total':0}) %}
+            {% set nc = det.NOTA_CREDITO|default({'cantidad':0,'total':0}) %}
+            {% set se = det.SUJETO_EXCLUIDO|default({'cantidad':0,'total':0}) %}
+            {% set tk = det.TICKET|default({'cantidad':0,'total':0}) %}
+            {% set nc_val = nc.total|float %}
+            <tr><td>Facturas (01):</td><td class="text-end">{{ f.cantidad }} doc · ${{ "{:,.2f}".format(f.total|float) }}</td></tr>
+            <tr><td>Créditos Fiscales (03):</td><td class="text-end">{{ cf.cantidad }} doc · ${{ "{:,.2f}".format(cf.total|float) }}</td></tr>
+            <tr><td>Notas de Crédito (05):</td><td class="text-end">{{ nc.cantidad }} doc · Restando ${{ "{:,.2f}".format(nc_val if nc_val >= 0 else -nc_val) }}</td></tr>
+            <tr><td>Sujeto Excluido (14):</td><td class="text-end">{{ se.cantidad }} doc · ${{ "{:,.2f}".format(se.total|float) }}</td></tr>
+            {% if (tk.total|float) != 0 %}
+            <tr><td>Tickets:</td><td class="text-end">{{ tk.cantidad }} doc · ${{ "{:,.2f}".format(tk.total|float) }}</td></tr>
+            {% endif %}
+        </table>
+        <div class="linea"></div>
+        <table><tr><td class="fw-bold">TOTAL VENTA BRUTA:</td><td class="text-end fw-bold">${{ "{:,.2f}".format(d.total_ventas|default(0)|float) }}</td></tr></table>
+    </div>
+
+    <!-- 3. Desglose por Método de Pago (Financiero) -->
+    <div class="seccion">
+        <div class="seccion-titulo">Desglose por Método de Pago (Financiero)</div>
+        <p class="small text-muted mb-2" style="font-size: 9px;">Justificación de cobro al turno.</p>
+        <table>
+            <tr><td>Efectivo:</td><td class="text-end fw-bold">${{ "{:,.2f}".format(pagos.EFECTIVO|default(0)|float) }}</td></tr>
+            <tr><td>Tarjeta de Crédito/Débito:</td><td class="text-end">${{ "{:,.2f}".format(pagos.TARJETA|default(0)|float) }}</td></tr>
+            <tr><td>Transferencia Bancaria:</td><td class="text-end">${{ "{:,.2f}".format(pagos.TRANSFERENCIA|default(0)|float) }}</td></tr>
+            <tr><td>Bitcoin (Chivo/Otros):</td><td class="text-end">${{ "{:,.2f}".format(pagos.BITCOIN|default(0)|float) }}</td></tr>
+            {% if (pagos.CREDITO|default(0)|float) + (pagos.OTRO|default(0)|float) != 0 %}
+            <tr><td>Crédito / Otros:</td><td class="text-end">${{ "{:,.2f}".format((pagos.CREDITO|default(0)|float) + (pagos.OTRO|default(0)|float)) }}</td></tr>
+            {% endif %}
+        </table>
+        <div class="linea"></div>
+        <table><tr><td class="fw-bold">TOTAL RECIBIDO:</td><td class="text-end fw-bold">${{ "{:,.2f}".format(d.total_ventas|default(0)|float) }}</td></tr></table>
+        <p class="small text-muted mb-0 mt-1" style="font-size: 9px;">(Debe coincidir con la Venta Bruta)</p>
+    </div>
+
+    <!-- 4. Arqueo de Efectivo (El Cuadre) -->
+    {% if c and c.estado == 'CERRADO' %}
+    <div class="seccion">
+        <div class="seccion-titulo">Arqueo de Efectivo (El Cuadre)</div>
+        <p class="small text-muted mb-2" style="font-size: 9px;">Detectar faltantes o sobrantes.</p>
+        <table>
+            <tr><td>Fondo de Apertura (Caja Chica):</td><td class="text-end">${{ "{:,.2f}".format(c.monto_apertura|default(0)|float) }}</td></tr>
+            <tr><td>(+) Ventas en Efectivo:</td><td class="text-end">${{ "{:,.2f}".format(c.ventas_efectivo|default(0)|float) }}</td></tr>
+            <tr><td>(-) Salidas de Efectivo (Gastos):</td><td class="text-end">${{ "{:,.2f}".format(c.salidas_efectivo|default(0)|float) }}</td></tr>
+            <tr><td class="fw-bold">(=) EFECTIVO ESPERADO:</td><td class="text-end fw-bold">${{ "{:,.2f}".format(c.monto_esperado|default(0)|float) }}</td></tr>
+            <tr><td>( ) EFECTIVO REAL CONTADO:</td><td class="text-end">${{ "{:,.2f}".format(c.monto_real|default(0)|float) }}</td></tr>
+            <tr><td class="fw-bold">(+/-) DIFERENCIA:</td><td class="text-end fw-bold" {% if (c.diferencia|default(0)|float) != 0 %}style="color:#dc2626;"{% endif %}>${{ "{:,.2f}".format(c.diferencia|default(0)|float) }}</td></tr>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- 5. Sección de Firmas -->
+    <div class="seccion firmas">
+        <div class="linea-doble"></div>
+        <div style="margin-bottom: 24px;">
+            <span>Firma Cajero:</span>
+            <span class="firma-linea"></span>
+        </div>
+        <div>
+            <span>Firma Supervisor:</span>
+            <span class="firma-linea"></span>
+        </div>
+    </div>
+
+    <div class="no-print text-center mt-3">
+        <button type="button" class="btn btn-primary btn-sm me-2" onclick="window.print();"><i class="bi bi-printer"></i> Imprimir ticket 80mm</button>
+        <a href="{{ url_for('admin.cierre_caja') }}" class="btn btn-outline-secondary btn-sm">Volver a Cierre de Caja</a>
+    </div>
+    {% endif %}
+</body>
+</html>

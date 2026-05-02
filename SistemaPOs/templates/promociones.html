@@ -1,0 +1,85 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark"><i class="bi bi-tag text-warning"></i> Promociones</h2>
+            <p class="text-muted small mb-0">Ofertas con vigencia por fechas. Asigne productos y defina cuándo aplican (2x1, descuento %).</p>
+            {% if session.get('empresa_nombre') %}
+            <p class="small text-primary mt-1 mb-0"><i class="bi bi-building"></i> Empresa: <strong>{{ session.empresa_nombre }}</strong></p>
+            {% endif %}
+        </div>
+        <a href="{{ url_for('admin.promociones_nueva') }}" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">
+            <i class="bi bi-plus-lg me-2"></i> NUEVA PROMOCIÓN
+        </a>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4 py-3 text-muted small">NOMBRE</th>
+                            <th class="py-3 text-muted small">TIPO</th>
+                            <th class="py-3 text-muted small">VALOR</th>
+                            <th class="py-3 text-muted small">VIGENCIA</th>
+                            <th class="py-3 text-muted small text-center">PRODUCTOS</th>
+                            <th class="py-3 text-muted small text-center">ESTADO</th>
+                            <th class="py-3 text-muted small text-end pe-4">ACCIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in promociones %}
+                        <tr>
+                            <td class="ps-4 fw-bold">{{ p[1] }}</td>
+                            <td>
+                                {% if p[2] == '2X1' %}<span class="badge bg-warning text-dark">2x1</span>
+                                {% elif p[2] == '3X2' %}<span class="badge bg-warning text-dark">3x2</span>
+                                {% elif p[2] == 'VOLUMEN' %}<span class="badge bg-warning text-dark">Volumen</span>
+                                {% elif p[2] == 'PORCENTAJE' %}<span class="badge bg-info">−{{ p[3] }}%</span>
+                                {% elif p[2] == 'DESCUENTO_MONTO' %}<span class="badge bg-secondary">$ desc.</span>
+                                {% elif p[2] == 'REGALO' %}<span class="badge bg-success">Regalo</span>
+                                {% elif p[2] == 'PRECIO_FIJO' %}<span class="badge bg-primary">Precio fijo</span>
+                                {% elif p[2] == 'DESCUENTO_CANTIDAD' %}<span class="badge bg-info">Desc. cantidad</span>
+                                {% else %}<span class="badge bg-light text-dark">{{ p[2] }}</span>{% endif %}
+                            </td>
+                            <td>{% if p[2] == 'PORCENTAJE' %}{{ p[3] }}%{% elif p[2] == 'DESCUENTO_MONTO' %}—{% elif p[2] == 'PRECIO_FIJO' %}${% if p[3] %}{{ "%.2f"|format(p[3]|float) }}{% else %}—{% endif %}{% elif p[2] == 'DESCUENTO_CANTIDAD' %}{{ p[3] }}%{% if p[-2] is not none %} (min {{ p[-2] }}){% endif %}{% else %}—{% endif %}</td>
+                            <td class="small">
+                                {% if p[4] or p[5] %}
+                                {{ (p[4]|string)[:10] if p[4] else '—' }} al {{ (p[5]|string)[:10] if p[5] else '—' }}
+                                {% else %}
+                                <span class="text-muted">Sin límite</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">{{ p[-1] if p else 0 }}</td>
+                            <td class="text-center">
+                                {% if p[6] %}
+                                <span class="badge bg-success">Activa</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactiva</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="{{ url_for('admin.promociones_editar', promocion_id=p[0]) }}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil-square"></i> Editar</a>
+                                <form action="{{ url_for('admin.promociones_eliminar', promocion_id=p[0]) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar esta promoción?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash3"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5 text-muted">
+                                <i class="bi bi-tag fs-1 d-block mb-2"></i>
+                                No hay promociones. <a href="{{ url_for('admin.promociones_nueva') }}">Crear una</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

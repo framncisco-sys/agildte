@@ -149,6 +149,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Si True, se encola la tarea y se responde de inmediato (estado queda Pendiente hasta que el worker procese).
 USE_ASYNC_FACTURACION = os.environ.get('USE_ASYNC_FACTURACION', 'false').lower() in ('1', 'true', 'yes')
 
+# PosAgil (POST /api/pos/procesar-venta/): por defecto ignora USE_ASYNC_FACTURACION y procesa MH en la misma petición
+# para que el ticket pueda llevar sello sin cola. Desactivar solo si el POS debe comportarse como el resto de la API.
+POSAGIL_FACTURACION_SINCRONA = os.environ.get(
+    'POSAGIL_FACTURACION_SINCRONA', 'true'
+).lower() in ('1', 'true', 'yes')
+
 # --- Ministerio de Hacienda (DTE / Facturación Electrónica) ---
 # PRUEBA: Si está definido, se usa esta contraseña en lugar de la BD (para validar espacios/caracteres).
 # Ejemplo: MH_PASSWORD_OVERRIDE=2Caballo.Azul  -> quitar después de probar

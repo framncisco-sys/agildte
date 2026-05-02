@@ -1,0 +1,106 @@
+{% extends "layout.html" %}
+{% block content %}
+<style>
+    .card { border: none; border-radius: 15px; box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.1); }
+    .table thead { background-color: #4e73df; color: white; }
+</style>
+
+<div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold"><i class="bi bi-geo-fill text-primary"></i> Gestión de Sucursales</h2>
+        <div>
+            <a href="/configuracion" class="btn btn-outline-primary btn-sm rounded-pill me-2">Configuración Empresa</a>
+            <a href="/" class="btn btn-secondary btn-sm rounded-pill">Volver a Ventas</a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card p-4 {{ 'border-primary border-2' if sucursal else '' }}" id="formSucursal">
+                <h5 class="fw-bold mb-3">{{ 'Editar Sucursal' if sucursal else 'Nueva Sucursal' }}</h5>
+                {% if not (es_superadmin and empresas) and session.get('empresa_nombre') %}
+                <p class="small text-muted mb-2"><i class="bi bi-building"></i> Empresa: <strong>{{ session.empresa_nombre }}</strong></p>
+                {% endif %}
+                <form action="/guardar_sucursal" method="POST">
+                    <input type="hidden" name="sucursal_id" value="{{ sucursal[0] if sucursal else '' }}">
+                    {% if es_superadmin and empresas %}
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold"><i class="bi bi-building"></i> Empresa</label>
+                        <select name="empresa_id" class="form-select" required>
+                            {% set def_emp = (sucursal[5] if sucursal and sucursal|length > 5 else (session.get('empresa_id') or 1)) | int %}
+                            {% for e in empresas %}
+                            <option value="{{ e[0] }}" {% if e[0] == def_emp %}selected{% endif %}>{{ e[1] }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="text-muted small mb-0 mt-1">Como superusuario puede asignar la sucursal a cualquier empresa.</p>
+                    </div>
+                    {% endif %}
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Nombre de la Sucursal</label>
+                        <input type="text" name="nombre" class="form-control" placeholder="Ej: Sucursal San Miguel" value="{{ sucursal[1] if sucursal else '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Cod. Hacienda (4 dígitos)</label>
+                        <input type="text" id="codigo_sucursal" name="codigo" class="form-control" placeholder="0001" value="{{ sucursal[2] if sucursal else '' }}" required maxlength="4">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Dirección</label>
+                        <input type="text" name="direccion" class="form-control" placeholder="Ubicación física" value="{{ sucursal[3] if sucursal else '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Teléfono</label>
+                        <input type="text" id="telefono_sucursal" name="telefono" class="form-control" placeholder="2222-2222" value="{{ sucursal[4] if sucursal else '' }}" maxlength="9">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 fw-bold">{{ 'Actualizar Sucursal' if sucursal else 'Registrar Sucursal' }}</button>
+                    {% if sucursal %}<a href="/sucursales" class="btn btn-outline-secondary w-100 mt-2">Cancelar</a>{% endif %}
+                </form>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card p-4">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Nombre</th>
+                            {% if es_superadmin %}<th>Empresa</th>{% endif %}
+                            <th>Dirección</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in sucursales %}
+                        <tr>
+                            <td><span class="badge bg-primary">{{ s[2] if s|length > 2 else '' }}</span></td>
+                            <td class="fw-bold">{{ s[1] if s|length > 1 else '' }}</td>
+                            {% if es_superadmin %}<td class="small">{{ s[5] if s|length > 5 else '' }}</td>{% endif %}
+                            <td class="small text-muted">{{ s[3] if s|length > 3 else '' }}</td>
+                            <td>
+                                <a href="/sucursales/editar/{{ s[0] if s|length > 0 else '' }}" class="btn btn-sm btn-outline-primary" title="Editar" style="cursor:pointer;"><i class="bi bi-pencil"></i> Editar</a>
+                                <form action="/eliminar_sucursal/{{ s[0] if s|length > 0 else '' }}" method="POST" class="d-inline ms-1" onsubmit="return confirm('¿Eliminar esta sucursal? Los usuarios asignados quedarán sin sucursal.');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    const cod = document.getElementById('codigo_sucursal');
+    const tel = document.getElementById('telefono_sucursal');
+    if (cod) IMask(cod, { mask: '0000', lazy: false });
+    if (tel) IMask(tel, { mask: '0000-0000', lazy: false });
+    {% if sucursal %}
+    document.getElementById('formSucursal')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    {% endif %}
+})();
+</script>
+{% endblock %}

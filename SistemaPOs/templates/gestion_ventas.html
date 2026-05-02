@@ -1,0 +1,69 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark"><i class="bi bi-receipt-cutoff text-primary"></i> Gestión de ventas</h2>
+            <p class="text-muted small mb-0">Gerente y superusuario: editar datos de facturación o anular venta (requiere motivo para auditoría).</p>
+        </div>
+        <a href="{{ url_for('pos.ventas_pos') }}" class="btn btn-outline-primary rounded-pill"><i class="bi bi-shop"></i> Punto de venta</a>
+    </div>
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha</th>
+                        <th>Cliente</th>
+                        <th>Comprobante</th>
+                        <th>Pago</th>
+                        <th class="text-end">Total</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in ventas %}
+                    <tr>
+                        <td class="fw-bold text-primary">{{ v[0] }}</td>
+                        <td class="small">{{ v[1] }}</td>
+                        <td>{{ v[3] }}</td>
+                        <td><span class="badge bg-secondary">{{ v[5] }}</span></td>
+                        <td>{{ v[4] }}</td>
+                        <td class="text-end fw-bold">${{ "%.2f"|format(v[2]|float) }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('admin.gestion_ventas_editar', venta_id=v[0]) }}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalAnular{{ v[0] }}">Anular</button>
+                            <div class="modal fade" id="modalAnular{{ v[0] }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header bg-danger text-white">
+                                            <h5 class="modal-title"><i class="bi bi-x-circle"></i> Anular venta #{{ v[0] }}</h5>
+                                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <form action="{{ url_for('admin.gestion_ventas_eliminar', venta_id=v[0]) }}" method="POST">
+                                            <div class="modal-body">
+                                                <p class="small text-muted">Se repondrá el stock. El registro se marca como ANULADO (no se borra). Para auditoría tributaria debe indicar el motivo.</p>
+                                                <label class="form-label fw-bold">Motivo de anulación <span class="text-danger">*</span></label>
+                                                <textarea name="motivo_anulacion" class="form-control" rows="3" required placeholder="Ej: Error en datos del cliente, devolución, duplicado...">{{ '' }}</textarea>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                                <button type="submit" class="btn btn-danger"><i class="bi bi-x-circle"></i> Confirmar anulación</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted py-5">No hay ventas registradas.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

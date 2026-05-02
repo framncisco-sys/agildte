@@ -1,0 +1,90 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <h2 class="mb-4 fw-bold text-dark"><i class="bi bi-box-seam text-primary"></i> Reportes de Inventario</h2>
+    <p class="text-muted mb-4">Reportes tributarios y de control de inventario (Art. 142, F-983, NIC 2).</p>
+
+    <div class="row g-4">
+        <div class="col-md-6 col-lg-3">
+            <a href="{{ url_for('admin.reporte_kardex_detallado') }}" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100" style="border-radius: 15px; border-left: 4px solid #1e3a5f !important;">
+                    <div class="card-body p-4">
+                        <i class="bi bi-journal-text fs-2 text-primary mb-2"></i>
+                        <h5 class="fw-bold text-dark">Kardex Detallado</h5>
+                        <p class="text-muted small mb-0">Registro de control (Art. 142 y 142-A CT). Fecha, tipo, entrada/salida, costo, saldo.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-3">
+            <a href="{{ url_for('admin.reporte_f983') }}" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100" style="border-radius: 15px; border-left: 4px solid #059669 !important;">
+                    <div class="card-body p-4">
+                        <i class="bi bi-file-earmark-spreadsheet fs-2 text-success mb-2"></i>
+                        <h5 class="fw-bold text-dark">Informe F-983</h5>
+                        <p class="text-muted small mb-0">Inventario físico anual. Presentar a más tardar el 28 de febrero. Obligatorio si ingresos &gt; 2,753 salarios mínimos.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-3">
+            <a href="{{ url_for('admin.reporte_valuacion') }}" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100" style="border-radius: 15px; border-left: 4px solid #7c3aed !important;">
+                    <div class="card-body p-4">
+                        <i class="bi bi-calculator fs-2 mb-2" style="color:#7c3aed"></i>
+                        <h5 class="fw-bold text-dark">Valuación</h5>
+                        <p class="text-muted small mb-0">Existencias valoradas por Costo Promedio o PEPS (NIC 2).</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-3">
+            <a href="{{ url_for('admin.inventario_conteo_fisico') }}" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100" style="border-radius: 15px; border-left: 4px solid #0d9488 !important;">
+                    <div class="card-body p-4">
+                        <i class="bi bi-clipboard2-check fs-2 mb-2" style="color:#0d9488"></i>
+                        <h5 class="fw-bold text-dark">Conteo Físico</h5>
+                        <p class="text-muted small mb-0">Valide sistema vs. bodega. Ajustes documentados para Hacienda (Art. 142, F-983).</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-3">
+            <a href="{{ url_for('admin.reporte_movimientos') }}" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100" style="border-radius: 15px; border-left: 4px solid #dc2626 !important;">
+                    <div class="card-body p-4">
+                        <i class="bi bi-arrow-left-right fs-2 text-danger mb-2"></i>
+                        <h5 class="fw-bold text-dark">Movimientos</h5>
+                        <p class="text-muted small mb-0">Ajustes, traslados, bajas por obsolescencia o deterioro.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-3">
+            <a href="{{ url_for('admin.reporte_mermas_ajustes') }}" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100" style="border-radius: 15px; border-left: 4px solid #b45309 !important;">
+                    <div class="card-body p-4">
+                        <i class="bi bi-graph-down-arrow fs-2 mb-2" style="color:#b45309"></i>
+                        <h5 class="fw-bold text-dark">Mermas y ajustes</h5>
+                        <p class="text-muted small mb-0">Pérdidas por merma, avería y faltantes; impacto en $ para el dueño.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% if puede_gestionar_ventas %}
+        <div class="col-md-6 col-lg-3">
+            <a href="{{ url_for('admin.reporte_lista_compras') }}" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100" style="border-radius: 15px; border-left: 4px solid #059669 !important;">
+                    <div class="card-body p-4">
+                        <i class="bi bi-cart-check fs-2 text-success mb-2"></i>
+                        <h5 class="fw-bold text-dark">Lista de compras</h5>
+                        <p class="text-muted small mb-0">Productos a reponer. Último costo, promedio y precio sugerido para fijar precios justos.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

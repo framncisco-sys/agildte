@@ -1,0 +1,107 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <a href="{{ url_for('admin.reporte_inventario_index') }}" class="btn btn-outline-secondary btn-sm mb-3 rounded-pill"><i class="bi bi-arrow-left"></i> Reportes inventario</a>
+    <h2 class="fw-bold mb-2 text-dark"><i class="bi bi-graph-down-arrow text-danger"></i> Mermas y ajustes</h2>
+    <p class="text-muted small mb-4">Clasificación de pérdidas por <strong>merma operativa</strong>, <strong>avería</strong> o <strong>faltante</strong> (Kardex). No sustituye DTE; es control interno y costo estimado con el costo del producto al momento del ajuste.</p>
+
+    <form method="get" class="card border-0 shadow-sm p-3 mb-4">
+        <div class="row g-3 align-items-end">
+            {% if es_superadmin and empresas %}
+            <div class="col-md-2">
+                <label class="small fw-bold text-muted">Empresa</label>
+                <select name="empresa_id" class="form-select form-select-sm">
+                    {% for e in empresas %}
+                    <option value="{{ e[0] }}" {{ 'selected' if empresa_id == e[0] else '' }}>{{ (e[1] or '')[:30] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-2">
+                <label class="small fw-bold text-muted">Sucursal</label>
+                <select name="sucursal_id" class="form-select form-select-sm">
+                    <option value="">— Todas —</option>
+                    {% for s in sucursales %}
+                    <option value="{{ s[0] }}" {{ 'selected' if sucursal_id == s[0] else '' }}>{{ s[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="small fw-bold text-muted">Usuario (ajustó)</label>
+                <select name="usuario_id" class="form-select form-select-sm" title="Filtrar ajustes por quien los registró">
+                    <option value="">— Todos —</option>
+                    {% for u in usuarios_empresa %}
+                    <option value="{{ u[0] }}" {{ 'selected' if usuario_id == u[0] else '' }}>{{ (u[1] or '')[:28] }}{% if u[2] %} ({{ u[2] }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="small fw-bold text-muted">Desde</label>
+                <input type="date" name="inicio" class="form-control form-control-sm" value="{{ inicio }}">
+            </div>
+            <div class="col-md-2">
+                <label class="small fw-bold text-muted">Hasta</label>
+                <input type="date" name="fin" class="form-control form-control-sm" value="{{ fin }}">
+            </div>
+            <div class="col-md-2">
+                <div class="form-check pt-2">
+                    <input class="form-check-input" type="checkbox" name="incluir_sobrantes" value="1" id="chkSob" {{ 'checked' if not solo_perdidas else '' }}>
+                    <label class="form-check-label small" for="chkSob">Incluir sobrantes (ajuste +)</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100 fw-bold"><i class="bi bi-filter"></i> Actualizar</button>
+            </div>
+        </div>
+    </form>
+
+    <div class="alert alert-light border mb-3 shadow-sm">
+        <span class="fw-bold">Impacto valorado (período):</span> ${{ "%.2f"|format(totales.total_valor|float) }}
+        <span class="text-muted">— {{ totales.n_movs|int }} movimiento(s)</span>
+    </div>
+
+    <div class="table-responsive card border-0 shadow-sm rounded-3 overflow-hidden">
+        <table class="table table-hover table-sm mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-3">Fecha</th>
+                    <th>Tipo</th>
+                    <th>Producto</th>
+                    <th>Código</th>
+                    <th class="text-end">Cant. UMB</th>
+                    <th class="text-end">Costo unit.</th>
+                    <th class="text-end">Total $</th>
+                    <th>Motivo</th>
+                    <th>Sucursal</th>
+                    <th>Referencia</th>
+                    <th class="pe-3">Usuario</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in filas %}
+                <tr>
+                    <td class="ps-3 small text-nowrap">{% if r[0] is string %}{{ r[0][:16] }}{% else %}{{ r[0] }}{% endif %}</td>
+                    <td>
+                        {% if r[1] == 'AJUSTE_SALIDA' %}<span class="badge bg-danger">Salida ajuste</span>
+                        {% elif r[1] == 'AJUSTE_ENTRADA' %}<span class="badge bg-success">Entrada ajuste</span>
+                        {% else %}<span class="badge bg-secondary">{{ r[1] }}</span>{% endif %}
+                    </td>
+                    <td>{{ (r[2] or '')[:42] }}</td>
+                    <td class="small text-muted">{{ r[3] or '—' }}</td>
+                    <td class="text-end font-monospace">{{ "%.4f"|format(r[4]|float) }}</td>
+                    <td class="text-end">${{ "%.2f"|format(r[5]|float) }}</td>
+                    <td class="text-end fw-bold">${{ "%.2f"|format(r[6]|float) }}</td>
+                    <td class="small">{{ etiqueta_motivo(r[7]) }}</td>
+                    <td class="small">{{ r[8] or '—' }}</td>
+                    <td class="small text-muted">{{ (r[9] or '')[:36] }}</td>
+                    <td class="pe-3 small">{{ r[10] or '—' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="11" class="text-center py-5 text-muted">No hay datos. Aplique conteo físico con motivo o use <strong>Movimientos</strong> para ajustes. Si es instalación nueva: <code>python scripts/alter_kardex_motivo_ajuste.py</code></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

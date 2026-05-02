@@ -1,0 +1,265 @@
+{% extends "layout.html" %}
+{% block content %}
+<style>
+    .card { border: none; border-radius: 15px; box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.1); }
+</style>
+
+<div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold"><i class="bi bi-building text-primary"></i> Configuración de Empresa</h2>
+        <div>
+            {% if es_super %}<a href="/" class="btn btn-outline-primary btn-sm rounded-pill me-2"><i class="bi bi-buildings"></i> Ver empresas</a>{% endif %}
+            <a href="/sucursales" class="btn btn-outline-primary btn-sm rounded-pill me-2">Sucursales</a>
+            <a href="/clientes" class="btn btn-outline-primary btn-sm rounded-pill me-2">Clientes</a>
+            <a href="/" class="btn btn-secondary btn-sm rounded-pill">Inicio</a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card p-4">
+                <h5 class="fw-bold mb-3">Datos de la Empresa</h5>
+                <form action="/guardar_configuracion" method="POST">
+                    {% if es_super and empresas %}
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Empresa a configurar</label>
+                        <select name="empresa_id" class="form-select" onchange="if(this.value) window.location.href='/configuracion?empresa='+this.value;">
+                            {% for e in empresas %}
+                            <option value="{{ e[0] }}" {{ 'selected' if emp_id == e[0] else '' }}>{{ e[1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="empresa_id" value="{{ emp_id }}">
+                    {% endif %}
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Razón Social / Nombre Comercial</label>
+                        <input type="text" name="nombre" class="form-control" value="{{ (empresa[1] or '') if empresa and empresa|length > 1 else '' }}" required>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">NIT</label>
+                            <input type="text" id="nit_empresa" name="nit" class="form-control" value="{{ (empresa[2] or '') if empresa and empresa|length > 2 else '' }}" placeholder="0614-161386-001-4">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">NRC</label>
+                            <input type="text" id="nrc_empresa" name="nrc" class="form-control" value="{{ (empresa[3] or '') if empresa and empresa|length > 3 else '' }}" placeholder="123456-7">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Actividad Económica (código)</label>
+                        <input type="text" list="actividades_empresa" name="codigo_actividad_economica" id="actividad_empresa" class="form-control" value="{{ codigo_actividad_empresa|default('') }}" placeholder="Busque código (ej: 01111) o descripción...">
+                        <input type="hidden" name="actividad" value="{{ (empresa[5] or '') if empresa and empresa|length > 5 else '' }}">
+                        <small class="text-muted">Seleccione del listado al escribir. Código oficial El Salvador.</small>
+                        {% if actividades %}
+                        <datalist id="actividades_empresa">
+                            {% for a in actividades %}
+                            <option value="{{ a[0] }}">{{ a[0] }} — {{ (a[1] or '')[:70] }}</option>
+                            {% endfor %}
+                        </datalist>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Dirección de Casa Matriz</label>
+                        <textarea name="direccion" class="form-control" rows="2">{{ (empresa[6] or '') if empresa and empresa|length > 6 else '' }}</textarea>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Teléfono</label>
+                            <input type="text" id="tel_empresa" name="tel" class="form-control" value="{{ (empresa[7] or '') if empresa and empresa|length > 7 else '' }}" placeholder="2222-2222">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Correo (DTE)</label>
+                            <input type="email" id="correo_empresa" name="correo" class="form-control" value="{{ (empresa[8] or '') if empresa and empresa|length > 8 else '' }}" placeholder="correo@empresa.com">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="es_gran_contribuyente" {% if empresa_es_gran_contribuyente %}checked{% endif %}>
+                            <label class="form-check-label small fw-bold">Empresa es Gran Contribuyente</label>
+                        </div>
+                        <small class="text-muted">Retención IVA 1%: aplica cuando cliente y empresa difieren en Gran Contribuyente y venta gravada &gt; $100.</small>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="suscripcion_activa" {% if empresa and empresa|length > 10 and empresa[10] %}checked{% endif %}>
+                            <label class="form-check-label small fw-bold">Suscripción Activa</label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Fecha Vencimiento</label>
+                        <input type="date" name="vencimiento" class="form-control" value="{{ empresa[11].strftime('%Y-%m-%d') if empresa and empresa|length > 11 and empresa[11] else '' }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 fw-bold">Guardar Cambios</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-list-ul text-primary"></i> Listado de Empresas</h5>
+                    {% if es_super %}
+                    <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalNuevaEmpresa">
+                        <i class="bi bi-plus-lg"></i> Nueva empresa
+                    </button>
+                    {% endif %}
+                </div>
+                {% if empresas_lista %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Nombre</th>
+                                <th>NIT</th>
+                                <th>Suscripción</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for emp in empresas_lista %}
+                            <tr>
+                                <td class="fw-bold">{{ emp[1] if emp|length > 1 else '—' }}</td>
+                                <td class="small">{{ emp[2] if emp|length > 2 else '—' }}</td>
+                                <td>
+                                    {% if emp|length > 4 and emp[4] %}
+                                    <span class="badge bg-success">Activa</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Inactiva</span>
+                                    {% endif %}
+                                    {% if emp|length > 5 and emp[5] %}
+                                    <small class="d-block text-muted">Vence: {{ emp[5].strftime('%d/%m/%Y') }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="/configuracion?empresa={{ emp[0] if emp|length > 0 else '' }}" class="btn btn-sm btn-outline-primary" title="Configurar">
+                                        <i class="bi bi-pencil"></i> Configurar
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                {% if es_super %}
+                <p class="small text-muted mb-0">No hay empresas registradas. Las empresas se crean desde la base de datos.</p>
+                {% else %}
+                <p class="small text-muted mb-0">Está configurando la empresa asignada a su usuario.</p>
+                {% endif %}
+                {% endif %}
+                <hr class="my-3">
+                <p class="small text-muted mb-0">
+                    <i class="bi bi-info-circle"></i> Configure los datos fiscales según los requisitos del Ministerio de Hacienda de El Salvador.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if es_super %}
+<!-- Modal Nueva Empresa - mismos campos que editar -->
+<div class="modal fade" id="modalNuevaEmpresa" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nueva Empresa</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/crear_empresa" method="POST" id="formNuevaEmpresa">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Razón Social / Nombre Comercial <span class="text-danger">*</span></label>
+                        <input type="text" name="nombre" class="form-control" placeholder="Ej: MI EMPRESA SA DE CV" required>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-bold">NIT</label>
+                            <input type="text" id="nit_nueva" name="nit" class="form-control" placeholder="0614-161386-001-4" title="Formato: 0614-161386-001-4 (opcional)">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold">NRC</label>
+                            <input type="text" id="nrc_nueva" name="nrc" class="form-control" placeholder="123456-7" title="Formato: 123456-7 (opcional)">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Actividad Económica (código)</label>
+                        <input type="text" list="actividades_nueva" name="codigo_actividad_economica" class="form-control" placeholder="Busque código (ej: 47111)...">
+                        <input type="hidden" name="actividad" value="">
+                        {% if actividades %}
+                        <datalist id="actividades_nueva">
+                            {% for a in actividades %}
+                            <option value="{{ a[0] }}">{{ a[0] }} — {{ (a[1] or '')[:70] }}</option>
+                            {% endfor %}
+                        </datalist>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Dirección de Casa Matriz</label>
+                        <textarea name="direccion" class="form-control" rows="2" placeholder="Ubicación fiscal"></textarea>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-bold">Teléfono</label>
+                            <input type="text" id="tel_nueva" name="telefono" class="form-control" placeholder="2222-2222" title="Formato: 2222-2222 (opcional)">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold">Correo (DTE)</label>
+                            <input type="email" name="correo" class="form-control" placeholder="correo@empresa.com">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="suscripcion_activa" id="susc_nueva" checked>
+                            <label class="form-check-label fw-bold">Suscripción Activa</label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Fecha Vencimiento</label>
+                        <input type="date" name="vencimiento" class="form-control">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Crear empresa</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    const opcionesNit = { mask: '0000-000000-000-0', lazy: false, overwrite: false };
+    const opcionesNrc = { mask: '000000-0', lazy: false, overwrite: false };
+    const opcionesTel = { mask: '0000-0000', lazy: false, overwrite: false };
+
+    function aplicarMascara(el, opts) {
+        if (!el || typeof IMask === 'undefined') return;
+        if (el._imask) { el._imask.destroy(); el._imask = null; }
+        el._imask = IMask(el, opts);
+    }
+
+    function aplicarMascaras() {
+        aplicarMascara(document.getElementById('nit_empresa'), opcionesNit);
+        aplicarMascara(document.getElementById('nrc_empresa'), opcionesNrc);
+        aplicarMascara(document.getElementById('tel_empresa'), opcionesTel);
+        aplicarMascara(document.getElementById('nit_nueva'), opcionesNit);
+        aplicarMascara(document.getElementById('nrc_nueva'), opcionesNrc);
+        aplicarMascara(document.getElementById('tel_nueva'), opcionesTel);
+    }
+
+    aplicarMascaras();
+    const modalNueva = document.getElementById('modalNuevaEmpresa');
+    if (modalNueva) {
+        modalNueva.addEventListener('shown.bs.modal', function() {
+            aplicarMascara(document.getElementById('nit_nueva'), opcionesNit);
+            aplicarMascara(document.getElementById('nrc_nueva'), opcionesNrc);
+            aplicarMascara(document.getElementById('tel_nueva'), opcionesTel);
+        });
+    }
+})();
+</script>
+{% endblock %}

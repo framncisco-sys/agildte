@@ -1,0 +1,84 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <h2 class="mb-4 fw-bold text-dark"><i class="bi bi-cash-coin text-success"></i> Cierre de Caja</h2>
+    <p class="text-muted">Apertura y cierre a ciegas para cuadre del turno.</p>
+
+    {% if apertura %}
+    <div class="card shadow-sm border-0 mb-4" style="border-radius: 15px; border-left: 4px solid #22c55e;">
+        <div class="card-body">
+            <h5 class="text-success"><i class="bi bi-unlock"></i> Caja abierta</h5>
+            <p class="mb-0">Apertura: $ {{ "{:,.2f}".format(apertura.monto_apertura|float) }} — {{ apertura.fecha_apertura }}</p>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0" style="border-radius: 15px;">
+        <div class="card-header bg-white">
+            <h6 class="mb-0 fw-bold">Cerrar turno (Cierre a ciegas)</h6>
+            <small class="text-muted">Ingrese el monto que contó. No se mostrará el esperado hasta después.</small>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin.cierre_caja_cerrar') }}">
+                <input type="hidden" name="cierre_id" value="{{ apertura.id }}">
+                <input type="hidden" name="ventas_efectivo" value="{{ datos.ventas_por_pago.EFECTIVO }}">
+                <input type="hidden" name="ventas_tarjeta" value="{{ datos.ventas_por_pago.TARJETA }}">
+                <input type="hidden" name="ventas_credito" value="{{ datos.ventas_por_pago.CREDITO }}">
+                <input type="hidden" name="ventas_otro" value="{{ (datos.ventas_por_pago.TRANSFERENCIA|float) + (datos.ventas_por_pago.OTRO|float) }}">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Salidas de efectivo (gastos, sujeto excluido, etc.) $</label>
+                    <input type="number" name="salidas_efectivo" class="form-control" step="0.01" min="0" value="0">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Monto que contó en caja $ <span class="text-danger">*</span></label>
+                    <input type="number" name="monto_real" class="form-control form-control-lg" step="0.01" min="0" required placeholder="Ingrese lo que contó">
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg"><i class="bi bi-check-circle"></i> Cerrar caja</button>
+            </form>
+        </div>
+    </div>
+    {% else %}
+    <div class="card shadow-sm border-0" style="border-radius: 15px;">
+        <div class="card-header bg-white">
+            <h6 class="mb-0 fw-bold">Abrir turno</h6>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin.cierre_caja_apertura') }}">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Monto de apertura $</label>
+                    <input type="number" name="monto_apertura" class="form-control" step="0.01" min="0" value="0" required>
+                </div>
+                <button type="submit" class="btn btn-success btn-lg"><i class="bi bi-unlock"></i> Abrir caja</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if ultimos_cierres|default([])|length > 0 %}
+    <div class="card shadow-sm border-0 mt-4" style="border-radius: 15px;">
+        <div class="card-header bg-white">
+            <h6 class="mb-0 fw-bold">Últimos cierres — Ver comprobante</h6>
+            <small class="text-muted">Imprimir en ticket 80mm o ver en pantalla</small>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Cierre</th><th>Fecha cierre</th><th>Contado</th><th>Diferencia</th><th></th></tr></thead>
+                    <tbody>
+                        {% for c in ultimos_cierres %}
+                        <tr>
+                            <td>#{{ c[0] }}</td>
+                            <td>{{ c[3].strftime('%d/%m/%Y %I:%M %p') if c[3] else '—' }}</td>
+                            <td>$ {{ "{:,.2f}".format(c[4]|float) }}</td>
+                            <td class="{% if (c[5]|float) != 0 %}text-danger fw-bold{% endif %}">$ {{ "{:,.2f}".format(c[5]|float) }}</td>
+                            <td><a href="{{ url_for('admin.cierre_caja_comprobante', cierre_id=c[0]) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-printer"></i> Ver / Imprimir</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,858 @@
+{% extends "layout.html" %}
+{% block content %}
+<style>
+    /* Modal producto: el <form> envuelve body+footer y rompe el flex de modal-dialog-scrollable; forzamos columna con scroll solo en .modal-body */
+    #modalProducto .modal-dialog {
+        max-height: calc(100vh - 1rem);
+        margin: 0.5rem auto;
+    }
+    #modalProducto .modal-content {
+        max-height: calc(100vh - 1rem);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    #modalProducto #formProducto {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+    }
+    #modalProducto .modal-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    #modalProducto .modal-footer {
+        flex-shrink: 0;
+    }
+    #modalProducto .modal-header {
+        flex-shrink: 0;
+    }
+</style>
+<div class="container-fluid mt-2">
+    <div class="accordion mb-3 border rounded-3 overflow-hidden shadow-sm" id="accGuiaMedidas">
+        <div class="accordion-item border-0">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed py-2 small fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#colGuiaMedidas" aria-expanded="false" aria-controls="colGuiaMedidas">
+                    <i class="bi bi-rulers text-primary me-2"></i> Guía: unidad de medida, cobro en POS, inventario y Kardex
+                </button>
+            </h2>
+            <div id="colGuiaMedidas" class="accordion-collapse collapse" data-bs-parent="#accGuiaMedidas">
+                <div class="accordion-body small text-secondary bg-light border-top">
+                    <p class="mb-2"><strong>Regla única:</strong> en base de datos el stock y el Kardex van siempre en la <strong>UMB</strong> (unidad mínima del producto: sobre, libra, botella…). El POS convierte caja/docena o venta en $ a esa UMB antes de descontar.</p>
+                    <ul class="mb-0 ps-3">
+                        <li class="mb-1"><strong>Unidad / pieza (MH 59):</strong> stock = cantidad de piezas. POS con presentación ×1. Cada venta resta esas unidades en Kardex.</li>
+                        <li class="mb-1"><strong>Libra, kg, litro, ml… (MH 11, 39, 22, 21…):</strong> active <em>Venta con decimales</em>. Stock en esa medida. En POS use <em>Venta por monto ($)</em> o cantidad con decimales (ej. 0,35 lb).</li>
+                        <li class="mb-1"><strong>Docena (MH 26):</strong> defina «unidades por docena» (12). En POS, 1 docena descuenta 12 UMB.</li>
+                        <li class="mb-1"><strong>Caja (MH 57):</strong> «unidades por caja» = factor. En POS, 1 caja descuenta (factor × UMB).</li>
+                        <li class="mb-0"><strong>Compras:</strong> puede ingresar por caja con factor; el sistema suma siempre en UMB al stock y al Kardex de entrada.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark">Inventario de Productos</h2>
+            <p class="text-muted small">En cada producto: primero la <strong>unidad de bodega</strong> (cómo contás stock), después <strong>cómo se vende en caja</strong> (caja, docena, etc.). <strong>Conteo físico</strong> y <strong>Kardex</strong> usan siempre la unidad pequeña.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalProducto" id="btnNuevoProducto">
+                <i class="bi bi-plus-lg me-2"></i> NUEVO PRODUCTO
+            </button>
+            <button type="button" class="btn btn-outline-success rounded-pill px-4 fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalCargarInventario">
+                <i class="bi bi-upload me-2"></i> CARGAR INVENTARIO
+            </button>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <input type="text" id="buscar_inventario" class="form-control form-control-lg" placeholder="🔍 Buscar por código o nombre..." style="max-width: 400px;">
+    </div>
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4 py-3 text-muted small">CÓDIGO</th>
+                            <th class="py-3 text-muted small">PRODUCTO</th>
+                            {% if es_superadmin %}<th class="py-3 text-muted small">EMPRESA</th>{% endif %}
+                            <th class="py-3 text-muted small">SUCURSAL</th>
+                            <th class="py-3 text-muted small text-center">PRECIO <span class="text-muted fw-normal">/ unidad</span></th>
+                            <th class="py-3 text-muted small text-center">STOCK <span class="text-muted fw-normal">(unidad pequeña)</span></th>
+                            <th class="py-3 text-muted small text-end pe-4">ACCIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody_productos">
+                        {% for p in productos %}
+                        <tr data-id="{{ p[0] }}" data-codigo="{{ (p[1] or '')|lower }}" data-nombre="{{ (p[2] or '')|lower }}" data-precio="{{ p[3] }}" data-stock="{{ p[4] }}" data-empresa-id="{{ p[5] if p[5] is not none else '' }}" data-sucursal-id="{{ p[6] if p[6] is not none else '' }}" data-costo="{{ p[9] if p|length > 9 and p[9] is not none else '0' }}" data-promocion-tipo="{{ (p[10] or '')|lower if p|length > 10 else '' }}" data-promocion-valor="{{ p[11] if p|length > 11 and p[11] is not none else '' }}" data-fraccionable="{{ '1' if p|length > 12 and p[12] else '0' }}" data-unidades-por-caja="{{ p[13] if p|length > 13 and p[13] is not none else '' }}" data-unidades-por-docena="{{ p[14] if p|length > 14 and p[14] is not none else '12' }}" data-mh-codigo="{{ p[15] if p|length > 15 else '59' }}">
+                            <td class="ps-4 fw-bold text-primary">{{ p[1] }}</td>
+                            <td>{{ p[2] }}{% if p|length > 10 and p[10] %}<span class="badge bg-warning text-dark ms-1">{% if p[10] == '2X1' %}2x1{% elif p[10] == 'PORCENTAJE' and p|length > 11 and p[11] %}−{{ p[11] }}%{% else %}{{ p[10] }}{% endif %}</span>{% endif %}</td>
+                            {% if es_superadmin %}<td class="small text-muted">{{ p[7] }}</td>{% endif %}
+                            <td class="small">{{ p[8] if p[8] != '—' else 'Todas' }}</td>
+                            <td class="text-center fw-bold">${{ "%.2f"|format(p[3] or 0) }}</td>
+                            <td class="text-center">
+                                {% set stock_val = p[4] %}
+                                {% if stock_val <= 5 %}
+                                <span class="badge bg-danger-subtle text-danger rounded-pill px-3">
+                                    <i class="bi bi-exclamation-triangle-fill me-1"></i> {{ stock_val }} (Bajo)
+                                </span>
+                                {% else %}
+                                <span class="badge bg-success-subtle text-success rounded-pill px-3">
+                                    {{ stock_val }} disponibles
+                                </span>
+                                {% endif %}
+                                {% if p|length > 17 and p[17] %}
+                                <div class="small text-muted mt-1"><span class="badge bg-light text-dark border">{{ p[17] }}</span></div>
+                                {% endif %}
+                                {% if p|length > 16 and p[16] %}
+                                <div class="small text-muted mt-1">{{ p[16] }}</div>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="{{ url_for('admin.inventario_kardex', producto_id=p[0]) }}" class="btn btn-sm btn-outline-secondary me-1" title="Kardex"><i class="bi bi-journal-text"></i> Kardex</a>
+                                <button type="button" class="btn btn-sm btn-outline-primary btn-editar-producto me-1" title="Editar" data-id="{{ p[0] }}" data-codigo="{{ p[1]|e }}" data-nombre="{{ p[2]|e }}" data-precio="{{ p[3] }}" data-stock="{{ p[4] }}" data-empresa-id="{{ p[5] if p[5] is not none else '' }}" data-sucursal-id="{{ p[6] if p[6] is not none else '' }}" data-costo="{{ p[9] if p|length > 9 and p[9] is not none else '0' }}" data-promocion-tipo="{{ (p[10] or '')|upper if p|length > 10 else '' }}" data-promocion-valor="{{ p[11] if p|length > 11 and p[11] is not none else '' }}" data-fraccionable="{{ '1' if p|length > 12 and p[12] else '0' }}" data-unidades-por-caja="{{ p[13] if p|length > 13 and p[13] is not none else '' }}" data-unidades-por-docena="{{ p[14] if p|length > 14 and p[14] is not none else '12' }}" data-mh-codigo="{{ p[15] if p|length > 15 else '59' }}"><i class="bi bi-pencil-square"></i> Editar</button>
+                                <form action="/eliminar_producto/{{ p[0] }}" method="POST" class="d-inline form-eliminar-producto">
+                                    <input type="hidden" name="supervisor_user" class="elim-supervisor-user" value="">
+                                    <input type="hidden" name="supervisor_password" class="elim-supervisor-password" value="">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="bi bi-trash3"></i> Eliminar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalProducto" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-light border-bottom">
+                <div>
+                    <h5 class="modal-title mb-0" id="modalProductoTitulo">Nuevo producto</h5>
+                    <p class="small text-muted mb-0 d-none d-md-block">Paso 1 = bodega · Paso 2 = cómo cobra caja</p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <form action="/guardar_producto" method="POST" id="formProducto" class="modal-producto-form">
+                <input type="hidden" name="producto_id" id="producto_id" value="">
+                <input type="hidden" name="supervisor_user" id="supervisor_user_hidden" value="">
+                <input type="hidden" name="supervisor_password" id="supervisor_password_hidden" value="">
+                <input type="hidden" name="precio_umb_mirror" id="precio_umb_mirror" value="">
+                <div class="modal-body">
+                    {% if es_superadmin and empresas %}
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold"><i class="bi bi-building me-1"></i>Empresa</label>
+                            <select name="empresa_id" id="select_empresa_prod" class="form-select form-select-sm" required>
+                                {% set def_e = (session.get('empresa_id') or 1) | int %}
+                                {% for e in empresas %}
+                                <option value="{{ e[0] }}" {% if e[0] == def_e %}selected{% endif %}>{{ e[1] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold"><i class="bi bi-geo-alt me-1"></i>Sucursal</label>
+                            <select name="sucursal_id" id="select_sucursal_prod" class="form-select form-select-sm">
+                                <option value="">Todas las sucursales</option>
+                            </select>
+                            <span class="text-muted small">Opcional: solo una tienda</span>
+                        </div>
+                    </div>
+                    {% else %}
+                    {% if session.get('empresa_nombre') %}
+                    <p class="small text-muted mb-2"><i class="bi bi-building me-1"></i><strong>{{ session.empresa_nombre }}</strong></p>
+                    {% endif %}
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold"><i class="bi bi-geo-alt me-1"></i>Sucursal</label>
+                        <select name="sucursal_id" id="select_sucursal_prod_emp" class="form-select form-select-sm">
+                            <option value="">Todas las sucursales</option>
+                            {% for s in (sucursales_empresa or []) %}
+                            <option value="{{ s[0] }}">{{ s[1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" for="prod_codigo">Código o barra</label>
+                            <input type="text" name="codigo" id="prod_codigo" class="form-control" placeholder="Ej. 7501234567890" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" for="prod_nombre">Nombre del producto <span class="text-danger">*</span></label>
+                            <input type="text" name="nombre" id="prod_nombre" class="form-control" placeholder="Ej. Café listo 60 sobres" required>
+                        </div>
+                    </div>
+
+                    <div class="card border-primary shadow-sm mb-3">
+                        <div class="card-header bg-primary text-white py-2">
+                            <span class="fw-bold"><i class="bi bi-1-circle me-1"></i>Medida base — bodega y Kardex</span>
+                            <span class="small fw-normal opacity-90 d-block d-md-inline ms-md-2">(siempre la unidad más chica)</span>
+                        </div>
+                        <div class="card-body">
+                            <p class="small text-muted mb-3">Ej.: café en <strong>sobre</strong>, queso en <strong>libra</strong>, refresco en <strong>botella</strong>. El stock de abajo va en esa unidad.</p>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold" for="umb_nombre">Nombre de esa unidad</label>
+                                    <input type="text" name="umb_nombre" id="umb_nombre" class="form-control" maxlength="80" placeholder="Sobre, Libra, Unidad…" value="Unidad base">
+                                    <span class="text-muted small">Así lo verá el cajero en el POS</span>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold" for="prod_mh_unidad">Tipo según Ministerio de Hacienda (DTE)</label>
+                                    <select name="mh_codigo_unidad" id="prod_mh_unidad" class="form-select form-select-sm">
+                                        {% if catalogo_mh_grupos %}
+                                        {% for titulo, opciones in catalogo_mh_grupos %}
+                                        <optgroup label="{{ titulo }}">
+                                            {% for c, d in opciones %}
+                                            <option value="{{ c }}">{{ c }} — {{ d[:72] }}{% if d|length > 72 %}…{% endif %}</option>
+                                            {% endfor %}
+                                        </optgroup>
+                                        {% endfor %}
+                                        {% else %}
+                                        {% for c, d in (catalogo_mh or []) %}
+                                        <option value="{{ c }}">{{ c }} — {{ d[:72] }}{% if d|length > 72 %}…{% endif %}</option>
+                                        {% endfor %}
+                                        {% endif %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row g-3 align-items-end mb-2">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold" for="prod_precio">Precio de venta por 1 unidad ($)</label>
+                                    <input type="text" name="precio" id="prod_precio" class="form-control" inputmode="decimal" placeholder="0.00" value="0.00" autocomplete="off">
+                                    <span class="text-muted small">1 sobre, 1 lb, etc.</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold" for="prod_costo">Costo por 1 unidad ($)</label>
+                                    <input type="text" name="costo" id="prod_costo" class="form-control" inputmode="decimal" placeholder="0.00" value="0.00" autocomplete="off">
+                                    <span class="text-muted small">Opcional, para márgenes</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold" for="prod_stock">Stock ahora (en esa unidad)</label>
+                                    <input type="text" name="stock" id="prod_stock" class="form-control" inputmode="decimal" placeholder="0" value="0" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="form-check form-switch border-top pt-3 mt-2">
+                                <input class="form-check-input" type="checkbox" name="fraccionable" value="1" id="prod_fraccionable" role="switch">
+                                <label class="form-check-label" for="prod_fraccionable"><strong>Venta con decimales</strong> — ej. queso: 0,25 lb o cobrar por monto ($1 de queso)</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-success shadow-sm mb-3">
+                        <div class="card-header bg-success text-white py-2">
+                            <span class="fw-bold"><i class="bi bi-2-circle me-1"></i>Cómo se vende en caja (POS)</span>
+                        </div>
+                        <div class="card-body">
+                            <p class="small text-muted mb-3">Si solo vendés por unidad, podés dejar «caja» vacío. Si vendés por <strong>caja</strong> o <strong>docena</strong>, completá cuántas unidades equivalen.</p>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold" for="prod_upcaja">¿Cuántas unidades trae una caja?</label>
+                                    <input type="number" name="unidades_por_caja" id="prod_upcaja" class="form-control" min="1" step="1" placeholder="Ej. 60 sobres — vacío si no hay caja">
+                                    <span class="text-muted small">Al vender 1 caja, el stock baja esa cantidad</span>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold" for="prod_updocena">Unidades por docena</label>
+                                    <input type="number" name="unidades_por_docena" id="prod_updocena" class="form-control" min="1" step="1" value="12">
+                                    <span class="text-muted small">Normalmente 12</span>
+                                </div>
+                            </div>
+
+                            <div class="rounded border bg-light p-3 mb-3">
+                                <p class="small fw-bold text-secondary mb-2 mb-md-0"><i class="bi bi-calculator me-1"></i>Si pensás en precio de <strong>caja completa</strong> (opcional)</p>
+                                <p class="small text-muted mb-2">Poné el precio de la caja aquí; el sistema calcula el precio por 1 unidad. Si ya cargaste el precio arriba, podés dejar esto vacío.</p>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-12 col-md-4">
+                                        <label class="form-label small mb-0" for="factor_presentacion_comercial">Unidades que entran en esa caja</label>
+                                        <input type="number" name="factor_presentacion_comercial" id="factor_presentacion_comercial" class="form-control form-control-sm" min="0.0001" step="any" placeholder="Igual que arriba o ej. 60">
+                                    </div>
+                                    <div class="col-6 col-md-4">
+                                        <label class="form-label small mb-0" for="precio_por_presentacion">Precio venta caja ($)</label>
+                                        <input type="text" name="precio_por_presentacion" id="precio_por_presentacion" class="form-control form-control-sm" placeholder="Ej. 40" autocomplete="off">
+                                    </div>
+                                    <div class="col-6 col-md-4">
+                                        <label class="form-label small mb-0" for="costo_por_presentacion">Costo compra caja ($)</label>
+                                        <input type="text" name="costo_por_presentacion" id="costo_por_presentacion" class="form-control form-control-sm" placeholder="Opcional" autocomplete="off">
+                                    </div>
+                                </div>
+                                <p class="small text-primary mb-0" id="umb_derivado_hint" aria-live="polite"></p>
+                                <p class="small text-secondary mb-0 mt-2"><i class="bi bi-info-circle me-1"></i>Al reabrir el producto, estos montos de caja se recalculan desde el precio/costo por unidad guardado.</p>
+                            </div>
+
+                            <label class="form-label fw-bold">Otras formas de vender</label>
+                            <p class="small text-muted mb-2">Ej. «Tira», «Six pack». Nombre + cuántas unidades lleva.</p>
+                            <div id="pres_extra_rows" class="small"></div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_pres_extra_add"><i class="bi bi-plus-lg"></i> Agregar presentación</button>
+                            <input type="hidden" name="presentaciones_extra_json" id="presentaciones_extra_json" value="[]">
+                        </div>
+                    </div>
+
+                    <div id="modal_umb_aviso_recuperacion" class="alert alert-warning small py-2 mb-0 d-none" role="status"></div>
+                    <input type="hidden" name="promocion_tipo" id="promocion_tipo_hidden" value="">
+                    <input type="hidden" name="promocion_valor" id="promocion_valor_hidden" value="">
+                </div>
+                <div class="modal-footer bg-light border-top">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar sin guardar</button>
+                    <button type="submit" class="btn btn-success px-4"><i class="bi bi-check-lg me-1"></i>Guardar producto</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Cargar inventario masivo -->
+<div class="modal fade" id="modalCargarInventario" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-upload text-success me-2"></i> Cargar inventario desde Excel o CSV</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('admin.inventario_cargar_masivo') }}" method="POST" enctype="multipart/form-data">
+                <div class="modal-body">
+                    {% if es_superadmin and empresas %}
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Empresa</label>
+                        <select name="empresa_id" class="form-select" required>
+                            {% for e in empresas %}
+                            <option value="{{ e[0] }}" {% if (session.get('empresa_id') or 1) == e[0] %}selected{% endif %}>{{ e[1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Sucursal</label>
+                        <select name="sucursal_id" class="form-select" id="select_sucursal_carga">
+                            <option value="">— Todas las sucursales —</option>
+                            {% for s in (sucursales_empresa or sucursales_todas or []) %}
+                            <option value="{{ s[0] }}">{{ s[1] }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Opcional. Vacío = producto visible en todas.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Archivo (Excel o CSV) <span class="text-danger">*</span></label>
+                        <input type="file" name="archivo" class="form-control" accept=".xlsx,.xls,.csv" required>
+                        <small class="text-muted">Formatos: .xlsx, .xls, .csv</small>
+                    </div>
+                    <div class="alert alert-light border small">
+                        <strong><i class="bi bi-info-circle me-1"></i> Columnas esperadas:</strong>
+                        <code>codigo</code>, <code>nombre</code>, <code>precio</code>, <code>stock</code>, <code>costo</code>
+                        <br>La primera fila debe ser el encabezado. Se aceptan variantes: código/código_barra, producto/descripcion, cantidad/existencia.
+                        <br>
+                        <a href="{{ url_for('admin.inventario_plantilla_carga') }}" class="btn btn-sm btn-outline-primary mt-2">
+                            <i class="bi bi-download me-1"></i> Descargar plantilla Excel
+                        </a>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success fw-bold">
+                        <i class="bi bi-upload me-1"></i> Cargar productos
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Autorización gerente (anti-fraude) -->
+<div class="modal fade modal-supervisor-auth" id="modalClaveSupervisor" tabindex="-1" aria-labelledby="modalClaveSupervisorLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalClaveSupervisorLabel">
+                    <span class="icon-shield"><i class="bi bi-shield-lock"></i></span>
+                    Autorización de Gerente
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label-sup">Usuario</label>
+                    <input type="text" id="supervisor_username" class="form-control" placeholder="Nombre de usuario" autocomplete="username">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label-sup">Contraseña</label>
+                    <input type="password" id="supervisor_password" class="form-control" placeholder="••••••••" autocomplete="current-password">
+                </div>
+                <div id="modal_clave_error" class="alert alert-danger py-2 small d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-autorizar" id="btnAutorizarInventario">Autorizar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .bg-danger-subtle { background-color: #fee2e2 !important; }
+    .bg-success-subtle { background-color: #dcfce7 !important; }
+    .table thead th { border-bottom: none; font-weight: 800; }
+    .table tbody tr { transition: 0.2s; }
+    .table tbody tr:hover { background-color: #f8fafc; }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var requiereClaveSupervisor = {{ (requiere_clave_supervisor|default(false))|tojson }};
+    var pendienteAccion = null;
+
+    var buscar = document.getElementById('buscar_inventario');
+    if (buscar) buscar.addEventListener('input', function() {
+        var q = this.value.toLowerCase().trim();
+        document.querySelectorAll('#tbody_productos tr').forEach(function(tr) {
+            var cod = (tr.dataset.codigo || '');
+            var nom = (tr.dataset.nombre || '');
+            tr.style.display = (!q || cod.indexOf(q) !== -1 || nom.indexOf(q) !== -1) ? '' : 'none';
+        });
+    });
+
+    var modalProdEl = document.getElementById('modalProducto');
+    if (modalProdEl) {
+        modalProdEl.addEventListener('shown.bs.modal', function() {
+            var mb = modalProdEl.querySelector('.modal-body');
+            if (mb) mb.scrollTop = 0;
+        });
+    }
+
+    var esSuper = {{ (es_superadmin or false) | tojson }};
+    var sessionEmpresaId = {{ (session.get('empresa_id') or 1) | tojson }};
+    var sucursalesData = {{ (sucursales_todas or []) | tojson }};
+
+    function fillSucursalesSuper(empId, selectedSucId) {
+        var sel = document.getElementById('select_sucursal_prod');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">— Todas las sucursales (empresa) —</option>';
+        var eid = String(empId);
+        sucursalesData.forEach(function(s) {
+            if (String(s[2]) !== eid) return;
+            var opt = document.createElement('option');
+            opt.value = s[0];
+            opt.textContent = s[1];
+            if (selectedSucId && String(s[0]) === String(selectedSucId)) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    }
+
+    /** Igual que servidor: acepta '60', '60.0' (parseInt fallaba y no rellenaba presentación comercial). */
+    function parseUnidadesCajaDocena(raw) {
+        if (raw == null || String(raw).trim() === '') return 0;
+        var v = parseFloat(String(raw).replace(',', '.'));
+        if (isNaN(v) || v <= 0) return 0;
+        return Math.round(v);
+    }
+
+    function inferirUnidadesPorCajaDesdeNombre(nom) {
+        if (!nom) return 0;
+        var m = String(nom).toUpperCase().match(/(\d+)\s*SOBRES?\b/);
+        if (!m) return 0;
+        var n = parseInt(m[1], 10);
+        return n > 0 ? n : 0;
+    }
+
+    function factorPresentacionEfectivo() {
+        var fEl = document.getElementById('factor_presentacion_comercial');
+        var raw = fEl && fEl.value ? String(fEl.value).trim().replace(',', '.') : '';
+        var f = parseFloat(raw);
+        if (!isNaN(f) && f > 0) return f;
+        var upEl = document.getElementById('prod_upcaja');
+        var n = upEl ? parseUnidadesCajaDocena(upEl.value) : 0;
+        return n > 0 ? n : 0;
+    }
+
+    function recalcUmbDesdePresentacion() {
+        var n = factorPresentacionEfectivo();
+        var ppcRaw = document.getElementById('precio_por_presentacion');
+        var cpcRaw = document.getElementById('costo_por_presentacion');
+        var pp = document.getElementById('prod_precio');
+        var cc = document.getElementById('prod_costo');
+        var hint = document.getElementById('umb_derivado_hint');
+        var ppc = parseFloat(String(ppcRaw && ppcRaw.value ? ppcRaw.value : '').replace(',', '.'));
+        var cpc = parseFloat(String(cpcRaw && cpcRaw.value ? cpcRaw.value : '').replace(',', '.'));
+        /* No derivar si el monto es 0: parseFloat("0") al tipear el primer cero pisaba el precio UMB con 0.0000. */
+        if (n > 0 && !isNaN(ppc) && Math.abs(ppc) > 1e-12 && pp) {
+            pp.value = (ppc / n).toFixed(4);
+        }
+        if (n > 0 && !isNaN(cpc) && Math.abs(cpc) > 1e-12 && cc) {
+            cc.value = (cpc / n).toFixed(4);
+        }
+        if (hint) {
+            if (n > 0 && (!isNaN(ppc) || !isNaN(cpc))) {
+                hint.textContent = 'Se guardará: precio UMB = (precio presentación ÷ ' + n + ')' + (!isNaN(cpc) ? '; costo UMB = (costo presentación ÷ ' + n + ')' : '') + '. Vacíe los montos por presentación si prefiere editar solo los valores UMB.';
+            } else if (n > 0) {
+                hint.textContent = 'Indique precio y/o costo por presentación para calcular automáticamente los valores por UMB, o rellene directamente precio/costo UMB.';
+            } else if (!isNaN(ppc) || !isNaN(cpc)) {
+                hint.textContent = 'Indique el factor UMB por presentación (ej. 60 caja, 100 quintal→libra) o «Unidades por caja» como respaldo.';
+            } else {
+                hint.textContent = '';
+            }
+        }
+        if (typeof syncPrecioUmbMirror === 'function') syncPrecioUmbMirror();
+        if (typeof actualizarAvisoRecuperacionUmb === 'function') actualizarAvisoRecuperacionUmb();
+    }
+
+    function actualizarAvisoRecuperacionUmb() {
+        var av = document.getElementById('modal_umb_aviso_recuperacion');
+        if (!av) return;
+        var pid = String(document.getElementById('producto_id').value || '').trim();
+        if (!pid) {
+            av.classList.add('d-none');
+            av.textContent = '';
+            return;
+        }
+        var prRaw = String(document.getElementById('prod_precio').value || '').replace(',', '.').trim();
+        var pr = parseFloat(prRaw);
+        if (isNaN(pr)) pr = 0;
+        if (pr > 1e-12) {
+            av.classList.add('d-none');
+            av.textContent = '';
+            return;
+        }
+        var co = parseFloat(String(document.getElementById('prod_costo').value || '').replace(',', '.')) || 0;
+        var st = parseFloat(String(document.getElementById('prod_stock').value || '').replace(',', '.')) || 0;
+        if (co > 1e-12 || st > 0) {
+            av.classList.remove('d-none');
+            av.innerHTML = '<i class="bi bi-info-circle me-1"></i><strong>Precio de venta UMB en $0:</strong> por eso, al recuperar el producto la casilla de <em>precio por presentación</em> queda vacía (0 × factor no se muestra). Si ya cargaste <em>costo</em> UMB, sí puede verse el costo por presentación (costo UMB × factor). Completá <strong>Precio por UMB</strong> o el <strong>precio de venta por esa presentación</strong> y guardá; sin precio UMB el POS cobrará $0.';
+        } else {
+            av.classList.add('d-none');
+            av.textContent = '';
+        }
+    }
+
+    ['prod_precio', 'prod_costo', 'prod_stock'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', actualizarAvisoRecuperacionUmb);
+    });
+
+    ['prod_upcaja', 'factor_presentacion_comercial'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', recalcUmbDesdePresentacion);
+            el.addEventListener('change', recalcUmbDesdePresentacion);
+        }
+    });
+    ['precio_por_presentacion', 'costo_por_presentacion'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', recalcUmbDesdePresentacion);
+        }
+    });
+
+    /** Si el usuario edita precio/costo UMB a mano, vaciar montos por presentación para que el guardado no los pise (servidor también divide si vienen llenos). */
+    function limpiarPrecioPresentacionSiUmbManual() {
+        var ppc = document.getElementById('precio_por_presentacion');
+        if (ppc) ppc.value = '';
+        recalcUmbDesdePresentacion();
+    }
+    function limpiarCostoPresentacionSiUmbManual() {
+        var cpc = document.getElementById('costo_por_presentacion');
+        if (cpc) cpc.value = '';
+        recalcUmbDesdePresentacion();
+    }
+    function syncPrecioUmbMirror() {
+        var pe = document.getElementById('prod_precio');
+        var m = document.getElementById('precio_umb_mirror');
+        if (pe && m) m.value = String(pe.value || '').trim().replace(',', '.');
+    }
+    var prUmb = document.getElementById('prod_precio');
+    if (prUmb) {
+        prUmb.addEventListener('input', limpiarPrecioPresentacionSiUmbManual);
+        prUmb.addEventListener('input', syncPrecioUmbMirror);
+    }
+    var coUmb = document.getElementById('prod_costo');
+    if (coUmb) {
+        coUmb.addEventListener('input', limpiarCostoPresentacionSiUmbManual);
+    }
+
+    function syncPresExtraJson() {
+        var rows = document.querySelectorAll('#pres_extra_rows .pres-extra-row');
+        var arr = [];
+        rows.forEach(function(row) {
+            var n = row.querySelector('.pres-extra-nombre');
+            var f = row.querySelector('.pres-extra-factor');
+            if (n && f && n.value.trim()) {
+                var fac = parseFloat(f.value);
+                if (fac > 0) arr.push({ nombre: n.value.trim(), factor: fac });
+            }
+        });
+        var hid = document.getElementById('presentaciones_extra_json');
+        if (hid) hid.value = JSON.stringify(arr);
+    }
+
+    function addPresExtraRow(nombre, factor) {
+        var wrap = document.getElementById('pres_extra_rows');
+        if (!wrap) return;
+        var div = document.createElement('div');
+        div.className = 'pres-extra-row row g-1 mb-1 align-items-center';
+        var nv = (nombre || '').replace(/"/g, '&quot;');
+        var fv = factor != null && factor !== '' ? String(factor) : '';
+        div.innerHTML = '<div class="col"><input type="text" class="form-control form-control-sm pres-extra-nombre" placeholder="Ej. Tira" value="' + nv + '"></div>' +
+            '<div class="col-auto" style="min-width:7rem"><input type="number" min="0.0001" step="any" class="form-control form-control-sm pres-extra-factor" placeholder="Factor" value="' + fv + '"></div>' +
+            '<div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger pres-extra-remove" title="Quitar">&times;</button></div>';
+        div.querySelector('.pres-extra-remove').addEventListener('click', function() { div.remove(); });
+        wrap.appendChild(div);
+    }
+
+    var btnPresAdd = document.getElementById('btn_pres_extra_add');
+    if (btnPresAdd) btnPresAdd.addEventListener('click', function() { addPresExtraRow('', ''); });
+
+    var btnNuevo = document.getElementById('btnNuevoProducto');
+    if (btnNuevo) btnNuevo.addEventListener('click', function() {
+        var formProducto = document.getElementById('formProducto');
+        if (formProducto) formProducto.dataset.stockOriginal = '';
+        document.getElementById('modalProductoTitulo').textContent = 'Nuevo producto';
+        document.getElementById('producto_id').value = '';
+        document.getElementById('prod_codigo').value = '';
+        document.getElementById('prod_nombre').value = '';
+        document.getElementById('prod_precio').value = '0.00';
+        var pmNuevo = document.getElementById('precio_umb_mirror');
+        if (pmNuevo) pmNuevo.value = '';
+        document.getElementById('prod_costo').value = '0.00';
+        document.getElementById('prod_stock').value = '0';
+        var mh = document.getElementById('prod_mh_unidad');
+        if (mh) mh.value = '59';
+        document.getElementById('prod_fraccionable').checked = false;
+        document.getElementById('prod_upcaja').value = '';
+        document.getElementById('prod_updocena').value = '12';
+        var fpc = document.getElementById('factor_presentacion_comercial');
+        if (fpc) fpc.value = '';
+        var ppcn = document.getElementById('precio_por_presentacion');
+        var cpcn = document.getElementById('costo_por_presentacion');
+        if (ppcn) ppcn.value = '';
+        if (cpcn) cpcn.value = '';
+        var udh = document.getElementById('umb_derivado_hint');
+        if (udh) udh.textContent = '';
+        var avRec = document.getElementById('modal_umb_aviso_recuperacion');
+        if (avRec) {
+            avRec.classList.add('d-none');
+            avRec.textContent = '';
+        }
+        var umb = document.getElementById('umb_nombre');
+        if (umb) umb.value = 'Unidad base';
+        var pr = document.getElementById('pres_extra_rows');
+        if (pr) pr.innerHTML = '';
+        var pj = document.getElementById('presentaciones_extra_json');
+        if (pj) pj.value = '[]';
+        var pth = document.getElementById('promocion_tipo_hidden');
+        var pvh = document.getElementById('promocion_valor_hidden');
+        if (pth) pth.value = '';
+        if (pvh) pvh.value = '';
+        if (esSuper) {
+            var se = document.getElementById('select_empresa_prod');
+            if (se) {
+                se.value = String(sessionEmpresaId);
+                fillSucursalesSuper(sessionEmpresaId, null);
+            }
+        } else {
+            var ss = document.getElementById('select_sucursal_prod_emp');
+            if (ss) ss.value = '';
+        }
+    });
+
+    var selEmpresa = document.getElementById('select_empresa_prod');
+    if (selEmpresa) {
+        selEmpresa.addEventListener('change', function() {
+            fillSucursalesSuper(this.value, null);
+        });
+    }
+
+    var tbody = document.getElementById('tbody_productos');
+    if (tbody) tbody.addEventListener('click', function(e) {
+        var btn = e.target.closest('.btn-editar-producto');
+        if (!btn) return;
+        e.preventDefault();
+        var modalEl = document.getElementById('modalProducto');
+        document.getElementById('modalProductoTitulo').textContent = 'Editar producto';
+        var formProducto = document.getElementById('formProducto');
+        formProducto.dataset.stockOriginal = btn.getAttribute('data-stock') || '0';
+        document.getElementById('producto_id').value = btn.getAttribute('data-id') || '';
+        var pthEd = document.getElementById('promocion_tipo_hidden');
+        var pvhEd = document.getElementById('promocion_valor_hidden');
+        if (pthEd) pthEd.value = (btn.getAttribute('data-promocion-tipo') || '').trim();
+        if (pvhEd) {
+            var pvRaw = btn.getAttribute('data-promocion-valor');
+            pvhEd.value = (pvRaw !== null && pvRaw !== undefined && String(pvRaw).trim() !== '') ? String(pvRaw).trim() : '';
+        }
+        document.getElementById('prod_codigo').value = btn.getAttribute('data-codigo') || '';
+        document.getElementById('prod_nombre').value = btn.getAttribute('data-nombre') || '';
+        document.getElementById('prod_precio').value = btn.getAttribute('data-precio') || '0.00';
+        syncPrecioUmbMirror();
+        document.getElementById('prod_costo').value = btn.getAttribute('data-costo') || '0.00';
+        document.getElementById('prod_stock').value = btn.getAttribute('data-stock') || '0';
+        var mhEl = document.getElementById('prod_mh_unidad');
+        if (mhEl) {
+            var mhc = (btn.getAttribute('data-mh-codigo') || '59').trim();
+            if (mhEl.querySelector('option[value="' + mhc + '"]')) mhEl.value = mhc;
+            else mhEl.value = '59';
+        }
+        document.getElementById('prod_fraccionable').checked = btn.getAttribute('data-fraccionable') === '1';
+        var nomProdBtn = (btn.getAttribute('data-nombre') || '').trim();
+        var upFromDb = parseUnidadesCajaDocena(btn.getAttribute('data-unidades-por-caja'));
+        var upInfer = inferirUnidadesPorCajaDesdeNombre(nomProdBtn);
+        var upcn = upFromDb > 0 ? upFromDb : upInfer;
+        var upcajaField = document.getElementById('prod_upcaja');
+        if (upcajaField) {
+            if (upFromDb > 0) upcajaField.value = String(upFromDb);
+            else if (upInfer > 0) upcajaField.value = String(upInfer);
+            else upcajaField.value = '';
+        }
+        var updParsed = parseUnidadesCajaDocena(btn.getAttribute('data-unidades-por-docena'));
+        if (updParsed < 2) updParsed = 12;
+        document.getElementById('prod_updocena').value = String(updParsed);
+        var prn = parseFloat(String(btn.getAttribute('data-precio') || '0').replace(',', '.')) || 0;
+        var con = parseFloat(String(btn.getAttribute('data-costo') || '0').replace(',', '.')) || 0;
+        var facEl = document.getElementById('factor_presentacion_comercial');
+        if (facEl) facEl.value = upcn > 0 ? String(upcn) : '';
+        var ppcEl = document.getElementById('precio_por_presentacion');
+        var cpcEl = document.getElementById('costo_por_presentacion');
+        if (ppcEl && cpcEl) {
+            if (upcn > 0) {
+                ppcEl.value = prn > 0 ? (prn * upcn).toFixed(2) : '';
+                cpcEl.value = con > 0 ? (con * upcn).toFixed(2) : '';
+            } else {
+                ppcEl.value = '';
+                cpcEl.value = '';
+            }
+        }
+        recalcUmbDesdePresentacion();
+        actualizarAvisoRecuperacionUmb();
+        var prEl = document.getElementById('pres_extra_rows');
+        if (prEl) prEl.innerHTML = '';
+        var umbEl = document.getElementById('umb_nombre');
+        if (umbEl) umbEl.value = 'Unidad base';
+        var pidEdit = document.getElementById('producto_id').value;
+        if (pidEdit) {
+            fetch('/inventario/presentaciones/' + pidEdit).then(function(r) { return r.json(); }).then(function(d) {
+                if (d && d.umb_nombre && umbEl) umbEl.value = d.umb_nombre;
+                if (d && d.extras && d.extras.length) {
+                    d.extras.forEach(function(ex) { addPresExtraRow(ex.nombre, ex.factor); });
+                }
+                syncPresExtraJson();
+                if (typeof actualizarAvisoRecuperacionUmb === 'function') actualizarAvisoRecuperacionUmb();
+            }).catch(function() {});
+        }
+        var eid = btn.getAttribute('data-empresa-id') || '';
+        var sid = btn.getAttribute('data-sucursal-id') || '';
+        if (esSuper) {
+            var se = document.getElementById('select_empresa_prod');
+            if (se && eid) se.value = eid;
+            fillSucursalesSuper(eid || sessionEmpresaId, sid || null);
+            var ssel = document.getElementById('select_sucursal_prod');
+            if (ssel && sid) ssel.value = sid;
+        } else {
+            var ss = document.getElementById('select_sucursal_prod_emp');
+            if (ss) ss.value = sid || '';
+        }
+        if (typeof bootstrap !== 'undefined') {
+            var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        } else {
+            modalEl.classList.add('show');
+            modalEl.style.display = 'block';
+        }
+    });
+
+    if (esSuper && document.getElementById('select_empresa_prod')) {
+        fillSucursalesSuper(sessionEmpresaId, null);
+    }
+
+    function solicitarAutorizacion(descripcion, accion) {
+        if (!requiereClaveSupervisor) {
+            accion();
+            return;
+        }
+        pendienteAccion = accion;
+        var descEl = document.getElementById('modalClaveDescripcion');
+        if (descEl && descripcion) descEl.textContent = descripcion;
+        document.getElementById('supervisor_username').value = '';
+        document.getElementById('supervisor_password').value = '';
+        document.getElementById('modal_clave_error').classList.add('d-none');
+        var modal = new bootstrap.Modal(document.getElementById('modalClaveSupervisor'));
+        modal.show();
+        document.getElementById('supervisor_username').focus();
+    }
+
+    document.getElementById('btnAutorizarInventario').addEventListener('click', async function() {
+        var username = document.getElementById('supervisor_username').value.trim();
+        var password = document.getElementById('supervisor_password').value;
+        var errEl = document.getElementById('modal_clave_error');
+        if (!username || !password) {
+            errEl.textContent = 'Ingrese usuario y contraseña.';
+            errEl.classList.remove('d-none');
+            return;
+        }
+        try {
+            var resp = await fetch('/autorizar_eliminar_item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username, password: password })
+            });
+            var data = await resp.json();
+            if (data.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('modalClaveSupervisor')).hide();
+                if (pendienteAccion) {
+                    pendienteAccion(username, password);
+                    pendienteAccion = null;
+                }
+            } else {
+                errEl.textContent = data.msg || 'No autorizado.';
+                errEl.classList.remove('d-none');
+            }
+        } catch (e) {
+            errEl.textContent = 'Error de conexión.';
+            errEl.classList.remove('d-none');
+        }
+    });
+
+    document.getElementById('formProducto').addEventListener('submit', function(e) {
+        /* No llamar recalcUmbDesdePresentacion() aquí: con precio por presentación rellenado (ej. al abrir editar)
+           volvería a sobrescribir el precio UMB justo antes de enviar y el servidor haría lo mismo. */
+        syncPrecioUmbMirror();
+        syncPresExtraJson();
+        if (!requiereClaveSupervisor) return;
+        var pid = document.getElementById('producto_id').value;
+        if (!pid || !pid.trim()) return;
+        var stockOrig = parseFloat(String(document.getElementById('formProducto').dataset.stockOriginal || '0').replace(',', '.')) || 0;
+        var stockNuevo = parseFloat(String(document.getElementById('prod_stock').value || '0').replace(',', '.')) || 0;
+        /* Solo bloquear si hay riesgo: bajar stock o dejar en 0 viniendo de stock > 0. Si ya era 0 y sigue 0, debe poder guardar precio/nombre. */
+        var riesgoStock = stockOrig > 0 && (stockNuevo < stockOrig || stockNuevo === 0);
+        if (!riesgoStock) return;
+        e.preventDefault();
+        solicitarAutorizacion('Para modificar el stock se requieren credenciales de Gerente.', function(user, pass) {
+            document.getElementById('supervisor_user_hidden').value = user || '';
+            document.getElementById('supervisor_password_hidden').value = pass || '';
+            syncPrecioUmbMirror();
+            syncPresExtraJson();
+            document.getElementById('formProducto').submit();
+        });
+    });
+
+    document.querySelectorAll('.form-eliminar-producto').forEach(function(frm) {
+        frm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (!confirm('¿Eliminar este producto?')) return;
+            if (!requiereClaveSupervisor) {
+                frm.submit();
+                return;
+            }
+            solicitarAutorizacion('Para eliminar este producto se requieren credenciales de Gerente.', function(user, pass) {
+                var uInp = frm.querySelector('.elim-supervisor-user');
+                var pInp = frm.querySelector('.elim-supervisor-password');
+                if (uInp) uInp.value = user || '';
+                if (pInp) pInp.value = pass || '';
+                frm.submit();
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

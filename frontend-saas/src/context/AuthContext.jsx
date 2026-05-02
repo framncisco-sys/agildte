@@ -16,44 +16,58 @@ export function AuthProvider({ children }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const loginStore = useAuthStore((s) => s.login)
   const logoutStore = useAuthStore((s) => s.logout)
-  const setToken = useAuthStore((s) => s.setToken)
-  const setUser = useAuthStore((s) => s.setUser)
 
   const role = user?.role ?? null
 
+  /**
+   * Sincroniza el perfil con GET /auth/me/ cuando cambia el token (o el refresh).
+   * IMPORTANTE: no incluir setUser/setToken en dependencias — con zustand persist pueden
+   * cambiar de referencia tras cada actualización y provocar un bucle infinito de getMe().
+   */
   useEffect(() => {
     if (!token) return
-    if (user?.id) return
+
+    let cancelled = false
 
     const restoreSession = async () => {
+      const { setUser, setToken, logout: logoutFromStore } = useAuthStore.getState()
+      const refreshNow = useAuthStore.getState().refresh
+
       try {
         const me = await getMe()
+        if (cancelled) return
         setUser(me.user)
         if (me.empresa_default) useEmpresaStore.getState().setEmpresa(me.empresa_default)
         if (me.empresas?.length) useEmpresaStore.getState().setEmpresas(me.empresas)
       } catch (err) {
+        if (cancelled) return
         if (err.response?.status !== 401) return
-        if (refresh) {
+        if (refreshNow) {
           try {
-            const data = await refreshToken(refresh)
+            const data = await refreshToken(refreshNow)
             setToken(data.access, data.refresh)
             const me = await getMe()
+            if (cancelled) return
             setUser(me.user)
             if (me.empresa_default) useEmpresaStore.getState().setEmpresa(me.empresa_default)
             if (me.empresas?.length) useEmpresaStore.getState().setEmpresas(me.empresas)
           } catch {
-            logoutStore()
+            logoutFromStore()
             window.location.href = '/login'
           }
         } else {
-          logoutStore()
+          logoutFromStore()
           window.location.href = '/login'
         }
       }
     }
 
     restoreSession()
-  }, [token, refresh, user?.id, setUser, logoutStore])
+    return () => {
+      cancelled = true
+    }
+    // Solo valores que deben disparar una nueva sincronización (no funciones del store).
+  }, [token, refresh])
 
   const login = async (credentials) => {
     const data = await apiLogin(credentials)

@@ -105,8 +105,9 @@ def login_api(request):
             primera = Empresa.objects.first()
             empresa_default = {'id': primera.id, 'nombre': primera.nombre}
 
-    from .permissions import get_user_role
+    from .permissions import ROLE_DEFAULT, get_perfil_pos_flags, get_user_role
     role = get_user_role(user)
+    acceso_pos, solo_pos = get_perfil_pos_flags(user)
     resp = {
         'access': str(refresh.access_token),
         'refresh': str(refresh),
@@ -115,7 +116,9 @@ def login_api(request):
             'username': user.username,
             'email': user.email or '',
             'is_superuser': user.is_superuser,
-            'role': role or 'VENDEDOR',
+            'role': role or ROLE_DEFAULT,
+            'acceso_posagil': acceso_pos,
+            'facturacion_solo_pos': solo_pos,
         },
         'empresa_default': empresa_default,
     }
@@ -163,8 +166,9 @@ def auth_me_api(request):
     if not request.user or not request.user.is_authenticated:
         return Response({'detail': 'No autenticado'}, status=status.HTTP_401_UNAUTHORIZED)
     user = request.user
-    from .permissions import get_user_role
+    from .permissions import ROLE_DEFAULT, get_perfil_pos_flags, get_user_role
     role = get_user_role(user)
+    acceso_pos, solo_pos = get_perfil_pos_flags(user)
     empresa_default = None
     try:
         perfil = PerfilUsuario.objects.select_related('empresa').get(user=user, activo=True)
@@ -180,7 +184,9 @@ def auth_me_api(request):
             'username': user.username,
             'email': user.email or '',
             'is_superuser': user.is_superuser,
-            'role': role or 'VENDEDOR',
+            'role': role or ROLE_DEFAULT,
+            'acceso_posagil': acceso_pos,
+            'facturacion_solo_pos': solo_pos,
         },
         'empresa_default': empresa_default,
     }
@@ -619,8 +625,8 @@ class VentaViewSet(viewsets.ModelViewSet):
         if r is not None:
             return r
 
-        # Procesamiento asíncrono
-        if getattr(settings, 'USE_ASYNC_FACTURACION', True):
+        # Procesamiento asíncrono (alineado con USE_ASYNC_FACTURACION en settings; default False = síncrono)
+        if getattr(settings, 'USE_ASYNC_FACTURACION', False):
             TareaFacturacion.objects.get_or_create(
                 venta=venta,
                 defaults={'estado': 'Pendiente'}
@@ -1606,14 +1612,15 @@ def crear_venta(request):
         return Response(serializer.data, status=201)
     return Response(serializer.errors, status=400)
 
-@api_view(['POST'])
-@throttle_classes([DTERateThrottle])
-def crear_venta_con_detalles(request):
-    """Crea una venta con sus detalles y envía a Hacienda (síncrono o asíncrono según USE_ASYNC_FACTURACION)."""
+def _crear_venta_con_detalles_response(request, *, desde_pos=False):
+    """Crea venta con detalles y facturación MH (compartido con endpoint PosAgil).
+
+    desde_pos=True (solo /api/pos/procesar-venta/): por defecto facturación síncrona ante MH
+    (POSAGIL_FACTURACION_SINCRONA) para que el comprobante pueda incluir sello sin cola asíncrona.
+    """
     from django.conf import settings
     from .services.facturacion_service import FacturacionService, FacturacionServiceError
 
-    # Validar tenant: empresa_id del body debe estar permitida para el usuario
     empresa_id = request.data.get('empresa_id')
     if empresa_id is not None:
         r = require_empresa_allowed(request, empresa_id)
@@ -1626,7 +1633,6 @@ def crear_venta_con_detalles(request):
 
     venta = serializer.save()
 
-    # Si la empresa está en contingencia MH, NO enviamos a Hacienda ni encolamos tarea.
     empresa = venta.empresa
     if empresa and getattr(empresa, 'contingencia_activa', False):
         venta.estado_dte = 'PendienteEnvio'
@@ -1636,8 +1642,11 @@ def crear_venta_con_detalles(request):
         data['procesamiento'] = 'contingencia'
         return Response(data, status=201)
 
-    if getattr(settings, 'USE_ASYNC_FACTURACION', True):
-        # Procesamiento asíncrono: encolar y responder de inmediato
+    usar_async = getattr(settings, 'USE_ASYNC_FACTURACION', False)
+    if desde_pos and getattr(settings, 'POSAGIL_FACTURACION_SINCRONA', True):
+        usar_async = False
+
+    if usar_async:
         TareaFacturacion.objects.get_or_create(
             venta=venta,
             defaults={'estado': 'Pendiente'}
@@ -1647,7 +1656,6 @@ def crear_venta_con_detalles(request):
         data['procesamiento'] = 'asincrono'
         return Response(data, status=201)
 
-    # Procesamiento síncrono (legacy)
     mensaje = None
     dte_preview = None
     receptor_preview = None
@@ -1657,7 +1665,6 @@ def crear_venta_con_detalles(request):
         venta.refresh_from_db()
         if resultado.get('exito'):
             mensaje = 'Factura enviada a Hacienda correctamente.'
-            # Enviar correo solo cuando MH aceptó el DTE (modo síncrono)
             if venta.estado_dte == 'AceptadoMH':
                 try:
                     enviar_factura_email(venta)
@@ -1684,6 +1691,72 @@ def crear_venta_con_detalles(request):
     if receptor_preview is not None:
         data['receptor_preview'] = receptor_preview
     return Response(data, status=201)
+
+
+@api_view(['POST'])
+@throttle_classes([DTERateThrottle])
+def crear_venta_con_detalles(request):
+    """Crea una venta con sus detalles y envía a Hacienda (síncrono o asíncrono según USE_ASYNC_FACTURACION)."""
+    return _crear_venta_con_detalles_response(request)
+
+
+def _mensaje_pos_con_observaciones_mh(body: dict, msg_base: str) -> str:
+    """Adjunta texto útil de MH (descripción/código/lista) al mensaje que ve el POS."""
+    omh = body.get('observaciones_mh')
+    if not isinstance(omh, dict):
+        return msg_base
+    partes = [msg_base]
+    desc = (omh.get('descripcion') or '').strip()
+    cod = omh.get('codigo')
+    if desc or cod is not None:
+        partes.append(f"MH ({cod}): {desc}".strip() if cod is not None else f"MH: {desc}".strip())
+    obs = omh.get('observaciones') or []
+    if isinstance(obs, list) and obs:
+        partes.append('; '.join(str(x) for x in obs[:12]))
+    elif obs:
+        partes.append(str(obs))
+    return ' — '.join(p for p in partes if p)
+
+
+@api_view(['POST'])
+@throttle_classes([DTERateThrottle])
+def pos_procesar_venta(request):
+    """
+    Entrada JSON desde PosAgil: mismo cuerpo que POST /api/ventas/crear-con-detalles/.
+    Respuesta normalizada con ok/mensaje para cerrar venta en el POS.
+    """
+    inner = _crear_venta_con_detalles_response(request, desde_pos=True)
+    if inner.status_code != 201:
+        return inner
+    body = inner.data
+    estado = (body.get('estado_dte') or '').strip()
+    proc = body.get('procesamiento') or ''
+
+    if estado == 'AceptadoMH':
+        msg = 'Factura validada'
+        ok = True
+        status_out = 201
+    elif proc == 'asincrono':
+        msg = 'Factura registrada; envío a Hacienda en proceso.'
+        ok = True
+        status_out = 201
+    elif proc == 'contingencia':
+        msg = body.get('mensaje') or 'Documento registrado en contingencia.'
+        ok = True
+        status_out = 201
+    elif estado in ('RechazadoMH', 'ErrorEnvio'):
+        msg = body.get('mensaje') or 'DTE no aceptado por Hacienda'
+        msg = _mensaje_pos_con_observaciones_mh(body, msg)
+        ok = False
+        status_out = 400
+    else:
+        msg = body.get('mensaje') or 'Factura validada'
+        ok = estado not in ('RechazadoMH', 'ErrorEnvio')
+        status_out = 201 if ok else 400
+        if not ok:
+            msg = _mensaje_pos_con_observaciones_mh(body, msg)
+
+    return Response({'ok': ok, 'mensaje': msg, 'venta': body}, status=status_out)
 
 @api_view(['GET'])
 def listar_productos(request):

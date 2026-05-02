@@ -1,0 +1,41 @@
+"""Convierte un usuario existente en Superusuario (ADMIN). Uso: python crear_superadmin.py <username>"""
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+if os.path.exists(env_path):
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip().strip('"').strip("'")
+                if k and k not in os.environ:
+                    os.environ[k] = v
+
+from database import ConexionDB
+
+if len(sys.argv) < 2:
+    print("Uso: python crear_superadmin.py <username>")
+    print("Ejemplo: python crear_superadmin.py admin")
+    sys.exit(1)
+
+username = sys.argv[1].strip()
+db = ConexionDB()
+# UPDATE with RETURNING needs fetch, so we use raw connection
+import psycopg2
+conn = psycopg2.connect(**db.config)
+cur = conn.cursor()
+cur.execute(
+    "UPDATE usuarios SET rol = 'ADMIN' WHERE TRIM(username) = %s RETURNING id, username",
+    (username,),
+)
+r = cur.fetchall()
+conn.commit()
+cur.close()
+conn.close()
+if r:
+    print(f"OK: Usuario '{r[0][1]}' (id={r[0][0]}) convertido a Superusuario (ADMIN).")
+else:
+    print(f"Error: No se encontró usuario '{username}'.")

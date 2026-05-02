@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext'
 /**
  * Protege rutas que requieren autenticación.
  * Si no hay token, redirige a /login.
- * Si se pasa allowedRoles (ej. ['ADMIN', 'CONTADOR']) y el usuario no tiene uno de esos roles, redirige a /unauthorized o Dashboard.
+ * Si se pasa allowedRoles y el usuario no tiene uno de esos roles, redirige a /unauthorized o Dashboard.
+ * El PosAgil no se abre solo al cargar el portal: usar «Abrir Pos Agil» en la barra superior (SSO con JWT).
  */
 export function RequireAuth({ children, allowedRoles }) {
   const { isAuthenticated, role } = useAuth()

@@ -275,6 +275,9 @@ class PerfilUsuarioAdmin(admin.ModelAdmin):
             'description': 'El ROL del usuario se asigna en la sección Grupos del formulario de Usuario.',
             'fields': ('user', 'empresa'),
         }),
+        ('PosAgil', {
+            'fields': ('acceso_posagil', 'facturacion_solo_pos'),
+        }),
         ('Estado', {
             'fields': ('activo',),
         }),
@@ -299,7 +302,7 @@ class PerfilUsuarioInline(admin.StackedInline):
     can_delete = False
     verbose_name_plural = 'Empresa asignada'
     fk_name = 'user'
-    fields = ('empresa', 'activo')
+    fields = ('empresa', 'activo', 'acceso_posagil', 'facturacion_solo_pos')
     extra = 1
 
 

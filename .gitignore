@@ -26,3 +26,6 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+
+# Respaldo del .git interno (SistemaPOs unificado al monorepo; no subir)
+SistemaPOs/.git_sistemaPOSEmbed_backup/

@@ -1,0 +1,186 @@
+{% extends "layout.html" %}
+{% block content %}
+<style>
+    .card { border: none; border-radius: 15px; box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.1); }
+    .table thead { background-color: #4e73df; color: white; }
+</style>
+
+<div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h2 class="fw-bold mb-0"><i class="bi bi-person-badge-fill text-primary"></i> Gestión de Usuarios</h2>
+            {% if session.get('empresa_nombre') and not es_superadmin %}
+            <p class="text-muted small mb-0 mt-1"><i class="bi bi-building me-1"></i> <strong>Empresa actual:</strong> {{ session.empresa_nombre }} — Solo ve y gestiona usuarios de esta empresa.</p>
+            {% elif es_superadmin %}
+            <p class="text-muted small mb-0 mt-1"><i class="bi bi-shield-check me-1"></i> <strong>Superusuario</strong> — Gestiona usuarios de todas las empresas.</p>
+            {% endif %}
+        </div>
+        <a href="/" class="btn btn-secondary btn-sm rounded-pill">Volver</a>
+    </div>
+
+    <div class="alert alert-info py-2 px-3 mb-4 small" role="alert">
+        <strong>Jerarquía:</strong> Empresa → Sucursales → Usuarios. Cada usuario pertenece a una empresa.
+        {% if es_superadmin %}
+        <strong>Como superusuario</strong> puede asignar usuario a cualquier empresa y sucursal.
+        {% else %}
+        Los usuarios que crees se asignan a <strong>{{ session.empresa_nombre or 'su empresa' }}</strong>.
+        {% endif %}
+    </div>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm p-4 border-0 rounded-4 {{ 'border-primary border-2' if usuario else '' }}" id="formUsuario">
+                <h5 class="fw-bold mb-3">{{ 'Editar Usuario' if usuario else 'Nuevo Usuario' }}</h5>
+                {% if not es_superadmin %}
+                <div class="alert alert-light border py-2 px-3 mb-3 small">
+                    <i class="bi bi-building text-primary"></i> <strong>Empresa:</strong> {{ session.empresa_nombre or '—' }}<br>
+                    <i class="bi bi-geo-alt text-secondary"></i> Sucursal: de esta empresa.
+                </div>
+                {% endif %}
+                <form action="/guardar_usuario" method="POST" id="formUsuarioPost">
+                    <input type="hidden" name="usuario_id" value="{{ usuario[0] if usuario else '' }}">
+                    {% if es_superadmin %}
+                    <div class="mb-3">
+                        <label class="small fw-bold">Empresa</label>
+                        <select name="empresa" id="select_empresa" class="form-select">
+                            <option value="0" {{ 'selected' if usuario and usuario|length > 4 and not usuario[4] else '' }}>— Sin empresa (Superusuario) —</option>
+                            {% for e in empresas %}
+                            <option value="{{ e[0] }}" {{ 'selected' if usuario and usuario|length > 4 and usuario[4] and usuario[4]|string == e[0]|string else '' }}>{{ e[1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small fw-bold">Sucursal Asignada</label>
+                        <select name="sucursal" id="select_sucursal" class="form-select">
+                            <option value="">— Sin sucursal —</option>
+                        </select>
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="empresa" value="{{ session.empresa_id }}">
+                    {% endif %}
+                    <div class="mb-3">
+                        <label class="small fw-bold">Usuario <span class="text-danger">*</span></label>
+                        <input type="text" name="user" class="form-control" value="{{ usuario[1] if usuario else '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small fw-bold">Contraseña {{ '(dejar en blanco para no cambiar)' if usuario else '' }}</label>
+                        <input type="password" name="pass" class="form-control" {{ 'placeholder="••••••••"' if usuario else 'required' }}>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small fw-bold">Rol</label>
+                        <select name="rol" class="form-select">
+                            <option value="CAJERO" {{ 'selected' if usuario and usuario[2] == 'CAJERO' else '' }}>Cajero — Ventas y clientes</option>
+                            <option value="BODEGUERO" {{ 'selected' if usuario and usuario[2] == 'BODEGUERO' else '' }}>Bodeguero — Inventario y stock</option>
+                            <option value="CONTADOR" {{ 'selected' if usuario and usuario[2] == 'CONTADOR' else '' }}>Contador — Reportes contables</option>
+                            <option value="GERENTE" {{ 'selected' if usuario and usuario[2] == 'GERENTE' else '' }}>Gerente — Todo de su empresa</option>
+                            {% if usuario and usuario[2] in ('ADMIN', 'SUPERADMIN') %}
+                            <option value="{{ usuario[2] }}" selected>Superusuario ({{ usuario[2] }})</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                    {% if not es_superadmin %}
+                    <div class="mb-3">
+                        <label class="small fw-bold">Sucursal Asignada</label>
+                        <select name="sucursal" class="form-select">
+                            <option value="">— Sin sucursal —</option>
+                            {% for s in sucursales %}
+                            <option value="{{ s[0] }}" {{ 'selected' if usuario and usuario[3] and usuario[3]|string == s[0]|string else '' }}>{{ s[1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <button type="submit" class="btn btn-primary w-100 fw-bold">{{ 'Actualizar Usuario' if usuario else 'Crear Usuario' }}</button>
+                    {% if usuario %}<a href="/usuarios" class="btn btn-outline-secondary w-100 mt-2">Cancelar</a>{% endif %}
+                </form>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm p-4 border-0 rounded-4">
+                <p class="small text-muted mb-2"><i class="bi bi-people"></i> {% if es_superadmin %}Todos los usuarios{% else %}Usuarios de <strong>{{ session.empresa_nombre or 'esta empresa' }}</strong>{% endif %}</p>
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            {% if es_superadmin %}<th>Empresa</th>{% endif %}
+                            <th>Usuario</th>
+                            <th>Rol</th>
+                            <th>Sucursal</th>
+                            <th>Estado</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in usuarios %}
+                        <tr>
+                            {% if es_superadmin %}<td class="small">{{ u[5] if u|length > 5 else '—' }}</td>{% endif %}
+                            <td class="fw-bold">{{ u[1] if u|length > 1 else '' }}</td>
+                            <td><span class="badge bg-light text-dark border">{{ u[2] if u|length > 2 else '' }}</span></td>
+                            <td>{{ (u[3] if u|length > 3 else '') or '—' }}</td>
+                            <td>
+                                {% set activo_val = u[4] if u|length > 4 else false %}
+                                {% if activo_val %}
+                                <span class="text-success small"><i class="bi bi-circle-fill"></i> Activo</span>
+                                {% else %}
+                                <span class="text-muted small"><i class="bi bi-circle"></i> Inactivo</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% set u_rol = (u[2] if u|length > 2 else '')|string|upper %}
+                                {% set roles_editable = ('CAJERO', 'BODEGUERO', 'CONTADOR', 'GERENTE') %}
+{% set puede_editar = u|length > 0 and (u[4] if u|length > 4 else false) and (es_superadmin or (u_rol in roles_editable)) %}
+                                {% if puede_editar %}
+                                <a href="/usuarios/editar/{{ u[0] }}" class="btn btn-sm btn-outline-primary" title="Editar" style="cursor:pointer;"><i class="bi bi-pencil"></i> Editar</a>
+                                <form action="/eliminar_usuario/{{ u[0] }}" method="POST" class="d-inline ms-1" onsubmit="return confirm('¿Desactivar este usuario? No podrá iniciar sesión.');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Desactivar"><i class="bi bi-trash"></i></button>
+                                </form>
+                                {% elif u|length > 0 and (u[4] if u|length > 4 else false) %}
+                                <span class="text-muted small" title="Solo superusuario puede editar usuarios con rol superusuario">—</span>
+                                {% else %}
+                                <span class="text-muted small">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="{{ 6 if es_superadmin else 5 }}" class="text-center text-muted py-4">No hay usuarios.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% if es_superadmin and sucursales_todas %}
+<script>
+(function() {
+    const sucursalesData = {{ (sucursales_todas or []) | tojson }};
+    const selEmpresa = document.getElementById('select_empresa');
+    const selSucursal = document.getElementById('select_sucursal');
+    const usuarioSucursalId = {{ (usuario[3] if usuario and usuario[3] else none) | tojson }};
+    const usuarioEmpresaId = {{ (usuario[4] if usuario and usuario|length > 4 and usuario[4] else none) | tojson }};
+
+    function actualizarSucursales() {
+        if (!selEmpresa || !selSucursal) return;
+        const empId = selEmpresa.value;
+        selSucursal.innerHTML = '<option value="">— Sin sucursal —</option>';
+        sucursalesData.forEach(function(s) {
+            if (String(s[2]) === String(empId)) {
+                const opt = document.createElement('option');
+                opt.value = s[0];
+                opt.textContent = s[1];
+                if (usuarioSucursalId && String(s[0]) === String(usuarioSucursalId)) opt.selected = true;
+                selSucursal.appendChild(opt);
+            }
+        });
+    }
+    if (selEmpresa) {
+        selEmpresa.addEventListener('change', actualizarSucursales);
+        if (usuarioEmpresaId) selEmpresa.value = usuarioEmpresaId;
+        actualizarSucursales();
+    }
+})();
+</script>
+{% endif %}
+{% if usuario %}
+<script>document.getElementById('formUsuario')?.scrollIntoView({ behavior: 'smooth', block: 'start' });</script>
+{% endif %}
+{% endblock %}

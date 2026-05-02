@@ -1,0 +1,311 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <h2 class="mb-4 fw-bold text-dark"><i class="bi bi-graph-up-arrow text-primary"></i> Panel de Control de Ventas</h2>
+
+    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
+        <form method="GET" action="/reporte" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small fw-bold text-muted">DESDE:</label>
+                <input type="date" name="inicio" class="form-control border-0 bg-light" value="{{ inicio }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold text-muted">HASTA:</label>
+                <input type="date" name="fin" class="form-control border-0 bg-light" value="{{ fin }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100 fw-bold shadow-sm">
+                    <i class="bi bi-filter"></i> ACTUALIZAR
+                </button>
+            </div>
+            <div class="col-md-2">
+                <a href="/reporte/exportar_excel?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-success w-100 fw-bold shadow-sm text-white">
+                    <i class="bi bi-file-earmark-excel"></i> EXCEL
+                </a>
+            </div>
+            <div class="col-md-2">
+                <a href="/reporte/exportar_pdf?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-danger w-100 fw-bold shadow-sm text-white">
+                    <i class="bi bi-file-earmark-pdf"></i> PDF
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card p-4 border-0 shadow-sm" style="border-radius: 15px; border-left: 5px solid #1cc88a !important;">
+                <small class="text-muted fw-bold">TOTAL VENDIDO (NETO + IVA)</small>
+                {% set total_periodo = total_periodo | default(0) | float %}
+                <h2 class="display-6 fw-bold text-success">$ {{ "{:,.2f}".format(total_periodo) }}</h2>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-4 border-0 shadow-sm" style="border-radius: 15px; border-left: 5px solid #4e73df !important;">
+                <small class="text-muted fw-bold">PROMEDIO DIARIO</small>
+                <h2 class="display-6 fw-bold text-primary">$ {{ "{:,.2f}".format(promedio_diario | default(0) | float) }}</h2>
+                <small class="text-muted">{{ dias_periodo | default(1) }} días</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-4 border-0 shadow-sm" style="border-radius: 15px; border-left: 5px solid #36b9cc !important;">
+                <small class="text-muted fw-bold">PROMEDIO MENSUAL (PROYECTADO)</small>
+                <h2 class="display-6 fw-bold" style="color: #36b9cc;">$ {{ "{:,.2f}".format(promedio_mensual | default(0) | float) }}</h2>
+                <small class="text-muted">30 días</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-4 border-0 shadow-sm" style="border-radius: 15px; border-left: 5px solid #f6c23e !important;">
+                <small class="text-muted fw-bold">IVA A DECLARAR (13%)</small>
+                {% set iva_periodo = total_periodo - (total_periodo / 1.13) %}
+                <h2 class="display-6 fw-bold text-warning">$ {{ "{:,.2f}".format(iva_periodo) }}</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+            <div class="card p-4 shadow-sm border-0 h-100" style="border-radius: 15px;">
+                <h6 class="fw-bold mb-4 text-muted text-uppercase">Evolución de Ingresos</h6>
+                <div style="height: 350px;">
+                    <canvas id="graficaEvolucion"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card p-4 shadow-sm border-0 h-100" style="border-radius: 15px;">
+                <h6 class="fw-bold mb-4 text-muted text-uppercase">Métodos de Cobro</h6>
+                <div style="max-width: 250px; margin: 0 auto;">
+                    <canvas id="graficaMetodos"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+            <div class="card p-4 shadow-sm border-0 h-100" style="border-radius: 15px;">
+                <h6 class="fw-bold mb-4 text-muted text-uppercase">Productos más vendidos (período)</h6>
+                <div style="height: 300px;">
+                    <canvas id="graficaTopProductos"></canvas>
+                </div>
+                {% if top_productos %}
+                <div class="table-responsive mt-3">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="small">Producto</th>
+                                <th class="small text-end">Vendido</th>
+                                <th class="small text-end">Prom. diario</th>
+                                <th class="small text-end">Prom. mensual</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in top_productos %}
+                            {% set cant = (p[1] | default(0) | float) %}
+                            {% set dias = (dias_periodo | default(1) | float) %}
+                            {% set prom_dia = (cant / dias) if dias else 0 %}
+                            {% set prom_mes = (prom_dia * 30) %}
+                            <tr>
+                                <td class="small text-truncate" style="max-width: 180px;" title="{{ p[0] }}">{{ (p[0] or '')[:35] }}{% if (p[0] or '')|length > 35 %}...{% endif %}</td>
+                                <td class="small text-end">{{ cant }}</td>
+                                <td class="small text-end">{{ "%.1f"|format(prom_dia) }}</td>
+                                <td class="small text-end fw-bold">{{ "%.0f"|format(prom_mes) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card p-4 shadow-sm border-0 h-100" style="border-radius: 15px;">
+                <h6 class="fw-bold mb-4 text-muted text-uppercase"><i class="bi bi-cart-plus text-warning"></i> Sugerencia de compra</h6>
+                <p class="small text-muted mb-3">Productos con stock bajo que conviene reponer</p>
+                {% if sugerencia_compra %}
+                <ul class="list-group list-group-flush">
+                    {% for s in sugerencia_compra %}
+                    <li class="list-group-item px-0 d-flex justify-content-between align-items-center border-0 py-2">
+                        <span class="small text-truncate" style="max-width: 65%;" title="{{ s[1] }}">{{ s[1][:35] }}{% if s[1]|length > 35 %}...{% endif %}</span>
+                        <div class="text-end">
+                            <span class="badge bg-light text-danger border border-danger">Stock: {{ "%.0f"|format(s[2]|float) }}</span>
+                            {% if s[3]|float > 0 %}
+                            <span class="badge bg-light text-primary border border-primary ms-1" title="Vendido en período">+{{ "%.0f"|format(s[3]|float) }}</span>
+                            {% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <a href="{{ url_for('admin.inventario') }}" class="btn btn-outline-primary btn-sm mt-2 w-100"><i class="bi bi-box-seam"></i> Ir a Inventario</a>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-check-circle fs-1 text-success"></i>
+                    <p class="small mb-0 mt-2">Stock en niveles normales</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h6 class="m-0 fw-bold text-primary">Historial Detallado de Ventas</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle m-0 table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">ID</th>
+                        <th>FECHA / HORA</th>
+                        <th>CLIENTE</th>
+                        <th>MÉTODO</th>
+                        <th class="text-end">TOTAL</th>
+                        <th class="text-center">ACCIONES</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in ventas_detalle %}
+                    <tr>
+                        <td class="ps-4"><span class="badge bg-light text-primary border">#{{ v[0] if v|length > 0 else '' }}</span></td>
+                        <td>{{ v[1] if v|length > 1 else '' }}</td>
+                        <td>{{ v[2] if v|length > 2 else '' }}</td>
+                        <td>
+                            {% if v|length > 3 and v[3] == 'EFECTIVO' %}
+                                <span class="badge rounded-pill bg-success-subtle text-success px-3">EFECTIVO</span>
+                            {% else %}
+                                <span class="badge rounded-pill bg-primary-subtle text-primary px-3">TARJETA</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end fw-bold text-dark">$ {{ "{:,.2f}".format(v[4] if v|length > 4 else 0) }}</td>
+                        <td class="text-center">
+                            <a href="/imprimir_ticket/{{ v[0] if v|length > 0 else '' }}?copias=2" target="_blank" class="btn btn-sm btn-light border text-primary fw-bold">
+                                <i class="bi bi-printer"></i> REIMPRIMIR
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No se encontraron ventas en este periodo.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // 1. GRÁFICA DE BARRAS MODERNAS (Evolución)
+    const ctxEvolucion = document.getElementById('graficaEvolucion').getContext('2d');
+    
+    // Crear degradado para las barras
+    const gradient = ctxEvolucion.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(78, 115, 223, 1)');   // Azul fuerte arriba
+    gradient.addColorStop(1, 'rgba(78, 115, 223, 0.2)'); // Azul transparente abajo
+
+    new Chart(ctxEvolucion, {
+        type: 'bar', // Estilo de Barras
+        data: {
+            labels: {{ (labels_barras or []) | tojson }},
+            datasets: [{
+                label: 'Ventas Diarias ($)',
+                data: {{ (valores_barras or []) | tojson }},
+                backgroundColor: gradient,
+                borderColor: '#4e73df',
+                borderWidth: 1,
+                borderRadius: 10, // Bordes redondeados
+                barThickness: 40,  // Grosor de la barra
+                hoverBackgroundColor: '#2e59d9'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1f2937',
+                    padding: 12,
+                    callbacks: {
+                        label: function(context) {
+                            return ' Total: $ ' + context.parsed.y.toFixed(2);
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: '#f1f5f9' },
+                    ticks: {
+                        callback: (v) => '$ ' + v
+                    }
+                }
+            }
+        }
+    });
+
+    // 2. GRÁFICA TOP PRODUCTOS (horizontal bar)
+    const ctxTop = document.getElementById('graficaTopProductos').getContext('2d');
+    const nombresTop = {{ (nombres_top_productos or []) | tojson }};
+    const cantidadesTop = {{ (cantidades_top_productos or []) | tojson }};
+    new Chart(ctxTop, {
+        type: 'bar',
+        data: {
+            labels: nombresTop,
+            datasets: [{
+                label: 'Unidades vendidas',
+                data: cantidadesTop,
+                backgroundColor: 'rgba(30, 58, 95, 0.8)',
+                borderColor: '#1e3a5f',
+                borderWidth: 1,
+                borderRadius: 6,
+                barThickness: 24,
+                hoverBackgroundColor: '#1e3a5f'
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: (c) => c.parsed.x + ' unidades' } }
+            },
+            scales: {
+                x: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                y: { grid: { display: false } }
+            }
+        }
+    });
+
+    // 3. GRÁFICA DE DONA (Métodos de Pago)
+    const ctxMetodos = document.getElementById('graficaMetodos').getContext('2d');
+    new Chart(ctxMetodos, {
+        type: 'doughnut',
+        data: {
+            labels: ['Efectivo', 'Tarjeta'],
+            datasets: [{
+                data: [{{ count_efectivo | default(0) }}, {{ count_tarjeta | default(0) }}],
+                backgroundColor: ['#1cc88a', '#4e73df'],
+                borderWidth: 0,
+                hoverOffset: 15
+            }]
+        },
+        options: {
+            plugins: {
+                legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } }
+            },
+            cutout: '75%'
+        }
+    });
+</script>
+{% endblock %}

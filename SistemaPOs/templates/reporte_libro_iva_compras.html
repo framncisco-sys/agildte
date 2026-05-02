@@ -1,0 +1,126 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
+            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-cart-check text-primary"></i> Libro de IVA Compras</h2>
+            <p class="text-muted small mb-0">Facturas de proveedores gravadas — Retención 1% según Gran Contribuyente (MH El Salvador)</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ url_for('admin.reporte_libro_iva_compras_exportar_excel') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-success fw-bold text-white"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+            <a href="{{ url_for('admin.reporte_libro_iva_compras_exportar_csv') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-info fw-bold text-white"><i class="bi bi-file-earmark-text"></i> CSV</a>
+            <a href="{{ url_for('admin.reporte_libro_iva_compras_exportar_pdf') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-danger fw-bold text-white"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+        </div>
+    </div>
+
+    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
+        <form method="GET" action="{{ url_for('admin.reporte_libro_iva_compras') }}" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Desde</label>
+                <input type="date" name="inicio" class="form-control" value="{{ inicio }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Hasta</label>
+                <input type="date" name="fin" class="form-control" value="{{ fin }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-filter"></i> Filtrar</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-2">
+            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #1e3a5f;">
+                <small class="text-muted fw-bold">Compras gravadas</small>
+                <h4 class="fw-bold text-dark">$ {{ "{:,.2f}".format(total_gravado|float) }}</h4>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #059669;">
+                <small class="text-muted fw-bold">IVA 13%</small>
+                <h4 class="fw-bold text-success">$ {{ "{:,.2f}".format(total_iva|float) }}</h4>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #7c3aed;">
+                <small class="text-muted fw-bold">Total compras</small>
+                <h4 class="fw-bold" style="color:#7c3aed">$ {{ "{:,.2f}".format(total_gen|float) }}</h4>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #dc2626;">
+                <small class="text-muted fw-bold">Ret. practicada</small>
+                <h4 class="fw-bold text-danger">$ {{ "{:,.2f}".format(ret_practicada|float) }}</h4>
+                <small class="text-muted">(Nosotros retuvimos)</small>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #ea580c;">
+                <small class="text-muted fw-bold">Ret. sufrida</small>
+                <h4 class="fw-bold" style="color:#ea580c">$ {{ "{:,.2f}".format(ret_sufrida|float) }}</h4>
+                <small class="text-muted">(Proveedor retuvo)</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-light border mb-3" style="border-radius: 10px;">
+        <small><strong>Auditoría / Contador:</strong> La retención <b>practicada</b> es el 1% que usted retuvo al proveedor (cuando usted es Gran Contribuyente y él no). La retención <b>sufrida</b> es el 1% que el proveedor le retuvo (cuando él es Grande y usted no). Base gravada &gt; $100 para que aplique.</small>
+    </div>
+
+    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h6 class="m-0 fw-bold text-primary">Detalle por compra</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle m-0 table-hover table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">N°</th>
+                        <th>Fecha</th>
+                        <th>Proveedor</th>
+                        <th>NIT / NRC</th>
+                        <th class="text-end">Compra gravada</th>
+                        <th class="text-end">IVA</th>
+                        <th class="text-end">Total</th>
+                        <th class="text-end">Ret. IVA 1%</th>
+                        <th>Tipo ret.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in filas %}
+                    <tr>
+                        <td class="ps-4">#{{ r[0] }}</td>
+                        <td>{{ r[1] }}</td>
+                        <td>{{ (r[2] or '—')[:35] }}</td>
+                        <td class="small">{{ (r[3] or '—')[:20] }}</td>
+                        <td class="text-end">$ {{ "{:,.2f}".format(r[4]|float) }}</td>
+                        <td class="text-end">$ {{ "{:,.2f}".format(r[5]|float) }}</td>
+                        <td class="text-end fw-bold">$ {{ "{:,.2f}".format(r[6]|float) }}</td>
+                        <td class="text-end">{{ "$ {:,.2f}".format(r[7]|float) if r[7] else "—" }}</td>
+                        <td>
+                            {% if r|length > 8 and r[8] %}
+                            <span class="badge bg-danger">Practicada</span>
+                            {% elif r[7] %}
+                            <span class="badge bg-warning text-dark">Sufrida</span>
+                            {% else %}
+                            —
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay compras gravadas en el período.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

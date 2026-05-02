@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { shouldRedirectFromAgildteToPos } from '../../constants/roles'
+import { getPosAgilSsoUrl } from '../../utils/posAgilUrl'
 
 /**
  * Página de login: logo, card con inputs Usuario y Contraseña (iconos),
  * botón Ingresar, mensaje de error en rojo.
- * Usa login() que llama a /api/token/ y luego /api/auth/me/.
+ * Usa login() que llama a /api/auth/login/.
  */
 export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, isAuthenticated } = useAuth()
+  const { login, isAuthenticated, user, token } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -18,9 +21,18 @@ export function LoginPage() {
 
   const from = location.state?.from?.pathname || '/dashboard'
 
+  /** Tras login con contraseña: vendedor PosAgil puede ir al POS por SSO (una sola vez). */
+  function redirectPosAgilHard() {
+    const t = token || useAuthStore.getState().token
+    window.location.href = getPosAgilSsoUrl(t)
+  }
+
+  // Si ya hay sesión y se abre /login, volver al área privada (incluye personal PosAgil: el POS se abre con el botón).
   useEffect(() => {
-    if (isAuthenticated) navigate(from, { replace: true })
-  }, [isAuthenticated, navigate, from])
+    if (!isAuthenticated || !user?.role) return
+    if (location.pathname !== '/login') return
+    navigate(from, { replace: true })
+  }, [isAuthenticated, user?.role, location.pathname, from, navigate])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -31,10 +43,14 @@ export function LoginPage() {
     }
     setLoading(true)
     try {
-      await login({
+      const data = await login({
         username: username.trim(),
         password,
       })
+      if (shouldRedirectFromAgildteToPos(data?.user)) {
+        redirectPosAgilHard()
+        return
+      }
       navigate(from, { replace: true })
     } catch (err) {
       const msg =

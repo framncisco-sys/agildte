@@ -1,0 +1,193 @@
+{% extends "layout.html" %}
+{% block content %}
+<style>
+    .card { border: none; border-radius: 15px; box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.1); }
+    .table thead { background-color: #4e73df; color: white; }
+</style>
+
+<div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold"><i class="bi bi-people-fill text-primary"></i> Gestión de Clientes</h2>
+        <div>
+            <a href="/configuracion" class="btn btn-outline-primary btn-sm rounded-pill me-2">Empresa</a>
+            <a href="/sucursales" class="btn btn-outline-primary btn-sm rounded-pill me-2">Sucursales</a>
+            <a href="/" class="btn btn-secondary btn-sm rounded-pill">Volver a Ventas</a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card p-4 {{ 'border-primary border-2' if cliente else '' }}" id="formCliente">
+                <h5 class="fw-bold mb-3">{{ 'Editar Cliente' if cliente else 'Nuevo Cliente' }}</h5>
+                {% if session.get('empresa_nombre') and not es_superadmin %}
+                <p class="small text-muted mb-2"><i class="bi bi-building"></i> Empresa: <strong>{{ session.empresa_nombre }}</strong></p>
+                {% endif %}
+                <form action="/guardar_cliente" method="POST">
+                    <input type="hidden" name="cliente_id" value="{{ cliente_dict.id if cliente_dict else '' }}">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Razón Social / Nombre <span class="text-danger">*</span></label>
+                        <input type="text" name="nombre_cliente" class="form-control" value="{{ cliente_dict.nombre if cliente_dict else '' }}" required placeholder="Nombre o razón social del cliente">
+                    </div>
+                    {% set es_super = (es_superadmin or (rol_actual or session.get('rol')) in ('ADMIN', 'SUPERADMIN')) %}
+                    {% if es_super %}
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Empresa <span class="text-danger">*</span></label>
+                        <select name="empresa_id" id="sel_empresa" class="form-select" {{ 'required' if empresas else '' }}>
+                            {% if not empresas %}<option value="">— No hay empresas —</option>{% endif %}
+                            {% for e in (empresas or []) %}
+                            <option value="{{ e[0] }}" data-emp="{{ e[0] }}" {{ 'selected' if (cliente_dict and cliente_dict.empresa_id == e[0]) or (not cliente_dict and session.get('empresa_id') == e[0]) else '' }}>{{ e[1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Sucursal</label>
+                        <select name="sucursal_id" id="sel_sucursal" class="form-select">
+                            <option value="" data-emp="">— Sin sucursal —</option>
+                            {% for s in (sucursales_todas or []) %}
+                            <option value="{{ s[0] }}" data-emp="{{ s[2] }}" {{ 'selected' if cliente_dict and cliente_dict.sucursal_id == s[0] else '' }}>{{ s[1] }}{% if (empresas_map or {}) and s[2] %} ({{ (empresas_map or {}).get(s[2], '') }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Tipo de Documento</label>
+                        <select name="tipo_documento" class="form-select">
+                            <option value="">— Sin documento —</option>
+                            <option value="NIT" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'NIT' else '' }}>NIT</option>
+                            <option value="NRC" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'NRC' else '' }}>NRC</option>
+                            <option value="DUI" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'DUI' else '' }}>DUI</option>
+                            <option value="Pasaporte" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'Pasaporte' else '' }}>Pasaporte</option>
+                            <option value="Carné Residencia" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'Carné Residencia' else '' }}>Carné Residencia</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Número de Documento</label>
+                        <input type="text" id="numero_documento" name="numero_documento" class="form-control" value="{{ cliente_dict.numero_documento if cliente_dict else '' }}" placeholder="Según tipo: NIT 0614-161386-001-4, DUI 00000000-0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Actividad Económica (código)</label>
+                        <input type="text" list="actividades_cliente" name="codigo_actividad_economica" class="form-control" value="{{ (cliente_dict.get('codigo_actividad_economica') or '') if cliente_dict else '' }}" placeholder="Busque código (ej: 47111)...">
+                        {% if actividades %}
+                        <datalist id="actividades_cliente">
+                            {% for a in actividades %}
+                            <option value="{{ a[0] }}">{{ a[0] }} — {{ (a[1] or '')[:70] }}</option>
+                            {% endfor %}
+                        </datalist>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Correo Electrónico</label>
+                        <input type="email" name="correo" class="form-control" value="{{ cliente_dict.correo if cliente_dict else '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Dirección</label>
+                        <textarea name="direccion" class="form-control" rows="2">{{ cliente_dict.direccion if cliente_dict else '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Teléfono</label>
+                        <input type="text" name="telefono" class="form-control" value="{{ cliente_dict.telefono if cliente_dict else '' }}" placeholder="2222-2222">
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="es_contribuyente" {% if cliente_dict and cliente_dict.es_contribuyente %}checked{% endif %}>
+                            <label class="form-check-label small">Es contribuyente</label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="es_gran_contribuyente" {% if cliente_dict and cliente_dict.get('es_gran_contribuyente') %}checked{% endif %}>
+                            <label class="form-check-label small">Gran Contribuyente</label>
+                        </div>
+                        <small class="text-muted">Retención IVA 1% aplica si cliente y empresa difieren en Gran Contribuyente y venta gravada &gt; $100.</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 fw-bold">{{ 'Actualizar Cliente' if cliente else 'Registrar Cliente' }}</button>
+                    {% if cliente %}<a href="/clientes" class="btn btn-outline-secondary w-100 mt-2">Cancelar</a>{% endif %}
+                </form>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card p-4">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Tipo Doc.</th>
+                            <th>Número</th>
+                            <th>Gran Contrib.</th>
+                            <th>Dirección</th>
+                            <th>Teléfono</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in clientes %}
+                        <tr>
+                            <td class="fw-bold">{{ c[1] if c|length > 1 else '' }}</td>
+                            <td><span class="badge bg-secondary">{{ (c[2] if c|length > 2 else '') or '—' }}</span></td>
+                            <td class="small">{{ (c[3] if c|length > 3 else '') or '—' }}</td>
+                            <td>{% if c|length > 6 and c[6] %}<span class="badge bg-info">Sí</span>{% else %}—{% endif %}</td>
+                            <td class="small text-muted">{% if c|length > 7 and c[7] %}{{ (c[7] or '')[:20] }}{{ '...' if (c[7] or '')|length > 20 else '' }}{% else %}—{% endif %}</td>
+                            <td class="small">{{ (c[8] if c|length > 8 else '') or '—' }}</td>
+                            <td class="text-center">
+                                <a href="/clientes/editar/{{ c[0] if c|length > 0 else '' }}" class="btn btn-sm btn-outline-primary" title="Editar" style="cursor:pointer;"><i class="bi bi-pencil"></i> Editar</a>
+                                <form action="/eliminar_cliente/{{ c[0] }}" method="POST" class="d-inline ms-1" onsubmit="return confirm('¿Eliminar este cliente?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="text-center text-muted py-4">No hay clientes.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    const selTipo = document.querySelector('select[name="tipo_documento"]');
+    const inpDoc = document.getElementById('numero_documento');
+    let maskDoc = null;
+    function aplicarMascaraDoc() {
+        if (maskDoc) { try { maskDoc.destroy(); } catch(e){} maskDoc = null; }
+        const tipo = (selTipo?.value || '').toUpperCase();
+        if (tipo === 'NIT') {
+            maskDoc = IMask(inpDoc, { mask: '0000-000000-000-0', lazy: false });
+        } else if (tipo === 'DUI') {
+            maskDoc = IMask(inpDoc, { mask: '00000000-0', lazy: false });
+        } else if (tipo === 'NRC') {
+            maskDoc = IMask(inpDoc, { mask: '000000-0', lazy: false });
+        } else {
+            inpDoc.placeholder = 'Según tipo (Pasaporte, Carné: texto libre)';
+        }
+    }
+    if (selTipo && inpDoc) {
+        selTipo.addEventListener('change', aplicarMascaraDoc);
+        aplicarMascaraDoc();
+    }
+    const selEmp = document.getElementById('sel_empresa');
+    const selSuc = document.getElementById('sel_sucursal');
+    if (selEmp && selSuc) {
+        function filtrarSucursales() {
+            const empId = String(selEmp.value || '');
+            const opts = selSuc.querySelectorAll('option');
+            opts.forEach(function(o) {
+                const emp = o.dataset.emp || '';
+                const mostrar = !emp || emp === empId;
+                o.style.display = mostrar ? '' : 'none';
+                if (o.value && emp && emp !== empId) o.selected = false;
+            });
+        }
+        selEmp.addEventListener('change', filtrarSucursales);
+        filtrarSucursales();
+    }
+    {% if cliente %}
+    document.getElementById('formCliente')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    {% endif %}
+})();
+</script>
+{% endblock %}

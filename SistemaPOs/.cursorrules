@@ -1,0 +1,8 @@
+# Reglas del proyecto
+
+## Créditos de programación
+- **Programador:** Oscar Amaya Romero
+- Al crear archivos nuevos (Python, HTML, etc.), agregar al inicio:
+  - Python: `# Programador: Oscar Amaya Romero`
+  - HTML: `<!-- Programador: Oscar Amaya Romero -->`
+- El crédito debe estar oculto (comentario), nunca visible en la interfaz del sistema.

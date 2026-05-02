@@ -1,0 +1,295 @@
+<!-- Programador: Oscar Amaya Romero -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    {% set tcomp = (venta[4] if venta|length > 4 else 'TICKET')|string|trim|upper %}
+    <title>{% if tcomp == 'CREDITO_FISCAL' %}Comprobante de crédito fiscal{% else %}Factura consumidor final{% endif %} — #{{ venta[0] }}</title>
+    <style>
+        @page { size: A4; margin: 12mm; }
+        * { box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            font-size: 10px;
+            color: #1a1a1a;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 10mm 12mm;
+            line-height: 1.3;
+            border: 1px solid #9ca3af;
+        }
+        .titulo-principal {
+            text-align: center;
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            line-height: 1.25;
+        }
+        .ver { position: absolute; top: 10px; right: 12mm; font-size: 9px; font-weight: 700; }
+        .bloque-superior {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .caja-identificacion {
+            flex: 1;
+            min-width: 200px;
+            border: 2px solid #2563eb;
+            padding: 8px 10px;
+            background: #eff6ff;
+            font-size: 8px;
+            font-family: monospace;
+        }
+        .caja-identificacion .etq { font-weight: 700; color: #1e40af; margin-bottom: 2px; }
+        .caja-identificacion .val { word-break: break-all; }
+        .caja-qr {
+            width: 80px;
+            height: 80px;
+            border: 1px solid #cbd5e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            color: #718096;
+        }
+        .caja-metadatos {
+            width: 140px;
+            border: 1px solid #cbd5e0;
+            padding: 8px 10px;
+            font-size: 9px;
+        }
+        .caja-metadatos .fila { margin-bottom: 4px; }
+        .caja-metadatos .etq { font-weight: 600; }
+        .participantes {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 10px 0;
+        }
+        .caja-participante {
+            border: 1px solid #374151;
+            padding: 8px 10px;
+            background: #fff;
+        }
+        .caja-participante .titulo {
+            font-weight: 800;
+            text-transform: uppercase;
+            font-size: 10px;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #9ca3af;
+        }
+        .caja-participante .fila { margin-bottom: 3px; font-size: 9px; }
+        .caja-participante .etq { font-weight: 600; display: inline-block; min-width: 100px; }
+        table.dte-lineas {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 8px;
+        }
+        table.dte-lineas th, table.dte-lineas td {
+            border: 1px solid #6b7280;
+            padding: 4px 3px;
+            text-align: left;
+        }
+        table.dte-lineas th {
+            background: #374151;
+            color: #fff;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        table.dte-lineas th.cen, table.dte-lineas td.cen { text-align: center; }
+        table.dte-lineas th.num, table.dte-lineas td.num { text-align: right; }
+        .pie-totales {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 8px;
+        }
+        .totales-dte {
+            width: 260px;
+            border: 1px solid #374151;
+            font-size: 9px;
+        }
+        .totales-dte .fila {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 8px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .totales-dte .fila.total-final {
+            background: #374151;
+            color: #fff;
+            font-weight: 800;
+        }
+        .pie-documento {
+            margin-top: 14px;
+            padding-top: 10px;
+            border-top: 1px solid #9ca3af;
+            font-size: 9px;
+        }
+        .pie-documento .fila { margin-bottom: 4px; }
+        .pie-documento .etq { font-weight: 600; display: inline-block; min-width: 140px; }
+        .pagina { text-align: right; margin-top: 12px; font-size: 8px; color: #6b7280; }
+        .no-print { margin-top: 12px; text-align: center; }
+        .copia-etiqueta { font-size: 9px; margin-bottom: 6px; font-weight: 700; text-align: center; }
+        .copia-separador { page-break-before: always; }
+        @media print {
+            body { border: none; padding: 0; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body onload="window.print()">
+    {% set num_copias = copias|default(1) %}
+    {% for i in range(num_copias) %}
+    {% if i > 0 %}<div class="copia-separador"></div>{% endif %}
+    {% if num_copias > 1 %}<div class="copia-etiqueta">{% if i == 0 %}— COPIA CLIENTE —{% else %}— COPIA ESTABLECIMIENTO —{% endif %}</div>{% endif %}
+    {% set tcomp = (venta[4] if venta|length > 4 else 'TICKET')|string|trim|upper %}
+    {% set total_num = venta[2] | float %}
+    {% set descuento_doc = descuento | default(0) | float %}
+    {% set total_bruto_doc = total_bruto | default(total_num) | float %}
+    {% set gravadas_antes_desc = total_bruto_doc / 1.13 %}
+    {% set descuento_gravada = descuento_doc / 1.13 %}
+    {% set gravadas = (total_bruto_doc - descuento_doc) / 1.13 %}
+    {% set iva = total_num - gravadas %}
+    {% set retencion_iva = (venta[11] | float) if venta|length > 11 else 0 %}
+    {% set total_a_pagar = total_num - retencion_iva %}
+    {% set condicion = (venta[9] if venta|length > 9 and venta[9] else 'EFECTIVO') %}
+
+    <span class="ver">Ver. 3</span>
+
+    <h1 class="titulo-principal">
+        DOCUMENTO TRIBUTARIO ELECTRÓNICO<br>
+        {% if tcomp == 'CREDITO_FISCAL' %}COMPROBANTE DE CRÉDITO FISCAL{% else %}FACTURA CONSUMIDOR FINAL{% endif %}
+    </h1>
+    {% if estado_dte|default('') in ('CONTINGENCIA', 'PENDIENTE_TRANSMISION') %}
+    <div style="background:#fff3cd;border:2px solid #856404;padding:8px;margin:10px 0;text-align:center;font-weight:bold;font-size:11px;">
+        ⚠ DOCUMENTO EMITIDO EN CONTINGENCIA
+    </div>
+    {% endif %}
+
+    <div class="bloque-superior">
+        <div class="caja-identificacion">
+            <div class="etq">Código de Generación:</div>
+            <div class="val">{{ codigo_generacion|default('—') }}</div>
+            <div class="etq" style="margin-top:6px;">Número de Control:</div>
+            <div class="val">{{ numero_control|default('—') }}</div>
+            <div class="etq" style="margin-top:6px;">Sello de recepción:</div>
+            <div class="val">{{ sello_recepcion_texto|default('Documento de respaldo — sin transmisión electrónica al MH') }}</div>
+        </div>
+        <div class="caja-qr">
+            {% if qr_base64 %}
+            <img src="{{ qr_base64 }}" alt="QR Consulta DTE MH" width="76" height="76" style="display:block;">
+            {% else %}
+            <span>Código QR<br>(DTE)</span>
+            {% endif %}
+        </div>
+        <div class="caja-metadatos">
+            <div class="fila"><span class="etq">Modelo de Facturación:</span> Previo</div>
+            <div class="fila"><span class="etq">Tipo de Transmisión:</span> Normal</div>
+            <div class="fila"><span class="etq">Fecha y Hora de Generación:</span> {{ venta[1] }}</div>
+        </div>
+    </div>
+
+    <div class="participantes">
+        <div class="caja-participante">
+            <div class="titulo">Emisor</div>
+            <div class="fila"><span class="etq">Nombre o razón social:</span> {{ emisor.nombre|default('—') }}</div>
+            <div class="fila"><span class="etq">NIT:</span> {{ emisor.nit|default('—') }}</div>
+            <div class="fila"><span class="etq">NRC:</span> {{ emisor.nrc|default('—') }}</div>
+            {% if emisor.actividad %}<div class="fila"><span class="etq">Actividad económica:</span> {{ emisor.actividad }}</div>{% endif %}
+            {% if emisor.direccion %}<div class="fila"><span class="etq">Dirección:</span> {{ emisor.direccion }}</div>{% endif %}
+            {% if emisor.telefono %}<div class="fila"><span class="etq">Número de teléfono:</span> {{ emisor.telefono }}</div>{% endif %}
+            {% if emisor.correo %}<div class="fila"><span class="etq">Correo electrónico:</span> {{ emisor.correo }}</div>{% endif %}
+            <div class="fila"><span class="etq">Nombre comercial:</span> {{ emisor.nombre_comercial|default(emisor.nombre)|default('—') }}</div>
+            <div class="fila"><span class="etq">Tipo de establecimiento:</span> Punto de venta</div>
+        </div>
+        <div class="caja-participante">
+            <div class="titulo">Receptor</div>
+            <div class="fila"><span class="etq">Nombre o razón social:</span> {{ receptor.nombre|default('Consumidor Final') }}</div>
+            {% if receptor.documento %}<div class="fila"><span class="etq">{{ 'NIT o NRC' if (receptor.tipo_documento or '').upper() in ('NIT', 'NRC') else (receptor.tipo_documento or 'NIT') }}:</span> {{ receptor.documento }}</div>{% endif %}
+            {% if receptor.nrc %}<div class="fila"><span class="etq">NRC:</span> {{ receptor.nrc }}</div>{% endif %}
+            {% if receptor.actividad %}<div class="fila"><span class="etq">Actividad económica:</span> {{ receptor.actividad }}</div>{% endif %}
+            {% if receptor.direccion %}<div class="fila"><span class="etq">Dirección:</span> {{ receptor.direccion }}</div>{% endif %}
+            {% if receptor.telefono %}<div class="fila"><span class="etq">Número de teléfono:</span> {{ receptor.telefono }}</div>{% endif %}
+            {% if receptor.correo %}<div class="fila"><span class="etq">Correo electrónico:</span> {{ receptor.correo }}</div>{% endif %}
+            {% if receptor.nombre_comercial %}<div class="fila"><span class="etq">Nombre comercial:</span> {{ receptor.nombre_comercial }}</div>{% endif %}
+        </div>
+    </div>
+
+    <table class="dte-lineas">
+        <thead>
+            <tr>
+                <th class="cen" style="width:24px;">N°</th>
+                <th class="cen" style="width:44px;">Cantidad</th>
+                <th class="cen" style="width:50px;">Unidad</th>
+                <th style="min-width:100px;">Descripción</th>
+                <th class="num" style="width:60px;">Precio Unit.</th>
+                <th class="num" style="width:50px;">Desc. ítem</th>
+                <th class="num" style="width:50px;">Otros no afectos</th>
+                <th class="num" style="width:55px;">No Sujetas</th>
+                <th class="num" style="width:55px;">Exentas</th>
+                <th class="num" style="width:55px;">Ventas Gravadas</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in detalles %}
+            {% set sub = (d[1]|float) * (d[2]|float) %}
+            {% set grav_linea = sub / 1.13 %}
+            <tr>
+                <td class="cen">{{ loop.index }}</td>
+                <td class="cen">{% if d|length > 3 and d[3] %}{{ d[3] }}{% else %}{{ d[1] }}{% endif %}</td>
+                <td class="cen">Unidad</td>
+                <td>{{ d[0] }}</td>
+                <td class="num">${{ "{:,.2f}".format(d[2]|float) }}</td>
+                <td class="num">$0.00</td>
+                <td class="num">$0.00</td>
+                <td class="num">$0.00</td>
+                <td class="num">$0.00</td>
+                <td class="num">${{ "{:,.2f}".format(grav_linea) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr style="font-weight:700; background:#f3f4f6;">
+                <td colspan="7" class="num">SUMA DE VENTAS</td>
+                <td class="num">$0.00</td>
+                <td class="num">$0.00</td>
+                <td class="num">${{ "{:,.2f}".format(gravadas_antes_desc) }}</td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="pie-totales">
+        <div class="totales-dte">
+            <div class="fila"><span>Suma Total de Operaciones</span><span>${{ "{:,.2f}".format(gravadas_antes_desc) }}</span></div>
+            <div class="fila"><span>Monto global Desc., Rebajas (ventas gravadas)</span><span>${{ "{:,.2f}".format(descuento_gravada) }}</span></div>
+            <div class="fila"><span>IVA 13%</span><span>${{ "{:,.2f}".format(iva) }}</span></div>
+            <div class="fila"><span>Sub-Total</span><span>${{ "{:,.2f}".format(total_num) }}</span></div>
+            <div class="fila"><span>IVA Percibido</span><span>$0.00</span></div>
+            <div class="fila"><span>IVA Retenido (1%)</span><span>${{ "{:,.2f}".format(retencion_iva) }}</span></div>
+            <div class="fila"><span>Retención Renta</span><span>$0.00</span></div>
+            <div class="fila"><span>Monto Total de la Operación</span><span>${{ "{:,.2f}".format(total_num) }}</span></div>
+            <div class="fila"><span>Total Otros montos no afectos</span><span>$0.00</span></div>
+            <div class="fila total-final"><span>Total a Pagar</span><span>${{ "{:,.2f}".format(total_a_pagar) }}</span></div>
+        </div>
+    </div>
+
+    <div class="pie-documento">
+        <div class="fila"><span class="etq">Valor en Letras:</span> {{ valor_letras|default('—') }}</div>
+        <div class="fila"><span class="etq">Condición de la Operación:</span> {{ 'Contado' if condicion == 'EFECTIVO' else condicion }}</div>
+        <div class="fila"><span class="etq">Observaciones:</span> —</div>
+        <div class="fila"><span class="etq">Responsable por parte del emisor:</span> —</div>
+        <div class="fila"><span class="etq">Responsable por parte del Receptor:</span> —</div>
+    </div>
+
+    <div class="pagina">Página {{ i + 1 }} de {{ num_copias }}</div>
+    {% endfor %}
+
+    <div class="no-print" style="margin-top: 12px; text-align: center;">
+        <a href="/ventas_pos">Volver a ventas</a>
+    </div>
+</body>
+</html>

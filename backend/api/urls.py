@@ -36,6 +36,7 @@ urlpatterns = [
     # VENTAS
     path('ventas/crear/', views.crear_venta),
     path('ventas/crear-con-detalles/', views.crear_venta_con_detalles),
+    path('pos/procesar-venta/', views.pos_procesar_venta),
     path('ventas/listar/', views.listar_ventas),
     path('ventas/informe-cf-diario/', views.informe_cf_diario_api),
     path('ventas/<int:pk>/', views.obtener_venta),

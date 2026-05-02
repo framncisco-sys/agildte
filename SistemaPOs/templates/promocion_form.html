@@ -1,0 +1,172 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="mb-3">
+        <a href="{{ url_for('admin.promociones') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Volver a Promociones</a>
+    </div>
+    <div class="card border-0 shadow-sm rounded-4" style="max-width: 750px;">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h5 class="mb-0 fw-bold">{{ 'Editar Promoción' if promocion else 'Nueva Promoción' }}</h5>
+        </div>
+        <div class="card-body p-4">
+            <form method="POST" action="{{ url_for('admin.promociones_editar', promocion_id=promocion[0]) if promocion else url_for('admin.promociones_nueva') }}">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Nombre <span class="text-danger">*</span></label>
+                    <input type="text" name="nombre" class="form-control" placeholder="Ej: Oferta especial, Liquidación, Regalo shampoo" required
+                           value="{{ promocion[2] if promocion else '' }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Tipo de promoción</label>
+                    <select name="tipo" class="form-select" id="promo_tipo" required>
+                        <option value="PORCENTAJE" {{ 'selected' if promocion and promocion[3] == 'PORCENTAJE' else '' }}>Descuento % (oferta especial / liquidación)</option>
+                        <option value="DESCUENTO_MONTO" {{ 'selected' if promocion and promocion[3] == 'DESCUENTO_MONTO' else '' }}>Descuento $ (monto fijo por unidad)</option>
+                        <option value="2X1" {{ 'selected' if promocion and promocion[3] == '2X1' else '' }}>2x1 (lleva 2 paga 1)</option>
+                        <option value="3X2" {{ 'selected' if promocion and promocion[3] == '3X2' else '' }}>3x2 (lleva 3 paga 2)</option>
+                        <option value="VOLUMEN" {{ 'selected' if promocion and promocion[3] == 'VOLUMEN' else '' }}>Volumen (comprar X pagar Y)</option>
+                        <option value="REGALO" {{ 'selected' if promocion and promocion[3] == 'REGALO' else '' }}>Regalo / Bonificación (producto extra gratis)</option>
+                        <option value="PRECIO_FIJO" {{ 'selected' if promocion and promocion[3] == 'PRECIO_FIJO' else '' }}>Precio fijo (cualquier precio que quieras)</option>
+                        <option value="DESCUENTO_CANTIDAD" {{ 'selected' if promocion and promocion[3] == 'DESCUENTO_CANTIDAD' else '' }}>Descuento por cantidad (compra X+ lleva Y% desc.)</option>
+                    </select>
+                    <small class="text-muted d-block mt-1">Si necesitas otra idea: usa <strong>Precio fijo</strong> (ej. liquidación a $2.99) o <strong>Descuento por cantidad</strong> (compra 5+ lleva 20% off).</small>
+                </div>
+                <div id="wrap_porcentaje" class="row g-3 mb-2 wrap-tipo">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Porcentaje de descuento (1-99)</label>
+                        <input type="number" name="valor" class="form-control" min="1" max="99" step="0.01" placeholder="15"
+                               value="{{ promocion[4] if promocion and promocion[3] == 'PORCENTAJE' else '15' }}">
+                    </div>
+                </div>
+                <div id="wrap_descuento_monto" class="row g-3 mb-2 wrap-tipo" style="display:none;">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Monto a descontar por unidad ($)</label>
+                        <input type="number" name="descuento_monto" id="input_descuento_monto" class="form-control" min="0" step="0.01" placeholder="2.50"
+                               value="{{ promocion[10] if promocion and promocion|length > 10 and promocion[10] is not none else '' }}">
+                    </div>
+                </div>
+                <div id="wrap_volumen" class="row g-3 mb-2 wrap-tipo" style="display:none;">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Comprar (cantidad)</label>
+                        <input type="number" name="valor_comprar" id="input_valor_comprar" class="form-control" min="1" placeholder="3"
+                               value="{{ promocion[8] if promocion and promocion|length > 8 and promocion[8] is not none else '3' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Pagar (cantidad)</label>
+                        <input type="number" name="valor_pagar" id="input_valor_pagar" class="form-control" min="1" placeholder="2"
+                               value="{{ promocion[9] if promocion and promocion|length > 9 and promocion[9] is not none else '2' }}">
+                    </div>
+                </div>
+                <div id="wrap_precio_fijo" class="row g-3 mb-2 wrap-tipo" style="display:none;">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Precio promocional por unidad ($)</label>
+                        <input type="number" name="valor" id="input_precio_fijo" class="form-control" min="0" step="0.01" placeholder="2.99"
+                               value="{{ promocion[4] if promocion and promocion[3] == 'PRECIO_FIJO' else '' }}">
+                        <small class="text-muted">Durante la promo, cada unidad cuesta este precio (ej. liquidación a $2.99)</small>
+                    </div>
+                </div>
+                <div id="wrap_descuento_cantidad" class="row g-3 mb-2 wrap-tipo" style="display:none;">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Comprar mínimo (cantidad)</label>
+                        <input type="number" name="cantidad_min_compra" id="input_cant_min" class="form-control" min="1" placeholder="5"
+                               value="{{ promocion[12] if promocion and promocion[3] == 'DESCUENTO_CANTIDAD' and promocion|length > 12 else '5' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Descuento % (1-99)</label>
+                        <input type="number" name="valor" id="input_desc_cant" class="form-control" min="1" max="99" step="0.01" placeholder="20"
+                               value="{{ promocion[4] if promocion and promocion[3] == 'DESCUENTO_CANTIDAD' else '20' }}">
+                        <small class="text-muted">Al comprar X o más unidades, aplica este % de descuento</small>
+                    </div>
+                </div>
+                <div id="wrap_regalo" class="mb-2 wrap-tipo" style="display:none;">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Comprar mínimo (cantidad)</label>
+                            <input type="number" name="cantidad_min_compra" class="form-control" min="1" placeholder="1"
+                                   value="{{ promocion[12] if promocion and promocion|length > 12 and promocion[12] is not none else '1' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Cantidad de regalo</label>
+                            <input type="number" name="cantidad_regalo" class="form-control" min="1" placeholder="1"
+                                   value="{{ promocion[13] if promocion and promocion|length > 13 and promocion[13] is not none else '1' }}">
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label fw-bold">Producto regalo (gratis)</label>
+                        <select name="producto_regalo_id" class="form-select">
+                            <option value="">— Seleccione producto regalo —</option>
+                            {% for prod in productos %}
+                            <option value="{{ prod[0] }}" {{ 'selected' if promocion and promocion|length > 11 and promocion[11] == prod[0] else '' }}>{{ prod[2] }} ({{ prod[1] }})</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Al comprar el producto asignado, lleva este gratis</small>
+                    </div>
+                </div>
+                <div class="row g-3 mt-1">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Fecha inicio</label>
+                        <input type="date" name="fecha_inicio" class="form-control" value="{{ (promocion[5]|string)[:10] if promocion and promocion[5] else '' }}">
+                        <small class="text-muted">Vacío = sin límite</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Fecha fin</label>
+                        <input type="date" name="fecha_fin" class="form-control" value="{{ (promocion[6]|string)[:10] if promocion and promocion[6] else '' }}">
+                        <small class="text-muted">Vacío = sin límite</small>
+                    </div>
+                </div>
+                <div class="mb-3 mt-3">
+                    <div class="form-check">
+                        <input type="checkbox" name="activa" value="1" class="form-check-input" id="promo_activa" {{ 'checked' if not promocion or promocion[7] else '' }}>
+                        <label class="form-check-label" for="promo_activa">Activa (aplica en ventas)</label>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Productos asignados (productos principales)</label>
+                    <p class="text-muted small">Seleccione los productos a los que aplica esta promoción. Para REGALO: los productos que al comprarlos dan el regalo.</p>
+                    <div class="border rounded p-3 bg-light" style="max-height: 250px; overflow-y: auto;">
+                        {% for prod in productos %}
+                        <div class="form-check">
+                            <input type="checkbox" name="producto_id" value="{{ prod[0] }}" class="form-check-input" id="prod{{ prod[0] }}"
+                                   {{ 'checked' if prod[0] in (prod_ids or []) else '' }}>
+                            <label class="form-check-label" for="prod{{ prod[0] }}">{{ prod[2] }} <span class="text-muted">({{ prod[1] }})</span></label>
+                        </div>
+                        {% else %}
+                        <p class="text-muted small mb-0">No hay productos. <a href="{{ url_for('admin.inventario') }}">Ir a Inventario</a></p>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary fw-bold">Guardar</button>
+                    <a href="{{ url_for('admin.promociones') }}" class="btn btn-outline-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<script>
+(function() {
+    var tipo = document.getElementById('promo_tipo');
+    var wraps = { porcentaje: document.getElementById('wrap_porcentaje'), descuento_monto: document.getElementById('wrap_descuento_monto'),
+        volumen: document.getElementById('wrap_volumen'), regalo: document.getElementById('wrap_regalo'),
+        precio_fijo: document.getElementById('wrap_precio_fijo'), descuento_cantidad: document.getElementById('wrap_descuento_cantidad') };
+    var valorInput = document.querySelector('input[name="valor"]');
+    function toggle() {
+        Object.keys(wraps).forEach(function(k) { wraps[k].style.display = 'none'; });
+        var valorInputs = [wraps.porcentaje, wraps.precio_fijo, wraps.descuento_cantidad].map(function(w){ return w ? w.querySelector('input[name="valor"]') : null; }).filter(Boolean);
+        valorInputs.forEach(function(inp){ if(inp) inp.disabled = true; });
+        var cmReg = wraps.regalo ? wraps.regalo.querySelector('input[name="cantidad_min_compra"]') : null;
+        var cmDesc = wraps.descuento_cantidad ? wraps.descuento_cantidad.querySelector('input[name="cantidad_min_compra"]') : null;
+        if (cmReg) cmReg.disabled = true;
+        if (cmDesc) cmDesc.disabled = true;
+        var v = tipo.value;
+        if (v === 'PORCENTAJE') { wraps.porcentaje.style.display = 'block'; var x = wraps.porcentaje.querySelector('input[name="valor"]'); if(x) x.disabled = false; }
+        else if (v === 'DESCUENTO_MONTO') wraps.descuento_monto.style.display = 'block';
+        else if (v === '2X1' || v === '3X2' || v === 'VOLUMEN') { wraps.volumen.style.display = 'block'; if (v === '2X1') { document.getElementById('input_valor_comprar').value = 2; document.getElementById('input_valor_pagar').value = 1; } else if (v === '3X2') { document.getElementById('input_valor_comprar').value = 3; document.getElementById('input_valor_pagar').value = 2; } }
+        else if (v === 'REGALO') { wraps.regalo.style.display = 'block'; if (cmReg) cmReg.disabled = false; }
+        else if (v === 'PRECIO_FIJO') { wraps.precio_fijo.style.display = 'block'; var x = wraps.precio_fijo.querySelector('input[name="valor"]'); if(x) x.disabled = false; }
+        else if (v === 'DESCUENTO_CANTIDAD') { wraps.descuento_cantidad.style.display = 'block'; var x = wraps.descuento_cantidad.querySelector('input[name="valor"]'); if(x) x.disabled = false; if (cmDesc) cmDesc.disabled = false; }
+    }
+    tipo.addEventListener('change', toggle);
+    toggle();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% block content %}
+<style>
+    .lock-card {
+        max-width: 500px;
+        margin: auto;
+        background: white;
+        padding: 40px;
+        border-radius: 20px;
+        box-shadow: 0 1rem 3rem rgba(0,0,0,.1);
+        text-align: center;
+    }
+    .icon-box {
+        font-size: 80px;
+        color: #e74a3b;
+        margin-bottom: 20px;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
+    .btn-whatsapp {
+        background-color: #25d366;
+        color: white;
+        font-weight: bold;
+        border-radius: 10px;
+        padding: 12px 30px;
+        text-decoration: none;
+        display: inline-block;
+        transition: 0.3s;
+    }
+    .btn-whatsapp:hover { background-color: #128c7e; color: white; transform: translateY(-3px); }
+</style>
+
+<div class="container">
+    <div class="lock-card">
+        <div class="icon-box">
+            <i class="bi bi-shield-lock-fill"></i>
+        </div>
+        <h2 class="fw-bold mb-3">Sistema</h2>
+        <h4 class="text-dark mb-3">Acceso Restringido</h4>
+        <p class="text-muted mb-4">
+            Detectamos que tu suscripción ha expirado o no se encuentra activa en nuestro sistema. 
+            Para continuar disfrutando de las funciones de venta e inventario, por favor regulariza tu cuenta.
+        </p>
+        
+        <div class="bg-light p-3 rounded-3 mb-4">
+            <small class="text-uppercase fw-bold text-secondary d-block mb-1">Estado del Servicio</small>
+            <span class="badge bg-danger">SUSPENDIDO</span>
+        </div>
+
+        <a href="https://wa.me/503XXXXXXXX?text=Hola,%20necesito%20activar%20mi%20suscripción" class="btn btn-whatsapp shadow">
+            <i class="bi bi-whatsapp me-2"></i> CONTACTAR SOPORTE
+        </a>
+
+        <div class="mt-4">
+            <a href="/configuracion" class="text-decoration-none small text-primary fw-bold">
+                <i class="bi bi-gear-fill"></i> Ver configuración fiscal
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

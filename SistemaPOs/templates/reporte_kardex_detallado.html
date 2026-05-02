@@ -1,0 +1,113 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
+            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-journal-text text-primary"></i> Kardex Detallado</h2>
+            <p class="text-muted small mb-0">Art. 142 y 142-A Código Tributario — Registro de control de inventarios. Las cantidades y saldos están en la <strong>unidad mínima (UMB)</strong> definida por producto (sobre, libra, etc.).</p>
+        </div>
+    </div>
+
+    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
+        <form method="GET" action="{{ url_for('admin.reporte_kardex_detallado') }}" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Producto</label>
+                <select name="producto_id" class="form-select" id="filtro_producto_kardex">
+                    <option value="">— Todos —</option>
+                    {% for p in productos %}
+                    <option value="{{ p[0] }}" {{ 'selected' if producto_id == p[0] else '' }}>{{ (p[1] or '')[:40] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Sucursal</label>
+                <select name="sucursal_id" class="form-select" id="filtro_sucursal_kardex">
+                    <option value="">— Todas —</option>
+                    {% for s in sucursales %}
+                    <option value="{{ s[0] }}" {{ 'selected' if sucursal_id == s[0] else '' }}>{{ s[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Desde</label>
+                <input type="date" name="inicio" class="form-control" value="{{ inicio }}" id="filtro_inicio_kardex">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Hasta</label>
+                <input type="date" name="fin" class="form-control" value="{{ fin }}" id="filtro_fin_kardex">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100 fw-bold"><i class="bi bi-filter"></i> Filtrar</button>
+            </div>
+            <div class="col-md-2 d-flex gap-1">
+                <a href="#" class="btn btn-success flex-grow-1 fw-bold text-white" id="btn_excel_kardex" title="Exportar Excel"><i class="bi bi-file-earmark-excel"></i></a>
+                <a href="#" class="btn btn-danger flex-grow-1 fw-bold text-white" id="btn_pdf_kardex" title="Exportar PDF"><i class="bi bi-file-earmark-pdf"></i></a>
+            </div>
+        </form>
+    </div>
+    <script>
+    (function() {
+        function qs() {
+            var p = document.getElementById('filtro_producto_kardex').value;
+            var s = document.getElementById('filtro_sucursal_kardex').value;
+            var i = document.getElementById('filtro_inicio_kardex').value;
+            var f = document.getElementById('filtro_fin_kardex').value;
+            return '?producto_id=' + encodeURIComponent(p) + '&sucursal_id=' + encodeURIComponent(s) + '&inicio=' + encodeURIComponent(i) + '&fin=' + encodeURIComponent(f);
+        }
+        document.getElementById('btn_excel_kardex').href = '{{ url_for("admin.reporte_kardex_exportar_excel") }}' + qs();
+        document.getElementById('btn_pdf_kardex').href = '{{ url_for("admin.reporte_kardex_exportar_pdf") }}' + qs();
+    })();
+    </script>
+
+    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h6 class="m-0 fw-bold text-primary">Detalle: Fecha, tipo documento, entrada/salida, costo unitario, saldo existencial</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle m-0 table-hover table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Fecha</th>
+                        <th>Tipo</th>
+                        <th class="text-end">Entrada</th>
+                        <th class="text-end">Salida</th>
+                        <th class="text-end">Costo unit.</th>
+                        <th class="text-end">Saldo</th>
+                        <th>Origen / Destino</th>
+                        <th>Ref.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in filas %}
+                    <tr>
+                        <td class="ps-4 small text-nowrap">{{ r[0] }}</td>
+                        <td>
+                            {% if r[1] == 'SALIDA_VENTA' %}<span class="badge bg-secondary">Venta</span>
+                            {% elif r[1] == 'ENTRADA' %}<span class="badge bg-success">Entrada</span>
+                            {% elif r[1] == 'SALIDA' %}<span class="badge bg-warning text-dark">Salida</span>
+                            {% elif r[1] == 'TRASLADO' %}<span class="badge bg-info text-dark">Traslado</span>
+                            {% else %}<span class="badge bg-light text-dark">{{ r[1] }}</span>{% endif %}
+                        </td>
+                        <td class="text-end">{{ "%.2f"|format(r[3]|float) if r[3] else '0.00' }}</td>
+                        <td class="text-end">{{ "%.2f"|format(r[4]|float) if r[4] else '0.00' }}</td>
+                        <td class="text-end">$ {{ "%.4f"|format(r[5]|float) if r[5] else '0.00' }}</td>
+                        <td class="text-end fw-bold">{{ "%.2f"|format(r[6]|float) if r[6] is defined else '—' }}</td>
+                        <td class="small">{{ (r[8] or '') + (' → ' + (r[9] or '') if r[9] else '') }}</td>
+                        <td class="small text-muted">{{ r[7] or '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay movimientos en el período seleccionado.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

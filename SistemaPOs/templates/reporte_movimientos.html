@@ -1,0 +1,331 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
+            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-arrow-left-right text-danger"></i> Movimientos por Producto</h2>
+            <p class="text-muted small mb-0">Ajustes, traslados, bajas por obsolescencia o deterioro. Las cantidades se registran en la <strong>UMB</strong> de cada producto.</p>
+        </div>
+    </div>
+
+    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
+        <form method="GET" action="{{ url_for('admin.reporte_movimientos') }}" class="row g-3 align-items-end">
+            {% if es_superadmin and empresas %}
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Empresa</label>
+                <select name="empresa_id" class="form-select" id="filtro_empresa_mov">
+                    {% for e in empresas %}
+                    <option value="{{ e[0] }}" {{ 'selected' if empresa_id and empresa_id == e[0] else '' }}>{{ (e[1] or '')[:25] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Producto</label>
+                <select name="producto_id" class="form-select" id="filtro_producto_mov">
+                    <option value="">— Todos —</option>
+                    {% for p in productos %}
+                    <option value="{{ p[0] }}" {{ 'selected' if producto_id == p[0] else '' }}>{{ (p[1] or '')[:40] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Sucursal</label>
+                <select name="sucursal_id" class="form-select" id="filtro_sucursal_mov">
+                    <option value="">— Todas —</option>
+                    {% for s in sucursales %}
+                    <option value="{{ s[0] }}" {{ 'selected' if sucursal_id == s[0] else '' }}>{{ s[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Desde</label>
+                <input type="date" name="inicio" class="form-control" value="{{ inicio }}" id="filtro_inicio_mov">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Hasta</label>
+                <input type="date" name="fin" class="form-control" value="{{ fin }}" id="filtro_fin_mov">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100 fw-bold"><i class="bi bi-filter"></i> Filtrar</button>
+            </div>
+            <div class="col-md-2 d-flex gap-1">
+                <a href="#" class="btn btn-success flex-grow-1 fw-bold text-white" id="btn_excel_mov" title="Excel"><i class="bi bi-file-earmark-excel"></i></a>
+                <a href="#" class="btn btn-danger flex-grow-1 fw-bold text-white" id="btn_pdf_mov" title="PDF"><i class="bi bi-file-earmark-pdf"></i></a>
+            </div>
+        </form>
+    </div>
+
+    <div class="card p-3 mb-4 border-0 shadow-sm border-start border-primary border-4" style="border-radius: 15px;">
+        <h6 class="fw-bold text-primary mb-3"><i class="bi bi-box-seam"></i> Productos con stock — Ajuste por conteo físico</h6>
+        <p class="text-muted small mb-3">Haga clic en <strong>Ajuste</strong> para registrar el conteo físico y actualizar el inventario.</p>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Código</th>
+                        <th>Producto</th>
+                        <th class="text-end">Stock sistema</th>
+                        <th class="text-center">Unidad</th>
+                        <th class="text-center">Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in productos_con_stock %}
+                    <tr>
+                        <td class="fw-bold text-primary">{{ p[1] or '—' }}</td>
+                        <td>{{ (p[2] or '')[:50] }}</td>
+                        <td class="text-end fw-bold">{{ "%.2f"|format(p[3]|float) }}</td>
+                        <td class="text-center small text-muted">{{ p[4] or 'UNI' }}</td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalAjuste"
+                                data-id="{{ p[0] }}" data-nombre="{{ (p[2] or '')|e }}" data-stock="{{ "%.2f"|format(p[3]|float) }}">
+                                <i class="bi bi-pencil-square"></i> Ajuste
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-muted">
+                            No hay productos con stock. {% if sucursal_id %}Pruebe con <strong>— Todas —</strong> en sucursal.{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-2">
+            <button type="button" class="btn btn-link btn-sm text-muted p-0" data-bs-toggle="collapse" data-bs-target="#formAjusteOtro">
+                <i class="bi bi-plus-circle"></i> Ajustar otro producto (sin stock o no listado)
+            </button>
+            <div class="collapse mt-2" id="formAjusteOtro">
+                <form method="POST" action="{{ url_for('admin.reporte_movimientos') }}" class="row g-2 align-items-end">
+                    <input type="hidden" name="accion" value="agregar_ajuste">
+                    {% if es_superadmin and empresas %}
+                    <input type="hidden" name="empresa_id" value="{{ empresa_id or (empresas[0][0] if empresas else '') }}">
+                    {% endif %}
+                    <input type="hidden" name="inicio" value="{{ inicio }}">
+                    <input type="hidden" name="fin" value="{{ fin }}">
+                    <div class="col-auto">
+                        <select name="producto_id" class="form-select form-select-sm" required style="min-width: 200px;">
+                            <option value="">— Seleccione producto —</option>
+                            {% for p in productos %}
+                            <option value="{{ p[0] }}">{{ (p[1] or p[2] or '')[:45] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <select name="sucursal_ajuste" class="form-select form-select-sm">
+                            <option value="">— Global —</option>
+                            {% for s in sucursales %}
+                            <option value="{{ s[0] }}" {{ 'selected' if sucursal_id and sucursal_id == s[0] else '' }}>{{ s[1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <input type="date" name="fecha_ajuste" class="form-control form-control-sm" value="{{ fecha_hoy }}">
+                    </div>
+                    <div class="col-auto">
+                        <input type="number" name="cantidad_fisica" class="form-control form-control-sm" placeholder="Cant. física" min="0" step="0.01" required style="width: 100px;">
+                    </div>
+                    <div class="col-auto">
+                        <select name="motivo_ajuste" class="form-select form-select-sm" style="min-width: 200px;" title="Obligatorio si el físico es menor que el sistema">
+                            <option value="">— Motivo (si hay faltante) —</option>
+                            <option value="MERMA_OPERATIVA">Merma natural / operativa</option>
+                            <option value="AVERIA">Avería o daño</option>
+                            <option value="AJUSTE_INVENTARIO">Ajuste de inventario (cuadre / conteo)</option>
+                            <option value="FALTANTE">Faltante / no justificado</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-bold mb-0">Justificación (auditoría, mín. {{ min_caracteres_justificacion_ajuste }} caracteres)</label>
+                        <textarea name="justificacion_ajuste" class="form-control form-control-sm" rows="2" placeholder="Qué se contó, motivo del hallazgo, referencia de acta…"></textarea>
+                    </div>
+                    <div class="col-md-4 col-lg-3">
+                        <label class="form-label small text-muted mb-0">Supervisor si impacto &gt; ${{ "%.0f"|format(umbral_impacto_ajuste_usd|float) }} o cant. &gt; {{ "%.0f"|format(umbral_cantidad_ajuste_umb|float) }} UMB</label>
+                        <input type="text" name="supervisor_inventario_usuario" class="form-control form-control-sm" placeholder="Usuario gerente/admin" autocomplete="username">
+                    </div>
+                    <div class="col-md-4 col-lg-3">
+                        <label class="form-label small text-muted mb-0">&nbsp;</label>
+                        <input type="password" name="supervisor_inventario_clave" class="form-control form-control-sm" placeholder="Clave supervisor" autocomplete="current-password">
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label small text-muted mb-0">&nbsp;</label>
+                        <button type="submit" class="btn btn-primary btn-sm d-block"><i class="bi bi-check-lg"></i> Aplicar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalAjuste" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="POST" action="{{ url_for('admin.reporte_movimientos') }}">
+                    <input type="hidden" name="accion" value="agregar_ajuste">
+                    <input type="hidden" name="producto_id" id="modal_producto_id" value="">
+                    <input type="hidden" name="sucursal_ajuste" value="{{ sucursal_id or '' }}">
+                    {% if es_superadmin and empresas %}
+                    <input type="hidden" name="empresa_id" value="{{ empresa_id or (empresas[0][0] if empresas else '') }}">
+                    {% endif %}
+                    <input type="hidden" name="inicio" value="{{ inicio }}">
+                    <input type="hidden" name="fin" value="{{ fin }}">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-pencil-square text-primary"></i> Ajuste de inventario</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Producto</label>
+                            <input type="text" class="form-control bg-light" id="modal_producto_nombre" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Fecha de ajuste</label>
+                            <input type="date" name="fecha_ajuste" class="form-control" value="{{ fecha_hoy }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Stock en sistema</label>
+                            <input type="text" class="form-control bg-light" id="modal_stock_sistema" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Ajuste (conteo físico)</label>
+                            <input type="number" name="cantidad_fisica" class="form-control" placeholder="Cantidad contada" min="0" step="0.01" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Motivo si hay faltante</label>
+                            <select name="motivo_ajuste" class="form-select">
+                                <option value="">— Si el físico es menor que el sistema —</option>
+                                <option value="MERMA_OPERATIVA">Merma natural / operativa</option>
+                                <option value="AVERIA">Avería o daño</option>
+                                <option value="AJUSTE_INVENTARIO">Ajuste de inventario (cuadre / conteo)</option>
+                                <option value="FALTANTE">Faltante / no justificado</option>
+                            </select>
+                            <small class="text-muted">Si contó más que el sistema (sobrante), puede dejar en blanco.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Justificación <span class="text-muted fw-normal">(mín. {{ min_caracteres_justificacion_ajuste }} caracteres)</span></label>
+                            <textarea name="justificacion_ajuste" class="form-control" rows="2" placeholder="Detalle para bitácora: qué se encontró, acta, responsable…"></textarea>
+                        </div>
+                        <div class="row g-2 mb-0">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Supervisor <span class="text-muted fw-normal">(si supera ${{ "%.0f"|format(umbral_impacto_ajuste_usd|float) }} o {{ "%.0f"|format(umbral_cantidad_ajuste_umb|float) }} UMB)</span></label>
+                                <input type="text" name="supervisor_inventario_usuario" class="form-control form-control-sm" placeholder="Usuario" autocomplete="username">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Clave supervisor</label>
+                                <input type="password" name="supervisor_inventario_clave" class="form-control form-control-sm" placeholder="Clave" autocomplete="current-password">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-check-lg"></i> Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script>
+    document.getElementById('modalAjuste')?.addEventListener('show.bs.modal', function(e) {
+        var btn = e.relatedTarget;
+        if (btn) {
+            document.getElementById('modal_producto_id').value = btn.dataset.id || '';
+            document.getElementById('modal_producto_nombre').value = btn.dataset.nombre || '';
+            document.getElementById('modal_stock_sistema').value = btn.dataset.stock || '';
+        }
+    });
+    </script>
+
+    <script>
+    (function() {
+        function qs() {
+            var p = [];
+            var emp = document.getElementById('filtro_empresa_mov');
+            if (emp && emp.value) p.push('empresa_id=' + encodeURIComponent(emp.value));
+            var prod = document.getElementById('filtro_producto_mov');
+            var suc = document.getElementById('filtro_sucursal_mov');
+            var ini = document.getElementById('filtro_inicio_mov');
+            var f = document.getElementById('filtro_fin_mov');
+            if (prod) p.push('producto_id=' + encodeURIComponent(prod.value));
+            if (suc) p.push('sucursal_id=' + encodeURIComponent(suc.value));
+            if (ini) p.push('inicio=' + encodeURIComponent(ini.value));
+            if (f) p.push('fin=' + encodeURIComponent(f.value));
+            return '?' + p.join('&');
+        }
+        document.getElementById('btn_excel_mov').href = '{{ url_for("admin.reporte_movimientos_exportar_excel") }}' + qs();
+        document.getElementById('btn_pdf_mov').href = '{{ url_for("admin.reporte_movimientos_exportar_pdf") }}' + qs();
+    })();
+    </script>
+
+    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h6 class="m-0 fw-bold text-primary">Historial de movimientos</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle m-0 table-hover table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Fecha</th>
+                        <th>Tipo</th>
+                        <th>Producto</th>
+                        <th>Código</th>
+                        <th class="text-end">Cant.</th>
+                        <th class="text-end">Sistema</th>
+                        <th class="text-end">Físico</th>
+                        <th class="text-end">Diferencia</th>
+                        <th>Origen</th>
+                        <th>Destino</th>
+                        <th>Motivo ajuste</th>
+                        <th>Notas / Ref.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in filas %}
+                    <tr>
+                        <td class="ps-4 small text-nowrap">{{ r[1] }}</td>
+                        <td>
+                            {% if r[2] == 'SALIDA_VENTA' %}<span class="badge bg-secondary">Venta</span>
+                            {% elif r[2] == 'ENTRADA' %}<span class="badge bg-success">Entrada</span>
+                            {% elif r[2] == 'SALIDA' %}<span class="badge bg-warning text-dark">Salida</span>
+                            {% elif r[2] == 'TRASLADO' %}<span class="badge bg-info text-dark">Traslado</span>
+                            {% elif r[2] in ('AJUSTE_ENTRADA','AJUSTE_SALIDA') %}<span class="badge bg-primary">Ajuste</span>
+                            {% else %}<span class="badge bg-light text-dark">{{ r[2] }}</span>{% endif %}
+                        </td>
+                        <td>{{ (r[3] or '')[:35] }}</td>
+                        <td class="small">{{ r[4] or '—' }}</td>
+                        <td class="text-end fw-bold">{{ "%.2f"|format(r[5]|float) }}</td>
+                        <td class="text-end small">{% if r|length > 11 and r[11] is not none %}{{ "%.2f"|format(r[11]) }}{% else %}—{% endif %}</td>
+                        <td class="text-end small">{% if r|length > 12 and r[12] is not none %}{{ "%.2f"|format(r[12]) }}{% else %}—{% endif %}</td>
+                        <td class="text-end small">{% if r|length > 13 and r[13] is not none %}<span class="{% if r[13] > 0 %}text-success{% elif r[13] < 0 %}text-danger{% endif %}">{{ "%+.2f"|format(r[13]) }}</span>{% else %}—{% endif %}</td>
+                        <td class="small">{{ r[6] or '—' }}</td>
+                        <td class="small">{{ r[7] or '—' }}</td>
+                        <td class="small">{% if r[2] in ('AJUSTE_ENTRADA','AJUSTE_SALIDA') and r|length > 10 and etiqueta_motivo is defined %}{{ etiqueta_motivo(r[10]) }}{% else %}—{% endif %}</td>
+                        <td class="small text-muted">{{ (r[8] or '') or (r[9] or '') }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="12" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay movimientos en el período.
+                            <p class="small mt-2 mb-0">Pruebe ampliar el rango de fechas (ej. desde el 1º del mes) o seleccione "— Todos —" en producto/sucursal.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if filas %}
+                    <tr class="table-warning fw-bold">
+                        <td colspan="4" class="ps-4 text-end">TOTAL</td>
+                        <td class="text-end">{{ "%.2f"|format(total_cant) }}</td>
+                        <td class="text-end">{{ "%.2f"|format(total_sist) if total_sist else "—" }}</td>
+                        <td class="text-end">{{ "%.2f"|format(total_ajus) if total_ajus else "—" }}</td>
+                        <td class="text-end"><span class="{% if total_diff > 0 %}text-success{% elif total_diff < 0 %}text-danger{% endif %}">{{ "%+.2f"|format(total_diff) if total_diff else "—" }}</span></td>
+                        <td colspan="4"></td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

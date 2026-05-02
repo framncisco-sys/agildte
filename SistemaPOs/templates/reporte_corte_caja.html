@@ -1,0 +1,140 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <!-- Encabezado -->
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>
+            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
+            <h2 class="fw-bold text-dark mb-1"><i class="bi bi-cash-stack text-success me-2"></i>Corte de Caja (X/Z)</h2>
+            <p class="text-muted small mb-0">Resumen por tipo DTE, método de pago e impuestos — Cuadre bajo facturación electrónica</p>
+        </div>
+        <div class="d-flex gap-2 align-items-center flex-shrink-0">
+            <a href="{{ url_for('admin.reporte_corte_caja_ticket') }}?fecha={{ fecha }}&usuario_id={{ usuario_id|default('')|e }}&sucursal_id={{ sucursal_id|default('')|e }}" class="btn btn-success fw-semibold" id="btnTicketCorte" target="_blank"><i class="bi bi-receipt-cutoff me-1"></i>Ticket 80mm</a>
+            <a href="{{ url_for('admin.reporte_corte_caja_exportar_pdf') }}?fecha={{ fecha }}&usuario_id={{ usuario_id|default('')|e }}&sucursal_id={{ sucursal_id|default('')|e }}" class="btn btn-danger fw-semibold text-white" id="btnPdfCorte"><i class="bi bi-file-earmark-pdf me-1"></i>Exportar PDF</a>
+        </div>
+    </div>
+
+    <!-- 1. Filtros -->
+    <div class="card p-4 mb-4 border-0 shadow-sm" style="border-radius: 12px;">
+        <h6 class="mb-3 fw-bold text-secondary"><i class="bi bi-funnel me-2"></i>1. Filtros</h6>
+        <form method="GET" action="{{ url_for('admin.reporte_corte_caja') }}" class="row g-3 align-items-end" id="formCorteCaja">
+            <div class="col-sm-6 col-md-2">
+                <label class="form-label small fw-semibold text-muted">Fecha</label>
+                <input type="date" name="fecha" class="form-control form-control-sm" value="{{ fecha }}">
+            </div>
+            <div class="col-sm-6 col-md-3">
+                <label class="form-label small fw-semibold text-muted">Cajero</label>
+                <select name="usuario_id" class="form-select form-select-sm">
+                    <option value="">— Todos los cajeros —</option>
+                    {% for u in (usuarios or []) %}
+                    <option value="{{ u[0] }}" {{ 'selected' if usuario_id == (u[0]|string) else '' }}>{{ u[1] }}</option>
+                    {% endfor %}
+                </select>
+                <small class="text-muted d-block mt-1">Filtrar por cajero incluye arqueo y firmas en PDF/ticket</small>
+            </div>
+            <div class="col-sm-6 col-md-2">
+                <label class="form-label small fw-semibold text-muted">Sucursal</label>
+                <select name="sucursal_id" class="form-select form-select-sm">
+                    <option value="">— Todas —</option>
+                    {% for s in (sucursales or []) %}
+                    <option value="{{ s[0] }}" {{ 'selected' if sucursal_id == (s[0]|string) else '' }}>{{ s[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-sm-6 col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary btn-sm fw-semibold w-100"><i class="bi bi-search me-1"></i>Actualizar</button>
+            </div>
+        </form>
+    </div>
+
+    {% set det = datos.ventas_por_tipo_dte_detalle|default({}) %}
+    {% set f = det.FACTURA|default({'cantidad':0,'total':0}) %}
+    {% set cf = det.CREDITO_FISCAL|default({'cantidad':0,'total':0}) %}
+    {% set nc = det.NOTA_CREDITO|default({'cantidad':0,'total':0}) %}
+    {% set se = det.SUJETO_EXCLUIDO|default({'cantidad':0,'total':0}) %}
+    {% set tk = det.TICKET|default({'cantidad':0,'total':0}) %}
+    {% set pagos = datos.ventas_por_pago|default({}) %}
+
+    <!-- 2. Documentos fiscales -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-4">
+            <div class="card h-100 border-0 shadow-sm overflow-hidden" style="border-radius: 12px;">
+                <div class="card-header py-2 px-3" style="background: linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 100%); color: white;">
+                    <h6 class="mb-0 fw-semibold"><i class="bi bi-file-earmark-text me-2"></i>2. Documentos Emitidos (Fiscal)</h6>
+                </div>
+                <div class="card-body p-3">
+                    <table class="table table-sm table-borderless mb-0">
+                        <tr><td class="py-1">Facturas (01)</td><td class="text-end fw-semibold py-1">{{ f.cantidad }} doc · ${{ "{:,.2f}".format(f.total|float) }}</td></tr>
+                        <tr><td class="py-1">Crédito Fiscal (03)</td><td class="text-end fw-semibold py-1">{{ cf.cantidad }} doc · ${{ "{:,.2f}".format(cf.total|float) }}</td></tr>
+                        <tr><td class="py-1">Notas de Crédito (05)</td><td class="text-end fw-semibold py-1">{{ nc.cantidad }} doc · -${{ "{:,.2f}".format((nc.total|float)|abs) }}</td></tr>
+                        <tr><td class="py-1">Sujeto Excluido (14)</td><td class="text-end fw-semibold py-1">{{ se.cantidad }} doc · ${{ "{:,.2f}".format(se.total|float) }}</td></tr>
+                        <tr><td class="py-1">Tickets</td><td class="text-end fw-semibold py-1">{{ tk.cantidad }} doc · ${{ "{:,.2f}".format(tk.total|float) }}</td></tr>
+                    </table>
+                    <hr class="my-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-dark">TOTAL VENTA BRUTA</span>
+                        <span class="fw-bold text-primary fs-6">${{ "{:,.2f}".format(datos.total_ventas|default(0)|float) }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card h-100 border-0 shadow-sm overflow-hidden" style="border-radius: 12px;">
+                <div class="card-header py-2 px-3" style="background: linear-gradient(135deg, #059669 0%, #0d9669 100%); color: white;">
+                    <h6 class="mb-0 fw-semibold"><i class="bi bi-credit-card me-2"></i>3. Método de Pago (Financiero)</h6>
+                </div>
+                <div class="card-body p-3">
+                    <table class="table table-sm table-borderless mb-0">
+                        <tr><td class="py-1">Efectivo</td><td class="text-end fw-semibold py-1">${{ "{:,.2f}".format(pagos.EFECTIVO|default(0)|float) }}</td></tr>
+                        <tr><td class="py-1">Tarjeta Créd./Déb.</td><td class="text-end fw-semibold py-1">${{ "{:,.2f}".format(pagos.TARJETA|default(0)|float) }}</td></tr>
+                        <tr><td class="py-1">Transferencia</td><td class="text-end fw-semibold py-1">${{ "{:,.2f}".format(pagos.TRANSFERENCIA|default(0)|float) }}</td></tr>
+                        <tr><td class="py-1">Bitcoin (Chivo)</td><td class="text-end fw-semibold py-1">${{ "{:,.2f}".format(pagos.BITCOIN|default(0)|float) }}</td></tr>
+                        <tr><td class="py-1">Crédito (pend.)</td><td class="text-end fw-semibold py-1">${{ "{:,.2f}".format(pagos.CREDITO|default(0)|float) }}</td></tr>
+                        {% if (pagos.OTRO|default(0)|float) > 0 %}
+                        <tr><td class="py-1">Otros</td><td class="text-end fw-semibold py-1">${{ "{:,.2f}".format(pagos.OTRO|float) }}</td></tr>
+                        {% endif %}
+                    </table>
+                    <hr class="my-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-dark">TOTAL RECIBIDO</span>
+                        <span class="fw-bold text-success fs-6">${{ "{:,.2f}".format(datos.total_ventas|default(0)|float) }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card h-100 border-0 shadow-sm overflow-hidden" style="border-radius: 12px;">
+                <div class="card-header py-2 px-3" style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color: white;">
+                    <h6 class="mb-0 fw-semibold"><i class="bi bi-percent me-2"></i>Impuestos</h6>
+                </div>
+                <div class="card-body p-3">
+                    <table class="table table-sm table-borderless mb-0">
+                        <tr><td class="py-1">IVA cobrado (13%)</td><td class="text-end fw-semibold py-1">${{ "{:,.2f}".format(datos.total_iva|default(0)|float) }}</td></tr>
+                        <tr><td class="py-1">Retención 1%</td><td class="text-end fw-semibold py-1">${{ "{:,.2f}".format(datos.total_retencion|default(0)|float) }}</td></tr>
+                    </table>
+                    <hr class="my-2">
+                    <div class="d-flex justify-content-between align-items-center text-muted small">
+                        <span>Ventas del día:</span>
+                        <span class="fw-semibold">{{ datos.cantidad_ventas }} transacciones</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+document.getElementById('formCorteCaja')?.addEventListener('change', function() {
+    var f = document.querySelector('input[name="fecha"]');
+    var u = document.querySelector('select[name="usuario_id"]');
+    var s = document.querySelector('select[name="sucursal_id"]');
+    var q = (f ? 'fecha=' + encodeURIComponent(f.value) : '') +
+        (u && u.value ? '&usuario_id=' + encodeURIComponent(u.value) : '') +
+        (s && s.value ? '&sucursal_id=' + encodeURIComponent(s.value) : '');
+    var btnPdf = document.getElementById('btnPdfCorte');
+    var btnTicket = document.getElementById('btnTicketCorte');
+    if (btnPdf) btnPdf.href = '{{ url_for("admin.reporte_corte_caja_exportar_pdf") }}?' + q;
+    if (btnTicket) btnTicket.href = '{{ url_for("admin.reporte_corte_caja_ticket") }}?' + q;
+});
+</script>
+{% endblock %}

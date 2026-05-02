@@ -13,10 +13,24 @@ class ApiConfig(AppConfig):
 
 
 def _crear_grupos_base(sender, **kwargs):
-    """Crea los grupos Administrador, Contador y Vendedor si no existen."""
+    """Crea los grupos RBAC con nombres estandarizados (ver permissions.GRUPO_*)."""
     try:
         from django.contrib.auth.models import Group
-        for nombre in ('Administrador', 'Contador', 'Vendedor'):
+        from .permissions import (
+            GRUPO_AGILDTE_ADMIN,
+            GRUPO_AGILDTE_CONTADOR,
+            GRUPO_AGILDTE_VENDEDOR,
+            GRUPO_POSAGIL_ADMIN,
+            GRUPO_POSAGIL_VENDEDOR,
+        )
+
+        for nombre in (
+            GRUPO_AGILDTE_ADMIN,
+            GRUPO_AGILDTE_CONTADOR,
+            GRUPO_AGILDTE_VENDEDOR,
+            GRUPO_POSAGIL_ADMIN,
+            GRUPO_POSAGIL_VENDEDOR,
+        ):
             Group.objects.get_or_create(name=nombre)
     except Exception:
         pass

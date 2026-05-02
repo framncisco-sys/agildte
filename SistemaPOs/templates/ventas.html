@@ -1,0 +1,1842 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<style>
+    :root {
+        --bg-body: #f8f9fc;
+        --card-bg: #ffffff;
+        --accent: #8A2BE2; 
+        --naranja-a: #f68c09; 
+        --text-main: #2e3436;
+        --border-color: #e3e6f0;
+    }
+
+    .card { 
+        background-color: var(--card-bg); 
+        border: 1px solid var(--border-color);
+        border-radius: 12px; 
+        box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.1);
+    }
+
+    .table thead th { 
+        background-color: #f8f9fc;
+        color: #4e73df;
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        border-bottom: 2px solid var(--border-color);
+    }
+
+    .btn-cobrar {
+        border: none;
+        color: white;
+        font-weight: 700;
+        border-radius: 10px;
+        padding: 15px;
+        font-size: 1.3rem;
+        transition: 0.3s;
+    }
+    body.layout-gerente .btn-cobrar { background-color: #3b82f6; }
+    body.layout-cajero .btn-cobrar { background-color: #22c55e; }
+    body.layout-bodeguero .btn-cobrar { background-color: #c2410c; }
+    body.layout-contador .btn-cobrar { background-color: #d97706; }
+    body.layout-superuser .btn-cobrar { background-color: #4f46e5; }
+
+    .total-box {
+        color: white;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+    }
+    body.layout-gerente .total-box { background: #3b82f6; }
+    body.layout-cajero .total-box { background: #22c55e; }
+    body.layout-bodeguero .total-box { background: #c2410c; }
+    body.layout-contador .total-box { background: #d97706; }
+    body.layout-superuser .total-box { background: #4f46e5; }
+
+    .sugerencia-item {
+        background: white;
+        border: none;
+        padding: 12px;
+        border-bottom: 1px solid #eee;
+        text-align: left;
+        width: 100%;
+        cursor: pointer;
+    }
+    .sugerencia-item:hover { background: #f8f9fc; color: var(--accent); }
+
+    /* Estilo para el banner de Offline */
+    #offline-banner {
+        display: none;
+        background: #e74a3b;
+        color: white;
+        text-align: center;
+        padding: 12px;
+        font-weight: bold;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.7; }
+        100% { opacity: 1; }
+    }
+
+    /* Botones rápidos: venta por $ y fracciones (queso, tomate, etc.) */
+    .pos-rapidos .btn {
+        font-size: 0.8rem;
+        padding: 0.2rem 0.45rem;
+        min-height: 2rem;
+    }
+    .pos-rapidos-monto .btn {
+        white-space: nowrap;
+    }
+
+    /* POS según dispositivo (layout.html asigna body.device-*) */
+    body.device-mobile .container-fluid.px-4 {
+        padding-left: 0.65rem !important;
+        padding-right: 0.65rem !important;
+    }
+    body.device-mobile .row.g-4 > .col-lg-8,
+    body.device-mobile .row.g-4 > .col-lg-4 {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+    body.device-mobile .btn-cobrar {
+        font-size: 1.12rem;
+        padding: 0.95rem;
+        min-height: 52px;
+    }
+    body.device-mobile .pos-rapidos .btn {
+        min-height: 44px;
+        font-size: 0.88rem;
+        padding: 0.35rem 0.5rem;
+    }
+    body.device-mobile .card.p-4 { padding: 1rem !important; }
+    body.device-mobile .table { font-size: 0.82rem; }
+    body.device-mobile .table thead th { font-size: 0.68rem; }
+
+    body.device-tablet .row.g-4 > .col-lg-4 {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+    @media (min-width: 992px) {
+        body.device-tablet .row.g-4 > .col-lg-8 { flex: 0 0 58%; max-width: 58%; }
+        body.device-tablet .row.g-4 > .col-lg-4 { flex: 0 0 42%; max-width: 42%; }
+    }
+
+    body.device-tv .btn-cobrar {
+        font-size: 1.45rem;
+        padding: 1.1rem 1.4rem;
+        min-height: 64px;
+    }
+    body.device-tv .total-box { padding: 1.35rem; font-size: 1.15rem; }
+    body.device-tv .form-control,
+    body.device-tv .form-select { font-size: 1.08rem; padding: 0.65rem 0.95rem; }
+    body.device-tv .pos-rapidos .btn { font-size: 0.95rem; min-height: 48px; }
+    body.device-tv .sugerencia-item { padding: 1rem 1.1rem; font-size: 1.05rem; }
+
+    #modalCatalogoProductos .table tbody tr { cursor: pointer; }
+    #modalCatalogoProductos .table tbody tr:hover { background: #f1f5f9; }
+    #modalCatalogoProductos tr.catalogo-row-sin-stock { cursor: not-allowed; }
+    #modalCatalogoProductos tr.catalogo-row-sin-stock:hover { background: #f8fafc; }
+    #modalCatalogoProductos tr.catalogo-row-sin-stock .exist-cat-ok { color: inherit; }
+    #modalCatalogoProductos tr.catalogo-row-sin-stock .exist-cat-cero { color: #b91c1c; font-weight: 700; }
+</style>
+
+<div class="container-fluid px-4 mt-3">
+    {% if puede_gestionar_ventas|default(false) %}
+    <div class="mb-2">
+        <a href="{{ url_for('admin.gestion_ventas') }}" class="btn btn-sm btn-outline-secondary rounded-pill"><i class="bi bi-receipt-cutoff"></i> Gestión de ventas</a>
+    </div>
+    {% endif %}
+    <div id="offline-banner">
+        ⚠️ MODO OFFLINE: <span id="pendientes-count">0</span> VENTAS GUARDADAS EN MEMORIA (ESPERANDO INTERNET). Solo Ticket. Productos desde caché.
+    </div>
+    <div id="cache-status" class="alert alert-info py-2 px-3 small mb-3" style="display:none;">
+        <i class="bi bi-database-check"></i> <span id="cache-productos-count">0</span> productos en caché para uso offline. <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="btn-actualizar-cache" title="Precargar productos para vender sin internet"><i class="bi bi-arrow-clockwise"></i> Actualizar</button>
+        <span class="d-block small mt-1 text-muted">Si cambió presentaciones o unidades por caja en Inventario, pulse <strong>Actualizar</strong> para refrescar el POS offline.</span>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card p-4 mb-4">
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <label class="text-primary small fw-bold mb-2">MODO ESCÁNER</label>
+                        <div class="input-group shadow-sm">
+                            <span class="input-group-text bg-light border-0"><i class="bi bi-upc-scan"></i></span>
+                            <input type="text" id="input_codigo" class="form-control border-0" placeholder="Escanee producto..." autofocus>
+                        </div>
+                    </div>
+                    <div class="col-md-7">
+                        <label class="text-primary small fw-bold mb-2">BÚSQUEDA MANUAL</label>
+                        <div class="position-relative">
+                            <div class="input-group shadow-sm">
+                                <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
+                                <input type="text" id="input_nombre" class="form-control border-0" placeholder="Escriba para filtrar o abra el catálogo…" title="Doble clic: catálogo completo con existencia y precio">
+                                <button type="button" class="btn btn-outline-primary" id="btnAbrirCatalogoProductos" title="Ver todos los productos (existencia y precio)">
+                                    <i class="bi bi-list-ul"></i> Catálogo
+                                </button>
+                            </div>
+                            <div id="lista_sugerencias" class="list-group position-absolute w-100 shadow mt-1" style="display:none; z-index:1000;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card py-2 px-3 mb-3 border-0 shadow-sm" id="pos_favoritos_card">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span class="small fw-bold text-nowrap text-secondary"><i class="bi bi-star-fill text-warning"></i> Acceso rápido</span>
+                    <div id="pos_favoritos_chips" class="d-flex flex-wrap align-items-center flex-grow-1 gap-1"></div>
+                </div>
+                <p class="small text-muted mb-0 mt-1" id="pos_favoritos_hint">Busque por nombre y pulse la estrella en un resultado para guardar aquí productos que pesa el mostrador (tomate, queso, etc.). Con internet, la lista se sincroniza en el servidor para esta sucursal.</p>
+            </div>
+
+            <div class="card p-0 overflow-hidden">
+                <table class="table align-middle m-0">
+                    <thead>
+                        <tr>
+                            <th class="ps-4">Descripción</th>
+                            <th>Precio Unit.</th>
+                            <th class="text-center">Cant. / $</th>
+                            <th class="text-end pe-4">Subtotal</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla_carrito"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card p-4 border-0">
+                <div class="total-box mb-4 shadow">
+                    <small class="text-white-50 fw-bold">TOTAL A PAGAR</small>
+                    <h2 class="display-5 fw-bold m-0" id="display_total">$ 0.00</h2>
+                </div>
+
+                <div class="mb-3">
+                    <label class="small fw-bold text-muted mb-1">MÉTODO DE PAGO</label>
+                    <select id="tipo_pago" class="form-select bg-light fw-bold border-0">
+                        <option value="EFECTIVO">💵 EFECTIVO</option>
+                        <option value="TARJETA">💳 TARJETA / POS</option>
+                        <option value="CREDITO">📋 CRÉDITO (pendiente cobro)</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="small fw-bold text-muted mb-1">TIPO DE COMPROBANTE</label>
+                    <select id="tipo_comprobante" class="form-select bg-light fw-bold border-0">
+                        <option value="TICKET">🧾 Ticket</option>
+                        <option value="FACTURA">📄 Factura (consumidor final)</option>
+                        <option value="CREDITO_FISCAL">🏢 Crédito fiscal</option>
+                    </select>
+                    <small class="text-muted d-block mt-1">Factura y crédito fiscal: elija al cliente <strong>haciendo clic</strong> en un resultado de la búsqueda. Crédito fiscal: además debe ser <strong>contribuyente</strong> en Clientes.</small>
+                </div>
+
+                <div class="mb-2 position-relative" id="cliente_field_wrap">
+                    <label class="small fw-bold text-muted mb-1">CLIENTE — buscar por nombre o documento</label>
+                    <input type="hidden" id="cliente_id" value="">
+                    <input type="text" id="cliente_nombre" class="form-control bg-light border-0" placeholder="Consumidor Final o escriba para buscar..." autocomplete="off">
+                    <div id="lista_clientes" class="list-group position-absolute w-100 shadow mt-1" style="display:none; z-index:1000; max-height:220px; overflow-y:auto;"></div>
+                </div>
+                <div id="formulario_cliente" class="card bg-light border-0 mb-3 p-3 small" style="display:none; border-radius:10px;">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold text-primary"><i class="bi bi-person-badge"></i> Datos del cliente</span>
+                        <button type="button" class="btn btn-link btn-sm text-muted p-0" onclick="limpiarCliente()" title="Quitar cliente">✕</button>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-12"><strong>Nombre:</strong> <span id="fc_nombre">—</span></div>
+                        <div class="col-6"><strong>Documento:</strong> <span id="fc_documento">—</span></div>
+                        <div class="col-6"><strong>Tipo:</strong> <span id="fc_tipo_doc">—</span></div>
+                        <div class="col-12"><strong>Dirección:</strong> <span id="fc_direccion">—</span></div>
+                        <div class="col-6"><strong>Teléfono:</strong> <span id="fc_telefono">—</span></div>
+                        <div class="col-6"><strong>Correo:</strong> <span id="fc_correo">—</span></div>
+                        <div class="col-12"><span id="fc_contribuyente" class="badge bg-success" style="display:none;">Contribuyente</span></div>
+                    </div>
+                </div>
+
+                <div class="mb-3 p-3 rounded-3 border border-success border-opacity-25 bg-success bg-opacity-10" id="pos_whatsapp_wrap">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" id="chk_enviar_whatsapp" checked>
+                        <label class="form-check-label small fw-bold" for="chk_enviar_whatsapp">
+                            <i class="bi bi-whatsapp text-success"></i> Enviar comprobante por WhatsApp
+                        </label>
+                    </div>
+                    <p id="pos_cliente_telefono_hint" class="small mb-0 mt-2 text-muted">
+                        Sin cliente del catálogo: el envío aplica en <strong>Factura / Crédito fiscal</strong>, o en <strong>Ticket</strong> si elige cliente con teléfono en ficha.
+                    </p>
+                </div>
+
+                <div class="mb-3">
+                    <label class="small fw-bold text-muted mb-1">DESCUENTO</label>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="input-group input-group-sm shadow-sm">
+                                <span class="input-group-text bg-light border-0">%</span>
+                                <input type="number" id="descuento_pct" class="form-control border-0 bg-light" min="0" max="100" step="0.01" placeholder="0.00">
+                            </div>
+                            <small class="text-muted">Porcentaje</small>
+                        </div>
+                        <div class="col-6">
+                            <div class="input-group input-group-sm shadow-sm">
+                                <span class="input-group-text bg-light border-0">$</span>
+                                <input type="number" id="descuento_monto" class="form-control border-0 bg-light" min="0" step="0.01" placeholder="0.00">
+                            </div>
+                            <small class="text-muted">Monto</small>
+                        </div>
+                    </div>
+                    <small class="text-muted d-block mt-1">Si llenas monto, se ignora el porcentaje.</small>
+                </div>
+
+                <div class="d-flex justify-content-between mb-2 text-muted px-2">
+                    <span>Gravado (Sin IVA):</span> <b id="resumen_gravado">$ 0.00</b>
+                </div>
+                <div class="d-flex justify-content-between mb-2 text-muted px-2">
+                    <span>Descuento:</span> <b id="resumen_descuento">$ 0.00</b>
+                </div>
+                <div class="d-flex justify-content-between mb-4 text-muted px-2 border-bottom pb-2">
+                    <span>IVA (13%):</span> <b id="resumen_iva">$ 0.00</b>
+                </div>
+
+                <button class="btn btn-cobrar w-100 mb-3 shadow-sm" onclick="guardarVenta()">
+                    PROCESAR COBRO (F2)
+                </button>
+
+                <button class="btn btn-light btn-sm w-100 text-danger fw-bold border-0" onclick="cancelarTodo()">
+                    <i class="bi bi-trash"></i> VACIAR CARRITO
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: catálogo completo (existencia + precio) -->
+<div class="modal fade" id="modalCatalogoProductos" tabindex="-1" aria-labelledby="modalCatalogoProductosLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title fw-bold" id="modalCatalogoProductosLabel"><i class="bi bi-box-seam text-primary"></i> Catálogo de productos</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group input-group-sm mb-2">
+                    <span class="input-group-text bg-light"><i class="bi bi-funnel"></i></span>
+                    <input type="text" id="modal_catalogo_filtro" class="form-control" placeholder="Filtrar por nombre o código…" autocomplete="off">
+                </div>
+                <div id="modal_catalogo_loading" class="text-center py-4 text-muted d-none">
+                    <div class="spinner-border spinner-border-sm" role="status"></div> Cargando…
+                </div>
+                <div id="modal_catalogo_error" class="alert alert-warning small d-none"></div>
+                <div class="table-responsive border rounded" style="max-height: min(62vh, 520px);">
+                    <table class="table table-hover table-sm align-middle mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th class="ps-3">Código</th>
+                                <th>Producto</th>
+                                <th class="text-end">Existencia</th>
+                                <th class="text-end">Precio</th>
+                                <th class="text-center pe-2" style="width:88px">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modal_catalogo_tbody"></tbody>
+                    </table>
+                </div>
+                <p class="small text-muted mb-0 mt-2" id="modal_catalogo_leyenda">Toque una fila o <strong>Agregar</strong>. Existencia en UMB / unidad base (sucursal de sesión). <strong class="text-danger">Sin existencia (0) no se puede agregar.</strong></p>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: venta guardada (impresión + WhatsApp con clic real — evita bloqueo de popups) -->
+<div class="modal fade" id="modalPostVentaExito" tabindex="-1" aria-labelledby="modalPostVentaExitoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title text-success fw-bold" id="modalPostVentaExitoLabel"><i class="bi bi-check-circle-fill me-1"></i> Venta guardada</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body pt-2">
+                <p class="mb-3">Comprobante <strong id="mpv_num">#</strong>. Use los botones (el navegador suele bloquear ventanas automáticas tras guardar).</p>
+                <div class="d-grid gap-2">
+                    <a id="mpv_btn_print" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary"><i class="bi bi-printer me-1"></i> Imprimir comprobante</a>
+                    <a id="mpv_btn_wa" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-success d-none"><i class="bi bi-whatsapp me-1"></i> Abrir WhatsApp con mensaje</a>
+                </div>
+                <p id="mpv_wa_info" class="small mt-3 mb-0 d-none text-muted"></p>
+                <p id="mpv_agildte_warn" class="small mt-2 mb-0 d-none text-warning"></p>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Autorización gerente (anti-fraude) -->
+<div class="modal fade modal-supervisor-auth" id="modalClaveSupervisor" tabindex="-1" aria-labelledby="modalClaveSupervisorLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalClaveSupervisorLabel">
+                    <span class="icon-shield"><i class="bi bi-shield-lock"></i></span>
+                    Autorización de Gerente
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label-sup">Usuario</label>
+                    <input type="text" id="supervisor_username" class="form-control" placeholder="Nombre de usuario" autocomplete="username">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label-sup">Contraseña</label>
+                    <input type="password" id="supervisor_password" class="form-control" placeholder="••••••••" autocomplete="current-password">
+                </div>
+                <div id="modal_clave_error" class="alert alert-danger py-2 small d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-autorizar" id="btnAutorizarEliminar">Autorizar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const requiereClaveSupervisor = {{ 'true' if requiere_clave_supervisor|default(false) else 'false' }};
+    const requiereClaveSupervisorDescuento = {{ 'true' if requiere_clave_supervisor_descuento|default(false) else 'false' }};
+    const limiteDescuentoCajero = {{ limite_descuento_cajero|default(5) }};
+    /** JWT AgilDTE (SSO) para que /guardar_venta reciba Authorization aunque falle la cookie de sesión. */
+    const POSAGIL_AGILDTE_AUTH = {% if agildte_bearer_para_fetch %}{{ ('Bearer ' ~ agildte_bearer_para_fetch) | tojson }}{% else %}null{% endif %};
+    function headersGuardarVenta() {
+        const h = { 'Content-Type': 'application/json' };
+        if (POSAGIL_AGILDTE_AUTH) h['Authorization'] = POSAGIL_AGILDTE_AUTH;
+        return h;
+    }
+    let carrito = [];
+    const CACHE_KEY = 'pos_productos_cache_v2';
+    const CACHE_EMPRESA_KEY = 'pos_productos_empresa_id';
+    try {
+        localStorage.removeItem('pos_productos_cache');
+    } catch (e) {}
+    const inputCodigo = document.getElementById('input_codigo');
+    const inputNombre = document.getElementById('input_nombre');
+    const listaSugerencias = document.getElementById('lista_sugerencias');
+    const inputDescPct = document.getElementById('descuento_pct');
+    const inputDescMonto = document.getElementById('descuento_monto');
+
+    function escAttr(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    }
+
+    const POS_EMPRESA_ID = {{ empresa_id_pos|default(1)|int }};
+    const POS_SUCURSAL_ID = {{ sucursal_id_pos | tojson }};
+    const FAVORITOS_STORAGE_KEY = 'pos_favoritos_v2_' + POS_EMPRESA_ID + '_' + (POS_SUCURSAL_ID == null ? '0' : POS_SUCURSAL_ID);
+    const MAX_FAVORITOS_POS = 14;
+    let _favSyncTimer = null;
+
+    function favoritosLista() {
+        try { return JSON.parse(localStorage.getItem(FAVORITOS_STORAGE_KEY) || '[]'); } catch (e) { return []; }
+    }
+    function favoritosPersistirLocal(arr) {
+        try {
+            localStorage.setItem(FAVORITOS_STORAGE_KEY, JSON.stringify(arr.slice(0, MAX_FAVORITOS_POS)));
+        } catch (e) { /* quota */ }
+    }
+    function favoritosGuardar(arr) {
+        favoritosPersistirLocal(arr);
+        favoritosProgramarSyncServidor(arr);
+    }
+    function favoritosProgramarSyncServidor(arr) {
+        if (!navigator.onLine) return;
+        clearTimeout(_favSyncTimer);
+        const copia = JSON.parse(JSON.stringify(arr.slice(0, MAX_FAVORITOS_POS)));
+        _favSyncTimer = setTimeout(() => favoritosSyncSubidaAhora(copia), 450);
+    }
+    async function favoritosSyncSubidaAhora(arr) {
+        if (!navigator.onLine) return;
+        try {
+            const resp = await fetch('/pos/favoritos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ favoritos: arr })
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.ok && data.ok && Array.isArray(data.favoritos)) {
+                favoritosPersistirLocal(data.favoritos);
+                pintarBarraFavoritos();
+            }
+        } catch (e) { console.warn('Sync favoritos POS', e); }
+    }
+    async function favoritosCargarDesdeServidor() {
+        if (!navigator.onLine) return;
+        const localAntes = favoritosLista();
+        try {
+            const resp = await fetch('/pos/favoritos');
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || !data.ok) return;
+            if (data.sync === false) return;
+            const server = Array.isArray(data.favoritos) ? data.favoritos : [];
+            if (server.length > 0) {
+                favoritosPersistirLocal(server);
+                pintarBarraFavoritos();
+            } else if (localAntes.length > 0) {
+                await favoritosSyncSubidaAhora(localAntes);
+            }
+        } catch (e) { console.warn('Carga favoritos POS', e); }
+    }
+    function favoritoTieneId(id) {
+        return favoritosLista().some(x => Number(x.id) === Number(id));
+    }
+    function snapshotFavorito(p) {
+        return {
+            id: p.id, nombre: p.nombre, precio: p.precio, codigo: p.codigo || '',
+            existencia: p.existencia,
+            fraccionable: !!p.fraccionable,
+            unidades_por_caja: p.unidades_por_caja, unidades_por_docena: p.unidades_por_docena,
+            mh_codigo_unidad: p.mh_codigo_unidad,
+            presentaciones: Array.isArray(p.presentaciones) ? p.presentaciones : [],
+            promocion_tipo: p.promocion_tipo || '', promocion_valor: p.promocion_valor || 0,
+            promocion_valor_comprar: p.promocion_valor_comprar || 2, promocion_valor_pagar: p.promocion_valor_pagar || 1,
+            promocion_descuento_monto: p.promocion_descuento_monto
+        };
+    }
+    function favoritoToggle(p) {
+        let f = favoritosLista();
+        const id = Number(p.id);
+        const i = f.findIndex(x => Number(x.id) === id);
+        if (i >= 0) f.splice(i, 1);
+        else f.unshift(snapshotFavorito(p));
+        favoritosGuardar(f);
+        pintarBarraFavoritos();
+    }
+    function favoritoQuitarId(id) {
+        favoritosGuardar(favoritosLista().filter(x => Number(x.id) !== Number(id)));
+        pintarBarraFavoritos();
+    }
+    function agregarProductoDesdeBusqueda(p) {
+        if (!productoPosTieneStockVendible(p)) {
+            alert('Sin existencia en inventario: no se puede agregar «' + (p.nombre || 'este producto') + '» al carrito. Cargue stock en Inventario o Kardex para esta sucursal.');
+            return;
+        }
+        const pid = normProductoIdPos(p.id);
+        if (!Number.isFinite(pid)) {
+            alert('El producto no tiene id interno válido (catálogo o respuesta incompleta). Cierre el catálogo, vuelva a abrirlo o recargue la página.');
+            return;
+        }
+        agregarAlCarrito(pid, p.nombre, p.precio, p.codigo, {
+            tipo: p.promocion_tipo || '', valor: p.promocion_valor || 0,
+            valor_comprar: p.promocion_valor_comprar || 2, valor_pagar: p.promocion_valor_pagar || 1,
+            descuento_monto: p.promocion_descuento_monto
+        }, metaProducto(p));
+        inputNombre.value = '';
+        listaSugerencias.style.display = 'none';
+    }
+    function cerrarModalCatalogo() {
+        const el = document.getElementById('modalCatalogoProductos');
+        if (el && typeof bootstrap !== 'undefined') {
+            const inst = bootstrap.Modal.getInstance(el);
+            if (inst) inst.hide();
+        }
+    }
+    function seleccionarProductoDesdeCatalogo(p) {
+        if (!productoPosTieneStockVendible(p)) {
+            alert('Sin existencia en inventario: no se puede agregar «' + (p.nombre || 'este producto') + '» al carrito.');
+            return;
+        }
+        agregarProductoDesdeBusqueda(p);
+        cerrarModalCatalogo();
+        inputCodigo.focus();
+    }
+    let catalogoProductosModalCache = [];
+    function formatExistenciaCat(ex) {
+        if (ex == null || ex === '') return '—';
+        const n = Number(ex);
+        if (!Number.isFinite(n)) return '—';
+        if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+        let s = n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+        return s || '0';
+    }
+    /** Catálogo online: bloquea existencia ≤ 0. Si no hay dato (offline/—), no bloquea. */
+    function productoPosTieneStockVendible(p) {
+        if (!p || p.existencia == null || p.existencia === '') return true;
+        const x = parseFloat(p.existencia);
+        if (!Number.isFinite(x)) return true;
+        return x > 0;
+    }
+    /** Mismo id numérico para modal, API JSON y carrito (evita que === falle string vs number). */
+    function normProductoIdPos(v) {
+        const n = parseInt(v, 10);
+        return Number.isFinite(n) ? n : NaN;
+    }
+    function renderCatalogoModalTabla() {
+        const tbody = document.getElementById('modal_catalogo_tbody');
+        const filtroEl = document.getElementById('modal_catalogo_filtro');
+        const filtro = filtroEl ? filtroEl.value.trim().toUpperCase() : '';
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        const lista = catalogoProductosModalCache.filter(p => {
+            if (!filtro) return true;
+            const nom = (p.nombre || '').toUpperCase();
+            const cod = (p.codigo || '').toUpperCase().replace(/\s/g, '');
+            const fq = filtro.replace(/\s/g, '');
+            return nom.includes(filtro) || cod.includes(fq);
+        });
+        lista.forEach(p => {
+            const tr = document.createElement('tr');
+            const td0 = document.createElement('td');
+            td0.className = 'ps-3 font-monospace small';
+            td0.textContent = (p.codigo || '').trim() || '—';
+            const td1 = document.createElement('td');
+            const strong = document.createElement('strong');
+            strong.textContent = p.nombre || '';
+            td1.appendChild(strong);
+            const pl = promoLabelSugerencia(p);
+            if (pl) {
+                td1.appendChild(document.createTextNode(' '));
+                const sp = document.createElement('span');
+                sp.className = 'text-muted small';
+                sp.textContent = pl;
+                td1.appendChild(sp);
+            }
+            const td2 = document.createElement('td');
+            td2.className = 'text-end font-monospace';
+            const hayStock = productoPosTieneStockVendible(p);
+            td2.textContent = formatExistenciaCat(p.existencia);
+            td2.classList.add(hayStock ? 'exist-cat-ok' : 'exist-cat-cero');
+            const td3 = document.createElement('td');
+            td3.className = 'text-end fw-bold text-primary';
+            td3.textContent = '$' + Number(p.precio).toFixed(2);
+            const td4 = document.createElement('td');
+            td4.className = 'text-center';
+            const btnA = document.createElement('button');
+            btnA.type = 'button';
+            btnA.className = hayStock ? 'btn btn-sm btn-success btn-catalogo-add' : 'btn btn-sm btn-secondary btn-catalogo-add';
+            btnA.textContent = hayStock ? 'Agregar' : 'Sin stock';
+            btnA.disabled = !hayStock;
+            btnA.title = hayStock ? 'Agregar al carrito' : 'Sin existencia en esta sucursal';
+            const pick = () => seleccionarProductoDesdeCatalogo(p);
+            if (!hayStock) tr.classList.add('catalogo-row-sin-stock');
+            tr.addEventListener('click', (ev) => {
+                if (ev.target.closest && ev.target.closest('.btn-catalogo-add')) return;
+                if (!hayStock) return;
+                pick();
+            });
+            btnA.addEventListener('click', (ev) => { ev.stopPropagation(); if (!hayStock) return; pick(); });
+            td4.appendChild(btnA);
+            tr.appendChild(td0);
+            tr.appendChild(td1);
+            tr.appendChild(td2);
+            tr.appendChild(td3);
+            tr.appendChild(td4);
+            tbody.appendChild(tr);
+        });
+        const leg = document.getElementById('modal_catalogo_leyenda');
+        if (leg) {
+            leg.textContent = lista.length + ' producto(s). Con existencia > 0: fila o Agregar. Los de existencia 0 no se pueden vender desde aquí.';
+        }
+    }
+    async function cargarCatalogoModalDatos() {
+        const load = document.getElementById('modal_catalogo_loading');
+        const err = document.getElementById('modal_catalogo_error');
+        if (err) { err.classList.add('d-none'); err.textContent = ''; }
+        if (navigator.onLine) {
+            if (load) load.classList.remove('d-none');
+            try {
+                const resp = await fetch('/pos/catalogo_productos');
+                const data = await resp.json();
+                catalogoProductosModalCache = Array.isArray(data.productos) ? data.productos : [];
+            } catch (e) {
+                catalogoProductosModalCache = [];
+                if (err) { err.textContent = 'No se pudo cargar el catálogo.'; err.classList.remove('d-none'); }
+            }
+            if (load) load.classList.add('d-none');
+        } else {
+            try {
+                const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{"productos":[]}');
+                catalogoProductosModalCache = (cache.productos || []).map(function (x) {
+                    const o = Object.assign({}, x);
+                    if (o.existencia == null) o.existencia = null;
+                    return o;
+                });
+            } catch (e) { catalogoProductosModalCache = []; }
+            if (err) {
+                err.textContent = 'Sin conexión: lista desde caché. Existencia no disponible (—).';
+                err.classList.remove('d-none');
+            }
+        }
+        renderCatalogoModalTabla();
+    }
+    function abrirModalCatalogoProductos() {
+        listaSugerencias.style.display = 'none';
+        const el = document.getElementById('modalCatalogoProductos');
+        if (!el || typeof bootstrap === 'undefined') return;
+        const m = bootstrap.Modal.getOrCreateInstance(el);
+        m.show();
+    }
+    document.getElementById('btnAbrirCatalogoProductos')?.addEventListener('click', function (e) {
+        e.preventDefault();
+        abrirModalCatalogoProductos();
+    });
+    inputNombre.addEventListener('dblclick', function (e) {
+        e.preventDefault();
+        abrirModalCatalogoProductos();
+    });
+    document.getElementById('modalCatalogoProductos')?.addEventListener('show.bs.modal', function () {
+        const f = document.getElementById('modal_catalogo_filtro');
+        if (f) f.value = '';
+        cargarCatalogoModalDatos().then(function () {
+            const f2 = document.getElementById('modal_catalogo_filtro');
+            if (f2) setTimeout(function () { f2.focus(); }, 200);
+        });
+    });
+    document.getElementById('modal_catalogo_filtro')?.addEventListener('input', function () {
+        renderCatalogoModalTabla();
+    });
+    function agregarDesdeFavoritoGuardado(st) {
+        if (!productoPosTieneStockVendible(st)) {
+            alert('Sin existencia en inventario: «' + (st.nombre || 'este producto') + '». Actualice el caché del POS (con internet) o cargue stock en Inventario.');
+            return;
+        }
+        agregarAlCarrito(st.id, st.nombre, st.precio, st.codigo || '', {
+            tipo: st.promocion_tipo || '', valor: st.promocion_valor || 0,
+            valor_comprar: st.promocion_valor_comprar || 2, valor_pagar: st.promocion_valor_pagar || 1,
+            descuento_monto: st.promocion_descuento_monto
+        }, metaProducto(st));
+        inputCodigo.focus();
+    }
+    function promoLabelSugerencia(p) {
+        let promoLabel = '';
+        if (p.promocion_tipo === '2X1') promoLabel = ' 2x1';
+        else if (p.promocion_tipo === '3X2') promoLabel = ' 3x2';
+        else if (p.promocion_tipo === 'VOLUMEN') promoLabel = ' Vol';
+        else if (p.promocion_tipo === 'PORCENTAJE' && p.promocion_valor) promoLabel = ' -' + p.promocion_valor + '%';
+        else if (p.promocion_tipo === 'DESCUENTO_MONTO') promoLabel = ' $ desc.';
+        else if (p.promocion_tipo === 'REGALO') promoLabel = ' Regalo';
+        else if (p.promocion_tipo === 'PRECIO_FIJO' && p.promocion_valor) promoLabel = ' $' + parseFloat(p.promocion_valor).toFixed(2);
+        else if (p.promocion_tipo === 'DESCUENTO_CANTIDAD' && p.promocion_valor) promoLabel = ' ' + (p.promocion_valor_comprar || 0) + '+ → -' + p.promocion_valor + '%';
+        return promoLabel;
+    }
+    function filaSugerenciaProducto(p) {
+        const row = document.createElement('div');
+        row.className = 'list-group-item d-flex align-items-stretch p-0 overflow-hidden';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sugerencia-item flex-grow-1 text-start border-0 bg-white py-2 px-3';
+        const pl = promoLabelSugerencia(p);
+        const sinEx = !productoPosTieneStockVendible(p);
+        btn.innerHTML = `<span>${p.nombre}</span> <b class="float-end ${sinEx ? 'text-secondary' : 'text-primary'}">$${Number(p.precio).toFixed(2)}${pl}</b>${sinEx ? ' <span class="small text-danger">(sin stock)</span>' : ''}`;
+        btn.disabled = sinEx;
+        btn.title = sinEx ? 'Sin existencia en inventario para esta sucursal' : '';
+        btn.addEventListener('click', () => { if (!btn.disabled) agregarProductoDesdeBusqueda(p); });
+        const st = document.createElement('button');
+        st.type = 'button';
+        st.className = 'btn border-0 rounded-0 px-2 bg-light ' + (favoritoTieneId(p.id) ? 'text-warning' : 'text-muted');
+        st.style.minWidth = '2.35rem';
+        st.title = favoritoTieneId(p.id) ? 'Quitar de favoritos' : 'Favorito: barra de acceso rápido';
+        st.innerHTML = favoritoTieneId(p.id) ? '<i class="bi bi-star-fill"></i>' : '<i class="bi bi-star"></i>';
+        st.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            favoritoToggle(p);
+            st.className = 'btn border-0 rounded-0 px-2 bg-light ' + (favoritoTieneId(p.id) ? 'text-warning' : 'text-muted');
+            st.title = favoritoTieneId(p.id) ? 'Quitar de favoritos' : 'Favorito: barra de acceso rápido';
+            st.innerHTML = favoritoTieneId(p.id) ? '<i class="bi bi-star-fill"></i>' : '<i class="bi bi-star"></i>';
+        });
+        row.appendChild(btn);
+        row.appendChild(st);
+        return row;
+    }
+    function pintarBarraFavoritos() {
+        const chips = document.getElementById('pos_favoritos_chips');
+        const hint = document.getElementById('pos_favoritos_hint');
+        if (!chips) return;
+        const f = favoritosLista();
+        chips.innerHTML = '';
+        if (hint) {
+            hint.textContent = f.length
+                ? 'Toque el nombre para agregar al carrito. × quita el favorito. Si cambió el precio en Inventario, vuelva a marcar ★ desde la búsqueda para actualizar.'
+                : 'Busque por nombre y pulse la estrella en un resultado para guardar aquí productos de pesado frecuente.';
+        }
+        f.forEach(st => {
+            const grp = document.createElement('div');
+            grp.className = 'btn-group btn-group-sm me-1 mb-1';
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'btn btn-outline-primary text-truncate';
+            b.style.maxWidth = '152px';
+            const nom = st.nombre || ('#' + st.id);
+            b.textContent = nom.length > 26 ? (nom.slice(0, 24) + '…') : nom;
+            b.title = nom;
+            b.onclick = () => agregarDesdeFavoritoGuardado(st);
+            const x = document.createElement('button');
+            x.type = 'button';
+            x.className = 'btn btn-outline-secondary';
+            x.innerHTML = '&times;';
+            x.title = 'Quitar favorito';
+            x.onclick = (ev) => { ev.stopPropagation(); favoritoQuitarId(st.id); };
+            grp.appendChild(b);
+            grp.appendChild(x);
+            chips.appendChild(grp);
+        });
+    }
+
+    // --- BUSCAR PRODUCTO (escáner o manual) ---
+    function obtenerProductoPorCodigo(cod) {
+        const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{"productos":[]}');
+        const prods = cache.productos || [];
+        cod = cod.replace(/\s/g, '');
+        return prods.find(p => (p.codigo || '').replace(/\s/g, '') === cod);
+    }
+    function buscarProductosEnCache(q) {
+        const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{"productos":[]}');
+        const prods = cache.productos || [];
+        q = (q || '').toUpperCase();
+        if (!q || q.length < 1) return prods.slice(0, 15);
+        return prods.filter(p => (p.nombre || '').toUpperCase().includes(q)).slice(0, 15);
+    }
+    inputCodigo.addEventListener('keypress', async (e) => {
+        if (e.key === 'Enter') {
+            let cod = inputCodigo.value.trim();
+            if(!cod) return;
+            if (!navigator.onLine) {
+                const p = obtenerProductoPorCodigo(cod);
+                if (p) {
+                    agregarAlCarrito(p.id, p.nombre, p.precio, p.codigo || cod, {
+                        tipo: p.promocion_tipo || '', valor: p.promocion_valor || 0,
+                        valor_comprar: p.promocion_valor_comprar || 2, valor_pagar: p.promocion_valor_pagar || 1,
+                        descuento_monto: p.promocion_descuento_monto
+                    }, metaProducto(p));
+                } else {
+                    alert("⚠️ Producto no encontrado en caché. Conecte internet y actualice el caché.");
+                }
+                inputCodigo.value = '';
+                return;
+            }
+            try {
+                const resp = await fetch(`/buscar_producto/${encodeURIComponent(cod)}`);
+                const data = await resp.json();
+                if (data.error) alert("⚠️ Producto no encontrado");
+                else if (!productoPosTieneStockVendible(data)) {
+                    alert('Sin existencia en inventario: «' + (data.nombre || 'este producto') + '». No se puede vender hasta cargar stock.');
+                } else agregarAlCarrito(data.id, data.nombre, data.precio, data.codigo || cod, {
+                    tipo: data.promocion_tipo || '', valor: data.promocion_valor || 0,
+                    valor_comprar: data.promocion_valor_comprar || 2, valor_pagar: data.promocion_valor_pagar || 1,
+                    descuento_monto: data.promocion_descuento_monto
+                }, metaProducto(data));
+            } catch (err) { alert("⚠️ Sin respuesta del servidor."); }
+            inputCodigo.value = '';
+        }
+    });
+
+    // --- BÚSQUEDA DE CLIENTES (nombre o documento) ---
+    const inputCliente = document.getElementById('cliente_nombre');
+    const listaClientes = document.getElementById('lista_clientes');
+    const inputClienteId = document.getElementById('cliente_id');
+    const clienteResumen = document.getElementById('cliente_resumen');
+    const clienteFieldWrap = document.getElementById('cliente_field_wrap');
+
+    const formularioCliente = document.getElementById('formulario_cliente');
+
+    let telefonoClientePos = '';
+
+    function actualizarPanelWhatsappPos() {
+        const hint = document.getElementById('pos_cliente_telefono_hint');
+        if (!hint || !inputClienteId) return;
+        const cid = inputClienteId.value ? String(inputClienteId.value).trim() : '';
+        const tel = String(telefonoClientePos || '').trim();
+        const tcEl = document.getElementById('tipo_comprobante');
+        const tc = tcEl ? tcEl.value : 'TICKET';
+        if (!cid) {
+            hint.className = 'small mb-0 mt-2 text-muted';
+            hint.innerHTML = 'Sin cliente del catálogo: el envío aplica en <strong>Factura / Crédito fiscal</strong>, o en <strong>Ticket</strong> si elige cliente con teléfono en ficha.';
+            return;
+        }
+        if (!tel) {
+            hint.className = 'small mb-0 mt-2 text-warning';
+            hint.innerHTML = '<i class="bi bi-telephone-x"></i> Cliente sin teléfono en ficha — no se enviará WhatsApp. Actualice datos en <strong>Clientes</strong>.';
+            return;
+        }
+        const aplica = tc === 'FACTURA' || tc === 'CREDITO_FISCAL' || (tc === 'TICKET' && cid);
+        hint.className = 'small mb-0 mt-2 ' + (aplica ? 'text-success' : 'text-muted');
+        if (aplica) {
+            hint.innerHTML = '<i class="bi bi-whatsapp"></i> Teléfono en ficha: <strong>' + escAttr(tel) + '</strong> — visible antes de cobrar.';
+        } else {
+            hint.innerHTML = '<i class="bi bi-whatsapp"></i> Teléfono: <strong>' + escAttr(tel) + '</strong>';
+        }
+    }
+
+    async function aplicarClienteSeleccionado(c) {
+        inputCliente.value = c.nombre || '';
+        inputClienteId.value = String(c.id);
+        telefonoClientePos = (c.telefono || '').trim();
+        actualizarPanelWhatsappPos();
+        if (clienteResumen) { clienteResumen.style.display = 'none'; }
+        listaClientes.style.display = 'none';
+
+        try {
+            const resp = await fetch(`/cliente/${c.id}/datos`);
+            if (resp.ok) {
+                const datos = await resp.json();
+                telefonoClientePos = (datos.telefono || '').trim();
+                document.getElementById('fc_nombre').textContent = datos.nombre || '—';
+                document.getElementById('fc_documento').textContent = (datos.numero_documento || datos.documento || '').trim() || '—';
+                document.getElementById('fc_tipo_doc').textContent = (datos.tipo_documento || '').trim() || '—';
+                document.getElementById('fc_direccion').textContent = (datos.direccion || '').trim() || '—';
+                document.getElementById('fc_telefono').textContent = (datos.telefono || '').trim() || '—';
+                document.getElementById('fc_correo').textContent = (datos.correo || '').trim() || '—';
+                const fcContrib = document.getElementById('fc_contribuyente');
+                fcContrib.style.display = datos.contribuyente ? 'inline-block' : 'none';
+                if (formularioCliente) formularioCliente.style.display = 'block';
+                actualizarPanelWhatsappPos();
+            } else {
+                if (formularioCliente) {
+                    telefonoClientePos = (c.telefono || '').trim();
+                    document.getElementById('fc_nombre').textContent = c.nombre || '—';
+                    document.getElementById('fc_documento').textContent = (c.documento || c.nit || '').trim() || '—';
+                    document.getElementById('fc_tipo_doc').textContent = (c.tipo_documento || '').trim() || '—';
+                    document.getElementById('fc_direccion').textContent = '—';
+                    document.getElementById('fc_telefono').textContent = telefonoClientePos || '—';
+                    document.getElementById('fc_correo').textContent = '—';
+                    document.getElementById('fc_contribuyente').style.display = c.contribuyente ? 'inline-block' : 'none';
+                    formularioCliente.style.display = 'block';
+                    actualizarPanelWhatsappPos();
+                }
+            }
+        } catch (e) {
+            if (formularioCliente) {
+                telefonoClientePos = (c.telefono || '').trim();
+                document.getElementById('fc_nombre').textContent = c.nombre || '—';
+                document.getElementById('fc_documento').textContent = (c.documento || c.nit || '').trim() || '—';
+                document.getElementById('fc_tipo_doc').textContent = (c.tipo_documento || '').trim() || '—';
+                document.getElementById('fc_direccion').textContent = '—';
+                document.getElementById('fc_telefono').textContent = telefonoClientePos || '—';
+                document.getElementById('fc_correo').textContent = '—';
+                document.getElementById('fc_contribuyente').style.display = c.contribuyente ? 'inline-block' : 'none';
+                formularioCliente.style.display = 'block';
+                actualizarPanelWhatsappPos();
+            }
+        }
+    }
+
+    function limpiarCliente() {
+        inputCliente.value = '';
+        inputClienteId.value = '';
+        telefonoClientePos = '';
+        const chkWa = document.getElementById('chk_enviar_whatsapp');
+        if (chkWa) chkWa.checked = true;
+        if (clienteResumen) { clienteResumen.textContent = ''; clienteResumen.style.display = 'none'; }
+        if (formularioCliente) formularioCliente.style.display = 'none';
+        actualizarPanelWhatsappPos();
+    }
+
+    inputCliente.addEventListener('input', async function() {
+        inputClienteId.value = '';
+        telefonoClientePos = '';
+        actualizarPanelWhatsappPos();
+        if (clienteResumen) { clienteResumen.style.display = 'none'; clienteResumen.textContent = ''; }
+        if (formularioCliente) formularioCliente.style.display = 'none';
+        let q = this.value.trim();
+        if (q.length < 1) { listaClientes.style.display = 'none'; return; }
+        try {
+            const resp = await fetch(`/buscar_clientes?q=${encodeURIComponent(q)}`);
+            if (!resp.ok) { listaClientes.style.display = 'none'; return; }
+            const clientes = await resp.json();
+            if (clientes.length > 0) {
+                listaClientes.innerHTML = '';
+                clientes.forEach(c => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'list-group-item list-group-item-action small';
+                    const doc = c.documento || c.nit || '';
+                    const td = c.tipo_documento ? ` · ${escAttr(c.tipo_documento)}` : '';
+                    const cf = c.contribuyente ? ' <span class="badge bg-success ms-1">Contrib.</span>' : '';
+                    const tel = (c.telefono || '').trim();
+                    const telPart = tel
+                        ? ` <span class="text-success text-nowrap" title="Teléfono en ficha"><i class="bi bi-whatsapp"></i> ${escAttr(tel)}</span>`
+                        : ' <span class="text-muted small">Sin tel.</span>';
+                    btn.innerHTML = `<b>${escAttr(c.nombre || '')}</b> <span class="text-muted">${escAttr(doc)}${td}</span>${cf}${telPart}`;
+                    btn.addEventListener('mousedown', function(ev) { ev.preventDefault(); });
+                    btn.addEventListener('click', function(ev) {
+                        ev.preventDefault();
+                        aplicarClienteSeleccionado(c);
+                    });
+                    listaClientes.appendChild(btn);
+                });
+                listaClientes.style.display = 'block';
+            } else {
+                listaClientes.style.display = 'none';
+            }
+        } catch (e) { listaClientes.style.display = 'none'; }
+    });
+
+    inputCliente.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            const first = listaClientes.querySelector('button.list-group-item-action');
+            if (first && listaClientes.style.display !== 'none') {
+                e.preventDefault();
+                first.click();
+            }
+        }
+    });
+
+    const selTipoComprobante = document.getElementById('tipo_comprobante');
+    if (selTipoComprobante) selTipoComprobante.addEventListener('change', actualizarPanelWhatsappPos);
+    actualizarPanelWhatsappPos();
+
+    inputNombre.addEventListener('input', async function() {
+        let q = this.value;
+        if (q.length < 2) { listaSugerencias.style.display = 'none'; return; }
+        if (!navigator.onLine) {
+            const productos = buscarProductosEnCache(q);
+            if (productos.length > 0) {
+                listaSugerencias.innerHTML = '';
+                productos.forEach(p => { listaSugerencias.appendChild(filaSugerenciaProducto(p)); });
+                listaSugerencias.style.display = 'block';
+            } else {
+                listaSugerencias.style.display = 'none';
+            }
+            return;
+        }
+        try {
+            const resp = await fetch(`/buscar_por_nombre?q=${encodeURIComponent(q)}`);
+            const productos = await resp.json();
+            if (productos.length > 0) {
+                listaSugerencias.innerHTML = '';
+                productos.forEach(p => { listaSugerencias.appendChild(filaSugerenciaProducto(p)); });
+                listaSugerencias.style.display = 'block';
+            }
+        } catch (e) {}
+    });
+
+    function metaProducto(p) {
+        p = p || {};
+        return {
+            fraccionable: p.fraccionable,
+            unidades_por_caja: p.unidades_por_caja,
+            unidades_por_docena: p.unidades_por_docena,
+            mh_codigo_unidad: p.mh_codigo_unidad,
+            presentaciones: Array.isArray(p.presentaciones) ? p.presentaciones : []
+        };
+    }
+
+    function factorUnidadVenta(item) {
+        if (item.presentaciones && item.presentaciones.length) {
+            return Math.max(0.0001, parseFloat(item.factor_umb) || 1);
+        }
+        const u = (item.unidad_venta || 'UNIDAD').toUpperCase();
+        if (u === 'UNIDAD') return 1;
+        if (u === 'DOCENA') return Math.max(1, parseInt(item.unidades_por_docena, 10) || 12);
+        if (u === 'CAJA') {
+            const n = parseInt(item.unidades_por_caja, 10);
+            return (n > 0) ? n : 1;
+        }
+        return 1;
+    }
+    function cantidadBaseLinea(item) {
+        if ((item.modo || 'CANTIDAD') === 'MONTO' && item.monto_solicitado > 0 && item.precioFinal > 0) {
+            return Math.round((item.monto_solicitado / item.precioFinal) * 10000) / 10000;
+        }
+        return (parseFloat(item.cantidad) || 0) * factorUnidadVenta(item);
+    }
+    function agregarAlCarrito(id, nombre, precio, codigo, promo, meta) {
+        promo = promo || {};
+        meta = meta || {};
+        const pid = normProductoIdPos(id);
+        if (!Number.isFinite(pid)) {
+            alert('No se pudo agregar el producto: id interno inválido.');
+            return;
+        }
+        const pres = meta.presentaciones || [];
+        let presId = null;
+        let factorUmb = 1;
+        let mergeKey = 'leg-UNIDAD';
+        if (pres.length) {
+            const def = pres.find(pr => pr.es_umb) || pres[0];
+            if (def && def.id != null && def.id !== '') presId = def.id;
+            factorUmb = def ? (parseFloat(def.factor) || 1) : 1;
+            mergeKey = (presId != null) ? ('id' + presId) : ('fac' + factorUmb);
+        }
+        const esFracc = !!meta.fraccionable;
+        const precioN = parseFloat(precio) || 0;
+        if (!esFracc) {
+            let item = carrito.find(i => normProductoIdPos(i.id) === pid && (i._mergeKey || '') === mergeKey && (i.modo || 'CANTIDAD') === 'CANTIDAD');
+            if (item) { item.cantidad++; renderizar(); return; }
+        } else {
+            let itemM = carrito.find(i => normProductoIdPos(i.id) === pid && (i._mergeKey || '') === mergeKey && (i.modo || 'CANTIDAD') === 'MONTO');
+            if (itemM) {
+                itemM.monto_solicitado = (parseFloat(itemM.monto_solicitado) || 0) + precioN;
+                renderizar();
+                return;
+            }
+        }
+        carrito.push({
+                id: pid, nombre, precioFinal: precioN, cantidad: 1, codigo,
+                promocion_tipo: (promo.tipo || '').toUpperCase(),
+                promocion_valor: parseFloat(promo.valor) || 0,
+                promocion_valor_comprar: parseFloat(promo.valor_comprar) || 2,
+                promocion_valor_pagar: parseFloat(promo.valor_pagar) || 1,
+                promocion_descuento_monto: promo.descuento_monto != null ? parseFloat(promo.descuento_monto) : null,
+                unidad_venta: 'UNIDAD',
+                modo: esFracc ? 'MONTO' : 'CANTIDAD',
+                monto_solicitado: esFracc ? precioN : null,
+                fraccionable: esFracc,
+                unidades_por_caja: meta.unidades_por_caja != null ? parseInt(meta.unidades_por_caja, 10) : null,
+                unidades_por_docena: meta.unidades_por_docena != null ? parseInt(meta.unidades_por_docena, 10) : 12,
+                mh_codigo_unidad: (meta.mh_codigo_unidad || '59').toString(),
+                presentaciones: pres,
+                presentacion_id: presId,
+                factor_umb: factorUmb,
+                _mergeKey: mergeKey
+            });
+        renderizar();
+    }
+
+    function fmtCantBase(q) {
+        const n = parseFloat(q);
+        if (!Number.isFinite(n)) return '0';
+        if (Math.abs(n - Math.round(n)) < 1e-6) return String(Math.round(n));
+        return String(Math.round(n * 10000) / 10000).replace(/\.?0+$/, '');
+    }
+
+    window.posCantidadLinea = function(i, v) {
+        const it = carrito[i];
+        if (!it || (it.modo || 'CANTIDAD') === 'MONTO') return;
+        const x = parseFloat(String(v).replace(',', '.'));
+        if (!Number.isFinite(x) || x <= 0) return;
+        it.cantidad = x;
+        renderizar();
+    };
+
+    function calcSubtotalConPromo(precio, cant, pt, pv, vc, vp, dm) {
+        if (cant <= 0) return 0;
+        pt = (pt || '').toUpperCase();
+        pv = parseFloat(pv) || 0;
+        vc = parseFloat(vc) || 2;
+        vp = parseFloat(vp) || 1;
+        dm = dm != null ? parseFloat(dm) : null;
+        if ((pt === '2X1' || pt === '3X2' || pt === 'VOLUMEN') && vc > 0) {
+            const grupos = Math.floor(cant / vc);
+            const resto = cant - grupos * vc;
+            const unidadesPagar = grupos * vp + resto;
+            return unidadesPagar * precio;
+        }
+        if (pt === 'PORCENTAJE' && pv > 0 && pv < 100) {
+            return cant * precio * (1 - pv / 100);
+        }
+        if (pt === 'DESCUENTO_MONTO' && dm != null && dm > 0) {
+            return cant * Math.max(0, precio - dm);
+        }
+        if (pt === 'PRECIO_FIJO' && pv > 0) {
+            return cant * pv;
+        }
+        if (pt === 'DESCUENTO_CANTIDAD' && vc > 0 && cant >= vc && pv > 0 && pv < 100) {
+            return cant * precio * (1 - pv / 100);
+        }
+        return precio * cant;
+    }
+
+    function renderizar() {
+        const tabla = document.getElementById('tabla_carrito');
+        tabla.innerHTML = '';
+        let totalBruto = 0;
+        carrito.forEach((p, i) => {
+            const pt = (p.promocion_tipo || '').toUpperCase();
+            const pv = parseFloat(p.promocion_valor) || 0;
+            const vc = p.promocion_valor_comprar, vp = p.promocion_valor_pagar, dm = p.promocion_descuento_monto;
+            const qBase = cantidadBaseLinea(p);
+            let subtotal;
+            if ((p.modo || 'CANTIDAD') === 'MONTO') {
+                subtotal = Math.round((parseFloat(p.monto_solicitado) || 0) * 100) / 100;
+            } else {
+                subtotal = calcSubtotalConPromo(p.precioFinal, qBase, pt, pv, vc, vp, dm);
+            }
+            totalBruto += subtotal;
+            let promoBadge = '';
+            if (pt === '2X1') promoBadge = '<span class="badge bg-warning text-dark ms-1">2x1</span>';
+            else if (pt === '3X2') promoBadge = '<span class="badge bg-warning text-dark ms-1">3x2</span>';
+            else if (pt === 'VOLUMEN') promoBadge = '<span class="badge bg-warning text-dark ms-1">Volumen</span>';
+            else if (pt === 'PORCENTAJE' && pv > 0) promoBadge = `<span class="badge bg-info ms-1">-${pv}%</span>`;
+            else if (pt === 'DESCUENTO_MONTO') promoBadge = '<span class="badge bg-secondary ms-1">$ desc.</span>';
+            else if (pt === 'REGALO') promoBadge = '<span class="badge bg-success ms-1">Regalo</span>';
+            else if (pt === 'PRECIO_FIJO' && pv > 0) promoBadge = `<span class="badge bg-primary ms-1">$${pv.toFixed(2)}</span>`;
+            else if (pt === 'DESCUENTO_CANTIDAD' && pv > 0) promoBadge = `<span class="badge bg-info ms-1">${vc}+ → -${pv}%</span>`;
+            const modoMonto = (p.modo || 'CANTIDAD') === 'MONTO';
+            let umbLabel = 'UMB';
+            if (p.presentaciones && p.presentaciones.length) {
+                const urow = p.presentaciones.find(pr => pr.es_umb) || p.presentaciones[0];
+                if (urow && urow.nombre) umbLabel = String(urow.nombre).replace(/</g, '');
+            }
+            const hasCaja = p.unidades_por_caja != null && parseInt(p.unidades_por_caja, 10) > 0;
+            const uv = (p.unidad_venta || 'UNIDAD').toUpperCase();
+            let selUnidad;
+            if (p.presentaciones && p.presentaciones.length) {
+                const opts = p.presentaciones.map(pr => {
+                    const val = pr.id != null ? ('id:' + pr.id) : ('fac:' + pr.factor);
+                    let selAttr = '';
+                    if (p.presentacion_id != null && pr.id === p.presentacion_id) selAttr = ' selected';
+                    else if ((p.presentacion_id == null || p.presentacion_id === '') && p.factor_umb != null && Math.abs(parseFloat(p.factor_umb) - parseFloat(pr.factor)) < 1e-6) selAttr = ' selected';
+                    const lab = String(pr.nombre || '').replace(/</g, '') + ' (×' + pr.factor + ')';
+                    return '<option value="' + val + '"' + selAttr + '>' + lab + '</option>';
+                }).join('');
+                selUnidad = '<select class="form-select form-select-sm my-1" style="max-width:220px" onchange="posPresentacionLinea(' + i + ', this.value)" ' + (modoMonto ? 'disabled' : '') + '>' + opts + '</select>';
+            } else {
+                selUnidad = `
+                        <select class="form-select form-select-sm my-1" style="max-width:140px" onchange="posUnidadLinea(${i}, this.value)" ${modoMonto ? 'disabled' : ''}>
+                            <option value="UNIDAD" ${uv === 'UNIDAD' ? 'selected' : ''}>Unidad</option>
+                            <option value="DOCENA" ${uv === 'DOCENA' ? 'selected' : ''}>Docena (${parseInt(p.unidades_por_docena, 10) || 12} u.)</option>
+                            <option value="CAJA" ${uv === 'CAJA' ? 'selected' : ''} ${hasCaja ? '' : 'disabled'}>Caja${hasCaja ? ' (' + parseInt(p.unidades_por_caja, 10) + ' u.)' : ' (sin factor)'}</option>
+                        </select>`;
+            }
+            const chkMonto = p.fraccionable ? `<label class="d-block small text-muted mb-0"><input type="checkbox" class="form-check-input align-middle" ${modoMonto ? 'checked' : ''} onchange="posToggleMonto(${i}, this.checked)"> Venta por monto ($)</label>` : '';
+            const montoVal = (p.monto_solicitado != null && p.monto_solicitado !== '') ? parseFloat(p.monto_solicitado) : '';
+            const ctrlCant = modoMonto
+                ? `<div class="small">$ <input type="number" class="form-control form-control-sm d-inline-block text-end" style="width:100px" min="0.01" step="0.01" value="${montoVal}" onchange="posMontoLinea(${i}, this.value)" placeholder="Ej. 5.00" id="pos_monto_input_${i}"></div>`
+                : (p.fraccionable
+                    ? `<input type="number" class="form-control form-control-sm text-center mx-auto" style="max-width:5.5rem" min="0.0001" step="0.01" value="${(parseFloat(p.cantidad) > 0 ? parseFloat(p.cantidad) : 1)}" onchange="posCantidadLinea(${i}, this.value)" title="Cantidad en ${escAttr(umbLabel)} (no es monto en $)" id="pos_cant_input_${i}">`
+                    : `<div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-light border" onclick="cambiarCant(${i},-1)">-</button>
+                            <span class="btn btn-white border-top border-bottom disabled fw-bold" style="width:44px">${p.cantidad}</span>
+                            <button type="button" class="btn btn-light border" onclick="cambiarCant(${i},1)">+</button>
+                        </div>`);
+            let rapidosHtml = '';
+            if (p.fraccionable && modoMonto) {
+                rapidosHtml = `<div class="pos-rapidos pos-rapidos-monto d-flex flex-wrap justify-content-center gap-1 mt-1" role="group" aria-label="Sumar monto rápido">
+                    <button type="button" class="btn btn-outline-success" onclick="posMontoRapido(${i}, 0.5)">+$0.50</button>
+                    <button type="button" class="btn btn-outline-success" onclick="posMontoRapido(${i}, 1)">+$1</button>
+                    <button type="button" class="btn btn-outline-success" onclick="posMontoRapido(${i}, 2)">+$2</button>
+                    <button type="button" class="btn btn-outline-success" onclick="posMontoRapido(${i}, 5)">+$5</button>
+                </div>`;
+            } else if (p.fraccionable && !modoMonto) {
+                const tq = escAttr(umbLabel);
+                rapidosHtml = `<div class="pos-rapidos d-flex flex-wrap justify-content-center gap-1 mt-1" role="group" aria-label="Fracción rápida">
+                    <button type="button" class="btn btn-outline-primary" title="Cuarto (${tq})" onclick="posCantidadFraccion(${i}, 0.25)">¼</button>
+                    <button type="button" class="btn btn-outline-primary" title="Media (${tq})" onclick="posCantidadFraccion(${i}, 0.5)">½</button>
+                    <button type="button" class="btn btn-outline-primary" title="Una (${tq})" onclick="posCantidadFraccion(${i}, 1)">1</button>
+                </div>`;
+            }
+            const hintBase = !modoMonto
+                ? `<div class="small text-muted">Sale del inventario: <strong>${fmtCantBase(qBase)} ${umbLabel}</strong>. <span class="text-secondary">${
+                    p.fraccionable
+                        ? 'Use <strong>¼ · ½ · 1</strong> o el campo numérico. Para cobrar por dinero («$1 de tomate») marque <em>Venta por monto ($)</em> y use <strong>+$1</strong>, etc.'
+                        : 'Los botones +/− suman 1 ' + umbLabel + ' por toque.'
+                }</span></div>`
+                : `<div class="small text-muted">≈ <strong>${fmtCantBase(qBase)} ${umbLabel}</strong> según el monto. Botones verdes <strong>suman</strong> al total en $.</div>`;
+            tabla.innerHTML += `
+                <tr>
+                    <td class="ps-4"><b>${p.nombre}</b>${promoBadge}<br><small class="text-muted">${p.codigo}</small>
+                        ${selUnidad}${chkMonto}${hintBase}</td>
+                    <td>$${p.precioFinal.toFixed(2)} <span class="small text-muted">/ ${umbLabel}</span></td>
+                    <td class="text-center">${ctrlCant}${rapidosHtml}</td>
+                    <td class="text-end pe-4 fw-bold">$${subtotal.toFixed(2)}</td>
+                    <td class="text-center">
+                        <button type="button" class="btn btn-link text-danger p-0" onclick="eliminar(${i})"><i class="bi bi-trash-fill"></i></button>
+                    </td>
+                </tr>`;
+        });
+
+        const descMonto = parseFloat(inputDescMonto.value || '0') || 0;
+        const descPct = parseFloat(inputDescPct.value || '0') || 0;
+        let descuento = 0;
+        if (descMonto > 0) descuento = descMonto;
+        else if (descPct > 0) descuento = totalBruto * (Math.min(descPct, 100) / 100);
+        if (descuento < 0) descuento = 0;
+        if (descuento > totalBruto) descuento = totalBruto;
+
+        const totalNeto = totalBruto - descuento;
+        document.getElementById('display_total').innerText = `$ ${totalNeto.toFixed(2)}`;
+        document.getElementById('resumen_descuento').innerText = `$ ${descuento.toFixed(2)}`;
+        document.getElementById('resumen_gravado').innerText = `$ ${(totalNeto / 1.13).toFixed(2)}`;
+        document.getElementById('resumen_iva').innerText = `$ ${(totalNeto - (totalNeto / 1.13)).toFixed(2)}`;
+    }
+
+    function totalBrutoDesdeCarrito() {
+        let tb = 0;
+        carrito.forEach(p => {
+            const pt = (p.promocion_tipo || '').toUpperCase();
+            const pv = parseFloat(p.promocion_valor) || 0;
+            const vc = p.promocion_valor_comprar, vp = p.promocion_valor_pagar, dm = p.promocion_descuento_monto;
+            const qBase = cantidadBaseLinea(p);
+            if ((p.modo || 'CANTIDAD') === 'MONTO') {
+                tb += Math.round((parseFloat(p.monto_solicitado) || 0) * 100) / 100;
+            } else {
+                tb += calcSubtotalConPromo(p.precioFinal, qBase, pt, pv, vc, vp, dm);
+            }
+        });
+        return tb;
+    }
+
+    window.posPresentacionLinea = function(i, val) {
+        const it = carrito[i];
+        if (!it || !it.presentaciones || !it.presentaciones.length) return;
+        const p = String(val).split(':');
+        if (p[0] === 'id') {
+            const idn = parseInt(p[1], 10);
+            const pr = it.presentaciones.find(x => x.id === idn);
+            if (pr) {
+                it.presentacion_id = pr.id;
+                it.factor_umb = parseFloat(pr.factor);
+            }
+        } else if (p[0] === 'fac') {
+            const fac = parseFloat(p[1]);
+            it.presentacion_id = null;
+            it.factor_umb = fac;
+        }
+        renderizar();
+    };
+    window.posUnidadLinea = function(i, v) {
+        const it = carrito[i];
+        if (!it) return;
+        if (it.presentaciones && it.presentaciones.length) return;
+        if (v === 'CAJA' && (!(it.unidades_por_caja > 0))) {
+            alert('Configure unidades por caja del producto en Inventario.');
+            renderizar();
+            return;
+        }
+        it.unidad_venta = v;
+        renderizar();
+    };
+    window.posMontoLinea = function(i, v) {
+        const it = carrito[i];
+        if (!it) return;
+        it.monto_solicitado = parseFloat(v) || 0;
+        renderizar();
+    };
+    window.posToggleMonto = function(i, on) {
+        const it = carrito[i];
+        if (!it) return;
+        it.modo = on ? 'MONTO' : 'CANTIDAD';
+        if (on && (!(parseFloat(it.monto_solicitado) > 0))) {
+            it.monto_solicitado = it.precioFinal || 1;
+        }
+        if (!on) {
+            it.cantidad = Math.max(0.0001, parseFloat(it.cantidad) || 1);
+        }
+        renderizar();
+    };
+
+    /** Suma al monto cobrado (venta por $): típico «deme otro dólar» de tomate/queso. */
+    window.posMontoRapido = function(i, delta) {
+        const it = carrito[i];
+        if (!it || (it.modo || 'CANTIDAD') !== 'MONTO' || !it.fraccionable) return;
+        const d = parseFloat(delta);
+        if (!Number.isFinite(d) || d <= 0) return;
+        it.monto_solicitado = Math.round(((parseFloat(it.monto_solicitado) || 0) + d) * 100) / 100;
+        renderizar();
+        setTimeout(function() {
+            const el = document.getElementById('pos_monto_input_' + i);
+            if (el) { el.focus(); el.select && el.select(); }
+        }, 0);
+    };
+
+    /** Fija cantidad en unidad de venta/presentación (¼, ½, 1 libra, etc.). */
+    window.posCantidadFraccion = function(i, q) {
+        const it = carrito[i];
+        if (!it || (it.modo || 'CANTIDAD') === 'MONTO' || !it.fraccionable) return;
+        const x = parseFloat(q);
+        if (!Number.isFinite(x) || x <= 0) return;
+        it.cantidad = x;
+        renderizar();
+        setTimeout(function() {
+            const el = document.getElementById('pos_cant_input_' + i);
+            if (el) { el.focus(); el.select && el.select(); }
+        }, 0);
+    };
+
+    let pendienteAccion = null;
+
+    async function ejecutarPendiente() {
+        if (pendienteAccion) {
+            pendienteAccion();
+            pendienteAccion = null;
+        }
+    }
+
+    async function solicitarAutorizacion(accion) {
+        if (!requiereClaveSupervisor) {
+            accion();
+            return;
+        }
+        pendienteAccion = accion;
+        document.getElementById('supervisor_username').value = '';
+        document.getElementById('supervisor_password').value = '';
+        document.getElementById('modal_clave_error').classList.add('d-none');
+        const modal = new bootstrap.Modal(document.getElementById('modalClaveSupervisor'));
+        modal.show();
+        document.getElementById('supervisor_username').focus();
+    }
+
+    document.getElementById('btnAutorizarEliminar').addEventListener('click', async function() {
+        const username = document.getElementById('supervisor_username').value.trim();
+        const password = document.getElementById('supervisor_password').value;
+        const errEl = document.getElementById('modal_clave_error');
+        if (!username || !password) {
+            errEl.textContent = 'Ingrese usuario y contraseña.';
+            errEl.classList.remove('d-none');
+            return;
+        }
+        try {
+            const resp = await fetch('/autorizar_eliminar_item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('modalClaveSupervisor')).hide();
+                await ejecutarPendiente();
+            } else {
+                errEl.textContent = data.msg || 'No autorizado.';
+                errEl.classList.remove('d-none');
+            }
+        } catch (e) {
+            errEl.textContent = 'Error de conexión.';
+            errEl.classList.remove('d-none');
+        }
+    });
+
+    function cambiarCant(i, v) {
+        if (!carrito[i] || (carrito[i].modo || 'CANTIDAD') === 'MONTO') return;
+        const quitarItem = carrito[i].cantidad + v < 1;
+        if (quitarItem && requiereClaveSupervisor) {
+            solicitarAutorizacion(() => { carrito.splice(i, 1); renderizar(); });
+        } else {
+            carrito[i].cantidad += v;
+            if (carrito[i].cantidad < 1) carrito.splice(i, 1);
+            renderizar();
+        }
+    }
+    function eliminar(i) {
+        if (requiereClaveSupervisor) {
+            solicitarAutorizacion(() => { carrito.splice(i, 1); renderizar(); });
+        } else {
+            carrito.splice(i, 1);
+            renderizar();
+        }
+    }
+    function cancelarTodo() {
+        if (carrito.length === 0) return;
+        if (!confirm("¿Vaciar carrito?")) return;
+        if (requiereClaveSupervisor) {
+            solicitarAutorizacion(() => { carrito = []; renderizar(); });
+        } else {
+            carrito = [];
+            renderizar();
+        }
+    }
+
+    function mostrarModalVentaGuardada(ventaId, printUrl, waPayload, extra) {
+        extra = extra || {};
+        const elNum = document.getElementById('mpv_num');
+        const aPrint = document.getElementById('mpv_btn_print');
+        const aWa = document.getElementById('mpv_btn_wa');
+        const info = document.getElementById('mpv_wa_info');
+        const warnAg = document.getElementById('mpv_agildte_warn');
+        if (warnAg) {
+            warnAg.classList.add('d-none');
+            warnAg.textContent = '';
+        }
+        if (extra.agildteWarn && warnAg) {
+            warnAg.textContent = extra.agildteWarn;
+            warnAg.classList.remove('d-none');
+        }
+        if (elNum) elNum.textContent = '#' + ventaId;
+        if (aPrint) aPrint.href = printUrl || '#';
+        if (aWa) {
+            aWa.classList.add('d-none');
+            aWa.href = '#';
+        }
+        if (info) {
+            info.classList.add('d-none');
+            info.textContent = '';
+            info.className = 'small mt-3 mb-0 d-none text-muted';
+        }
+        if (waPayload) {
+            if (waPayload.ok && waPayload.wa_me_url) {
+                if (waPayload.twilio_enviado) {
+                    if (info) {
+                        info.textContent = 'Mensaje enviado por WhatsApp (Twilio). Si el cliente no lo recibe, revise la configuración del proveedor.';
+                        info.classList.remove('d-none');
+                        info.classList.remove('text-muted');
+                        info.classList.add('text-success');
+                    }
+                } else if (aWa) {
+                    aWa.href = waPayload.wa_me_url;
+                    aWa.classList.remove('d-none');
+                    if (info) {
+                        info.textContent = 'Pulse «Abrir WhatsApp» para enviar el texto con enlaces al comprobante y al JSON MH.';
+                        info.classList.remove('d-none');
+                    }
+                }
+            } else if (waPayload.motivo && waPayload.motivo !== 'opcion_desactivada') {
+                if (info) {
+                    info.textContent = waPayload.detalle || waPayload.motivo;
+                    info.classList.remove('d-none');
+                    info.classList.remove('text-muted');
+                    info.classList.add('text-warning');
+                }
+            }
+        }
+        const m = document.getElementById('modalPostVentaExito');
+        if (m && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(m).show();
+            if (extra.autoPrint && printUrl && printUrl !== '#') {
+                const sep = printUrl.indexOf('?') >= 0 ? '&' : '?';
+                setTimeout(function () {
+                    window.open(printUrl + sep + 'autoprint=1', '_blank', 'noopener,noreferrer');
+                }, 380);
+            }
+        } else if (aPrint && printUrl) {
+            const sep = printUrl.indexOf('?') >= 0 ? '&' : '?';
+            window.open(printUrl + (extra.autoPrint ? sep + 'autoprint=1' : ''), '_blank', 'noopener,noreferrer');
+        }
+    }
+
+    // --- LÓGICA DE GUARDADO Y OFFLINE REFORZADA ---
+    async function ejecutarGuardarVenta(datos, supervisorUser, supervisorPass) {
+        if (requiereClaveSupervisorDescuento && supervisorUser && supervisorPass) {
+            datos.supervisor_user = supervisorUser;
+            datos.supervisor_password = supervisorPass;
+        }
+        if (!navigator.onLine) {
+            guardarEnColaLocal(datos);
+            return;
+        }
+        try {
+            const resp = await fetch('/guardar_venta', {
+                method: 'POST',
+                credentials: 'include',
+                headers: headersGuardarVenta(),
+                body: JSON.stringify(datos),
+            });
+            const raw = await resp.text();
+            let res;
+            try { res = JSON.parse(raw); } catch (err) {
+                alert('❌ Respuesta inválida del servidor (' + resp.status + ').');
+                return;
+            }
+            if (!resp.ok) {
+                alert('❌ Error: ' + (res.msg || res.message || raw || resp.status));
+                return;
+            }
+            if (res.status === 'ok') {
+                const tc = datos.tipo_comprobante || 'TICKET';
+                let url = '/imprimir_ticket/' + res.venta_id + '?copias=1';
+                if (tc === 'FACTURA' || tc === 'CREDITO_FISCAL') {
+                    url += '&formato=ticket';
+                }
+                const ag = res.agildte_sync;
+                const syncOk = ag == null || ag.ok !== false;
+                let agWarn = '';
+                if (ag && ag.ok === false) {
+                    let det = ag.detalle;
+                    if (det != null && typeof det === 'object') {
+                        try { det = JSON.stringify(det); } catch (e) { det = String(det); }
+                    } else if (det != null) {
+                        det = String(det);
+                    }
+                    agWarn = (
+                        ag.mensaje_usuario ||
+                        ag.mensaje_agildte ||
+                        ag.mensaje ||
+                        det ||
+                        'AgilDTE no confirmó el DTE. La venta quedó en el POS; revise la sincronización.'
+                    );
+                }
+                const autoPrint = syncOk;
+                mostrarModalVentaGuardada(res.venta_id, url, res.whatsapp, { autoPrint: autoPrint, agildteWarn: agWarn });
+                limpiarInterfaz();
+            } else if (res.status === 'contingencia' && !datos.emitir_contingencia) {
+                datos.emitir_contingencia = true;
+                datos.causa_contingencia = res.causa || 1;
+                await ejecutarGuardarVenta(datos, supervisorUser, supervisorPass);
+                return;
+            } else {
+                alert("❌ Error: " + res.msg);
+            }
+        } catch (error) {
+            if (!navigator.onLine) {
+                guardarEnColaLocal(datos);
+                return;
+            }
+            alert(
+                '❌ No se recibió respuesta del servidor al cobrar. La venta puede haberse guardado igual: revise el reporte de ventas antes de repetir el cobro.\n\n' +
+                (error && error.message ? error.message : String(error))
+            );
+        }
+    }
+
+    async function guardarVenta(supervisorUser, supervisorPass) {
+        if (carrito.length === 0) return alert("❌ El carrito está vacío");
+
+        const descMonto = parseFloat(inputDescMonto.value || '0') || 0;
+        const descPct = parseFloat(inputDescPct.value || '0') || 0;
+
+        const cid = document.getElementById('cliente_id').value.trim();
+        const tc = document.getElementById('tipo_comprobante').value;
+        const cidNum = cid ? parseInt(cid, 10) : null;
+        if (!navigator.onLine && (tc === 'FACTURA' || tc === 'CREDITO_FISCAL')) {
+            alert('En modo offline solo se permiten Tickets. Factura y Crédito Fiscal requieren internet para buscar clientes.');
+        }
+        if (navigator.onLine && tc === 'CREDITO_FISCAL' && (!cid || !Number.isFinite(cidNum))) {
+            alert('Crédito fiscal: debe elegir un cliente de la lista (clic en el resultado de la búsqueda).');
+            inputCliente.focus();
+            return;
+        }
+        if (navigator.onLine && tc === 'FACTURA' && (!cid || !Number.isFinite(cidNum))) {
+            alert('Factura: elija un cliente del catálogo en la lista. Si es solo consumidor sin datos, use comprobante Ticket.');
+            inputCliente.focus();
+            return;
+        }
+
+        for (let ci = 0; ci < carrito.length; ci++) {
+            const it = carrito[ci];
+            if ((it.modo || 'CANTIDAD') === 'MONTO') {
+                if (!(parseFloat(it.monto_solicitado) > 0)) {
+                    alert('Indique el monto en $ en: ' + (it.nombre || 'producto') + ' (Venta por monto).');
+                    return;
+                }
+            } else if (!(parseFloat(it.cantidad) > 0)) {
+                alert('Cantidad inválida en: ' + (it.nombre || 'producto'));
+                return;
+            }
+        }
+
+        const totalBruto = totalBrutoDesdeCarrito();
+        let descuentoCalc = 0;
+        if (descMonto > 0) descuentoCalc = Math.min(descMonto, totalBruto);
+        else if (descPct > 0) descuentoCalc = totalBruto * (Math.min(descPct, 100) / 100);
+        const pctDescEquiv = totalBruto > 0 ? (100 * descuentoCalc / totalBruto) : 0;
+
+        const esOffline = !navigator.onLine;
+        const lineasPayload = [];
+        for (let li = 0; li < carrito.length; li++) {
+            const item = carrito[li];
+            const pidSend = normProductoIdPos(item.producto_id != null ? item.producto_id : item.id);
+            if (!Number.isFinite(pidSend)) {
+                alert('Línea del carrito sin producto válido: «' + (item.nombre || ('#' + li)) + '». Quitarla y volver a agregar desde catálogo o búsqueda.');
+                return;
+            }
+            lineasPayload.push({
+                producto_id: pidSend,
+                nombre: item.nombre,
+                precio: item.precioFinal,
+                modo: item.modo || 'CANTIDAD',
+                unidad_venta: item.unidad_venta || 'UNIDAD',
+                cantidad_ui: (item.modo || 'CANTIDAD') === 'MONTO' ? null : item.cantidad,
+                monto_solicitado: (item.modo || 'CANTIDAD') === 'MONTO' ? item.monto_solicitado : null,
+                presentacion_id: item.presentacion_id != null && item.presentacion_id !== '' ? item.presentacion_id : null,
+                factor_umb: item.factor_umb != null ? item.factor_umb : null,
+            });
+        }
+        const datos = {
+            carrito: lineasPayload,
+            total: totalBruto,
+            tipo_pago: document.getElementById('tipo_pago').value,
+            tipo_comprobante: esOffline ? 'TICKET' : tc,
+            cliente_nombre: esOffline ? 'Cliente de contado' : (document.getElementById('cliente_nombre').value || "Consumidor Final"),
+            cliente_id: esOffline ? null : (Number.isFinite(cidNum) ? cidNum : null),
+            descuento_pct: descPct,
+            descuento_monto: descMonto,
+            enviar_whatsapp: !!(document.getElementById('chk_enviar_whatsapp') && document.getElementById('chk_enviar_whatsapp').checked)
+        };
+
+        if (requiereClaveSupervisorDescuento && pctDescEquiv > limiteDescuentoCajero && (!supervisorUser || !supervisorPass)) {
+            pendienteAccion = () => {};
+            document.getElementById('supervisor_username').value = '';
+            document.getElementById('supervisor_password').value = '';
+            document.getElementById('modal_clave_error').classList.add('d-none');
+            document.getElementById('modalClaveSupervisorLabel').innerHTML = '<span class="icon-shield"><i class="bi bi-shield-lock"></i></span> Descuento &gt;' + limiteDescuentoCajero + '% — Autorización de Gerente';
+            const modal = new bootstrap.Modal(document.getElementById('modalClaveSupervisor'));
+            modal.show();
+            pendienteAccion = async () => {
+                const u = document.getElementById('supervisor_username').value.trim();
+                const p = document.getElementById('supervisor_password').value;
+                if (!u || !p) return;
+                try {
+                    const r = await fetch('/autorizar_eliminar_item', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: u, password: p })
+                    });
+                    const d = await r.json();
+                    if (d.ok) {
+                        bootstrap.Modal.getInstance(document.getElementById('modalClaveSupervisor')).hide();
+                        await ejecutarGuardarVenta(datos, u, p);
+                    } else {
+                        document.getElementById('modal_clave_error').textContent = d.msg || 'No autorizado.';
+                        document.getElementById('modal_clave_error').classList.remove('d-none');
+                    }
+                } catch (e) {
+                    document.getElementById('modal_clave_error').textContent = 'Error de conexión.';
+                    document.getElementById('modal_clave_error').classList.remove('d-none');
+                }
+            };
+            document.getElementById('btnAutorizarEliminar').onclick = () => pendienteAccion();
+            document.getElementById('supervisor_username').focus();
+            return;
+        }
+
+        await ejecutarGuardarVenta(datos, supervisorUser, supervisorPass);
+    }
+
+    function guardarEnColaLocal(datos) {
+        let cola = JSON.parse(localStorage.getItem('cola_ventas')) || [];
+        cola.push(datos);
+        localStorage.setItem('cola_ventas', JSON.stringify(cola));
+        
+        alert("⚠️ SIN INTERNET\nLa venta se guardó localmente.\nSe subirá sola cuando vuelva la conexión.");
+        
+        limpiarInterfaz();
+        actualizarEstadoOffline();
+    }
+
+    function limpiarInterfaz() {
+        carrito = [];
+        limpiarCliente();
+        var tc = document.getElementById('tipo_comprobante');
+        if (tc) tc.value = 'TICKET';
+        inputDescPct.value = '';
+        inputDescMonto.value = '';
+        renderizar();
+        inputCodigo.focus();
+    }
+
+    // --- CACHE DE PRODUCTOS PARA OFFLINE ---
+    async function cargarCacheProductos() {
+        if (!navigator.onLine) return;
+        try {
+            const resp = await fetch('/productos_pos_cache');
+            if (resp.ok) {
+                const data = await resp.json();
+                localStorage.setItem(CACHE_KEY, JSON.stringify({ productos: data.productos || [], fecha: new Date().toISOString() }));
+                localStorage.setItem(CACHE_EMPRESA_KEY, String(data.empresa_id || ''));
+                actualizarCacheStatus();
+            }
+        } catch (e) {}
+    }
+    function actualizarCacheStatus() {
+        const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{"productos":[]}');
+        const prods = cache.productos || [];
+        const el = document.getElementById('cache-status');
+        const countEl = document.getElementById('cache-productos-count');
+        if (countEl) countEl.textContent = prods.length;
+        if (el && prods.length > 0) {
+            el.style.display = 'block';
+            el.className = navigator.onLine ? 'alert alert-info py-2 px-3 small mb-3' : 'alert alert-warning py-2 px-3 small mb-3';
+        }
+    }
+    document.getElementById('btn-actualizar-cache')?.addEventListener('click', async function() {
+        if (!navigator.onLine) { alert('Conecte internet para actualizar el caché.'); return; }
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Cargando...';
+        await cargarCacheProductos();
+        this.disabled = false;
+        this.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Actualizar';
+        alert('Caché actualizado: ' + (JSON.parse(localStorage.getItem(CACHE_KEY) || '{}').productos || []).length + ' productos listos para offline.');
+    });
+
+    // --- MODO OFFLINE: forzar Ticket y deshabilitar cliente ---
+    function aplicarModoOffline(offline) {
+        const selTipo = document.getElementById('tipo_comprobante');
+        const wrapCliente = document.getElementById('cliente_field_wrap');
+        const wrapWa = document.getElementById('pos_whatsapp_wrap');
+        const chkWa = document.getElementById('chk_enviar_whatsapp');
+        if (offline) {
+            if (selTipo) { selTipo.value = 'TICKET'; selTipo.disabled = true; }
+            if (wrapCliente) wrapCliente.style.opacity = '0.6';
+            if (wrapWa) { wrapWa.style.opacity = '0.65'; wrapWa.setAttribute('title', 'WhatsApp requiere conexión al guardar la venta.'); }
+            if (chkWa) chkWa.disabled = true;
+            limpiarCliente();
+        } else {
+            if (selTipo) selTipo.disabled = false;
+            if (wrapCliente) wrapCliente.style.opacity = '1';
+            if (wrapWa) { wrapWa.style.opacity = '1'; wrapWa.removeAttribute('title'); }
+            if (chkWa) chkWa.disabled = false;
+        }
+    }
+
+    // --- SINCRONIZACIÓN AUTOMÁTICA AL DETECTAR RED ---
+    async function sincronizarCola() {
+        if (!navigator.onLine) return;
+        let cola = JSON.parse(localStorage.getItem('cola_ventas')) || [];
+        if (cola.length === 0) { actualizarEstadoOffline(); return; }
+        let sincronizadas = 0;
+        for (let i = 0; i < cola.length; i++) {
+            try {
+                const resp = await fetch('/guardar_venta', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: headersGuardarVenta(),
+                    body: JSON.stringify(cola[i])
+                });
+                const raw = await resp.text();
+                let res;
+                try { res = JSON.parse(raw); } catch (_) { res = {}; }
+                if (resp.ok && res.status === 'ok') {
+                    cola.splice(i, 1);
+                    i--;
+                    sincronizadas++;
+                }
+            } catch (e) { break; }
+        }
+        localStorage.setItem('cola_ventas', JSON.stringify(cola));
+        actualizarEstadoOffline();
+        aplicarModoOffline(!navigator.onLine);
+        if (sincronizadas > 0) {
+            const toast = document.createElement('div');
+            toast.className = 'position-fixed bottom-0 end-0 m-3 alert alert-success shadow';
+            toast.innerHTML = '<i class="bi bi-check-circle"></i> ' + sincronizadas + ' venta(s) sincronizada(s)';
+            toast.style.zIndex = '9999';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+    }
+
+    function actualizarEstadoOffline() {
+        let cola = JSON.parse(localStorage.getItem('cola_ventas')) || [];
+        const banner = document.getElementById('offline-banner');
+        if (banner) {
+            if (cola.length > 0) {
+                banner.style.display = 'block';
+                const pc = document.getElementById('pendientes-count');
+                if (pc) pc.textContent = cola.length;
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+        aplicarModoOffline(!navigator.onLine);
+    }
+
+    window.addEventListener('online', function() {
+        sincronizarCola();
+        cargarCacheProductos();
+        favoritosSyncSubidaAhora(favoritosLista());
+    });
+    window.addEventListener('offline', actualizarEstadoOffline);
+    setInterval(sincronizarCola, 8000);
+    window.onload = function() {
+        actualizarEstadoOffline();
+        actualizarCacheStatus();
+        cargarCacheProductos();
+        pintarBarraFavoritos();
+        favoritosCargarDesdeServidor();
+    };
+
+    window.addEventListener('keydown', (e) => { if (e.key === 'F2') { e.preventDefault(); guardarVenta(); } });
+    document.addEventListener('click', (e) => {
+        if (e.target !== inputNombre) listaSugerencias.style.display = 'none';
+        if (clienteFieldWrap && listaClientes && !clienteFieldWrap.contains(e.target)) {
+            listaClientes.style.display = 'none';
+        }
+    });
+
+    inputDescPct.addEventListener('input', () => { if (parseFloat(inputDescPct.value || '0') > 0) inputDescMonto.value = ''; renderizar(); });
+    inputDescMonto.addEventListener('input', () => { if (parseFloat(inputDescMonto.value || '0') > 0) inputDescPct.value = ''; renderizar(); });
+</script>
+{% endblock %}

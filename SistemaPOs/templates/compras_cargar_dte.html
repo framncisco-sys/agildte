@@ -1,0 +1,123 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="{{ url_for('admin.compras') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Compras</a>
+            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-file-earmark-code text-primary"></i> Cargar DTE del Proveedor</h2>
+            <p class="text-muted small mb-0">Sube el archivo JSON que el proveedor te envía. El sistema extrae codigoGeneracion, selloRecepcion y valida en el MH.</p>
+        </div>
+        <div>
+            <a href="{{ url_for('admin.compras_nueva') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-secondary rounded-pill"><i class="bi bi-pencil-square"></i> Registrar manual</a>
+        </div>
+    </div>
+
+    {% if es_super and empresas %}
+    <div class="mb-3">
+        <form method="GET" class="d-inline">
+            <label class="me-2 small text-muted">Empresa:</label>
+            <select name="empresa_id" class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="this.form.submit()">
+                {% for e in empresas %}
+                <option value="{{ e[0] }}" {{ 'selected' if emp_id == e[0] else '' }}>{{ e[1] }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="bi bi-upload me-2"></i>Subir archivo JSON</h6>
+                </div>
+                <div class="card-body">
+                    <form action="{{ url_for('admin.compras_cargar_dte') }}" method="POST" enctype="multipart/form-data">
+                        {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Archivo DTE (.json)</label>
+                            <input type="file" name="archivo_dte" class="form-control" accept=".json,application/json" required>
+                            <small class="text-muted">Archivo JSON que el proveedor envía por correo (factura, CCF, etc.).</small>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload me-2"></i>Cargar y extraer datos</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            {% if dte_data %}
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold"><i class="bi bi-check2-circle me-2 text-success"></i>Datos extraídos</h6>
+                    {% if dte_data.valido and dte_data.codigo_generacion %}
+                    <a href="https://portaldgii.mh.gob.sv/ssc/consulta/fe?codigoGeneracion={{ dte_data.codigo_generacion }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary" title="Verificar que el DTE es legal y no ha sido invalidado">
+                        <i class="bi bi-shield-check me-1"></i>Validar en MH
+                    </a>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if dte_data.error %}
+                    <div class="alert alert-danger">{{ dte_data.error }}</div>
+                    {% else %}
+                    <div class="row g-2 mb-3">
+                        <div class="col-12">
+                            <p class="small text-muted mb-1">Código de generación (UUID)</p>
+                            <code class="d-block bg-light p-2 rounded small text-break">{{ dte_data.codigo_generacion }}</code>
+                        </div>
+                        {% if dte_data.sello_recepcion %}
+                        <div class="col-12">
+                            <p class="small text-muted mb-1">Sello de recepción</p>
+                            <code class="d-block bg-light p-2 rounded small text-break" style="max-height:80px;overflow:auto;">{{ dte_data.sello_recepcion[:100] }}...</code>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <hr>
+                    <p class="small fw-bold text-uppercase text-muted mb-2">Emisor (Proveedor)</p>
+                    <p class="mb-1"><strong>{{ dte_data.emisor_nombre or '—' }}</strong></p>
+                    <p class="mb-1 small">NIT: {{ dte_data.emisor_nit or '—' }} | NRC: {{ dte_data.emisor_nrc or '—' }}</p>
+                    <p class="small text-muted">Documento: {{ dte_data.numero_documento or '—' }} | Fecha: {{ dte_data.fecha_emision or '—' }}</p>
+                    <hr>
+                    <p class="small fw-bold text-uppercase text-muted mb-2">Totales</p>
+                    <div class="row">
+                        <div class="col-4"><span class="text-muted small">Gravado:</span> <strong>$ {{ "{:,.2f}".format(dte_data.total_gravado|float) }}</strong></div>
+                        <div class="col-4"><span class="text-muted small">IVA:</span> <strong>$ {{ "{:,.2f}".format(dte_data.total_iva|float) }}</strong></div>
+                        <div class="col-4"><span class="text-muted small">Total:</span> <strong class="text-primary">$ {{ "{:,.2f}".format(dte_data.total|float) }}</strong></div>
+                    </div>
+                    {% if dte_data.items %}
+                    <hr>
+                    <p class="small fw-bold text-uppercase text-muted mb-2">Items ({{ dte_data.items|length }})</p>
+                    <div class="table-responsive" style="max-height:200px;overflow:auto;">
+                        <table class="table table-sm table-hover">
+                            <thead><tr><th>Descripción</th><th class="text-end">Cant.</th><th class="text-end">Precio</th><th class="text-end">Subtotal</th></tr></thead>
+                            <tbody>
+                                {% for it in dte_data.items %}
+                                <tr><td>{{ (it.descripcion or '—')[:40] }}</td><td class="text-end">{{ it.cantidad }}</td><td class="text-end">$ {{ "%.2f"|format(it.precio_unitario|float) }}</td><td class="text-end">$ {{ "%.2f"|format(it.subtotal|float) }}</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                    {% if dte_data.valido and dte_data.emisor_nit %}
+                    <hr>
+                    <form action="{{ url_for('admin.compras_registrar_desde_dte') }}" method="POST">
+                        {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
+                        <button type="submit" class="btn btn-success w-100"><i class="bi bi-check-lg me-2"></i>Registrar compra desde DTE</button>
+                        <small class="d-block text-muted mt-1 text-center">Buscará proveedor por NIT o creará uno. Registrará la compra con codigoGeneracion y selloRecepcion.</small>
+                    </form>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body text-center py-5 text-muted">
+                    <i class="bi bi-file-earmark-arrow-up display-4 d-block mb-3 opacity-50"></i>
+                    <p class="mb-0">Sube un archivo JSON del proveedor para extraer codigoGeneracion, selloRecepcion y validar en el MH.</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

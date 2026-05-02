@@ -1,0 +1,110 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
+            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-journal-bookmark text-primary"></i> Libro de IVA</h2>
+            <p class="text-muted small mb-0">Ventas a contribuyentes y consumidor final — Base para declaración mensual de IVA</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ url_for('admin.reporte_libro_iva_exportar_excel') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-success fw-bold text-white"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+            <a href="{{ url_for('admin.reporte_libro_iva_exportar_csv') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-info fw-bold text-white"><i class="bi bi-file-earmark-text"></i> CSV</a>
+            <a href="{{ url_for('admin.reporte_libro_iva_exportar_pdf') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-danger fw-bold text-white"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+        </div>
+    </div>
+
+    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
+        <form method="GET" action="{{ url_for('admin.reporte_libro_iva') }}" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Desde</label>
+                <input type="date" name="inicio" class="form-control" value="{{ inicio }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Hasta</label>
+                <input type="date" name="fin" class="form-control" value="{{ fin }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-filter"></i> Filtrar</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #1e3a5f;">
+                <small class="text-muted fw-bold">Ventas gravadas</small>
+                <h4 class="fw-bold text-dark">$ {{ "{:,.2f}".format(total_gravado|float) }}</h4>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #059669;">
+                <small class="text-muted fw-bold">IVA 13%</small>
+                <h4 class="fw-bold text-success">$ {{ "{:,.2f}".format(total_iva|float) }}</h4>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #dc2626;">
+                <small class="text-muted fw-bold">Retención IVA 1%</small>
+                <h4 class="fw-bold text-danger">$ {{ "{:,.2f}".format(total_retencion_iva|float) }}</h4>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #7c3aed;">
+                <small class="text-muted fw-bold">Total</small>
+                <h4 class="fw-bold" style="color:#7c3aed">$ {{ "{:,.2f}".format(total_gen|float) }}</h4>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h6 class="m-0 fw-bold text-primary">Detalle por documento</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle m-0 table-hover table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">N°</th>
+                        <th>Fecha</th>
+                        <th>Tipo DTE</th>
+                        <th>Cliente</th>
+                        <th>Doc / NRC</th>
+                        <th class="text-end">Venta gravada</th>
+                        <th class="text-end">IVA</th>
+                        <th class="text-end">Ret. IVA 1%</th>
+                        <th class="text-end">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in filas %}
+                    <tr>
+                        <td class="ps-4">#{{ r[0] }}</td>
+                        <td>{{ r[1] }}</td>
+                        <td>
+                            {% if r[2] == 'CREDITO_FISCAL' %}<span class="badge bg-info">Crédito Fiscal</span>
+                            {% elif r[2] == 'FACTURA' %}<span class="badge bg-primary">Factura</span>
+                            {% else %}<span class="badge bg-secondary">Ticket</span>{% endif %}
+                        </td>
+                        <td>{{ (r[3] or '')[:40] }}</td>
+                        <td class="small">{{ (r[4] or '—')[:25] }}</td>
+                        <td class="text-end">$ {{ "{:,.2f}".format(r[5]|float) }}</td>
+                        <td class="text-end">$ {{ "{:,.2f}".format(r[6]|float) }}</td>
+                        <td class="text-end">{{ "$ {:,.2f}".format(r[9]|float) if r|length > 9 else "$ 0.00" }}</td>
+                        <td class="text-end fw-bold">$ {{ "{:,.2f}".format(r[7]|float) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay ventas en el período.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

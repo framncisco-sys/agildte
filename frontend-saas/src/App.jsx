@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { router } from './router'
+import { PosReservedPathInfo } from './components/PosReservedPathInfo'
 
 function App() {
   return (
@@ -15,6 +16,11 @@ function App() {
           )}
         </Route>
       ))}
+      {/*
+        Reservado ANTES del *: si el catch-all redirige /pos a /login y LoginPage manda otra vez a /pos,
+        se produce un bucle infinito. /pos/* no debe caer en Navigate → /login.
+      */}
+      <Route path="/pos/*" element={<PosReservedPathInfo />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )

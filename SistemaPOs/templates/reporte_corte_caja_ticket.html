@@ -1,0 +1,116 @@
+<!-- Programador: Oscar Amaya Romero -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Corte de Caja — Ticket 80mm</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Courier New', Consolas, monospace; margin: 0; padding: 4px; font-size: 10px; color: #000; background: #f1f5f9; }
+        .ticket-80mm { width: 80mm; min-width: 80mm; max-width: 80mm; margin: 0 auto; background: #fff; padding: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .text-center { text-align: center; }
+        .text-end { text-align: right; }
+        .fw-bold { font-weight: bold; }
+        .linea { border-top: 1px dashed #000; margin: 4px 0; }
+        .linea-doble { border-top: 2px solid #000; margin: 6px 0; }
+        .titulo-ticket { font-size: 11px; font-weight: bold; text-align: center; margin-bottom: 4px; letter-spacing: 1px; }
+        table { width: 100%; border-collapse: collapse; font-size: 9px; }
+        table td { padding: 0 2px; vertical-align: top; }
+        .seccion { margin-bottom: 8px; }
+        .seccion-titulo { font-size: 8px; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; }
+        .firmas { margin-top: 8px; }
+        .firma-linea { border-bottom: 1px solid #000; display: inline-block; min-width: 60px; margin: 2px 0; }
+        .no-print { margin-top: 12px; }
+        .btn-imp { padding: 10px 20px; cursor: pointer; background: #059669; color: #fff; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; }
+        .btn-imp:hover { background: #047857; }
+        @media print {
+            body { background: #fff; padding: 0; }
+            .ticket-80mm { box-shadow: none; padding: 2px; }
+            @page { size: 80mm auto; margin: 2mm; }
+            html, body { width: 80mm !important; min-width: 80mm !important; max-width: 80mm !important; margin: 0 !important; padding: 0 !important; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+<div class="ticket-80mm">
+    {% set det = datos.ventas_por_tipo_dte_detalle|default({}) %}
+    {% set pagos = datos.ventas_por_pago|default({}) %}
+    {% set f = det.FACTURA|default({'cantidad':0,'total':0}) %}
+    {% set cf = det.CREDITO_FISCAL|default({'cantidad':0,'total':0}) %}
+    {% set nc = det.NOTA_CREDITO|default({'cantidad':0,'total':0}) %}
+    {% set se = det.SUJETO_EXCLUIDO|default({'cantidad':0,'total':0}) %}
+    {% set tk = det.TICKET|default({'cantidad':0,'total':0}) %}
+    {% set f_cierre_str = (cierre.fecha_cierre.strftime('%d/%m/%Y %I:%M %p') if cierre and cierre.fecha_cierre else (fecha_display|default(fecha))) %}
+
+    <!-- 1. Encabezado -->
+    <div class="seccion text-center">
+        <div class="titulo-ticket">════ CORTE DE CAJA ════</div>
+        <div class="fw-bold" style="font-size: 10px;">{{ empresa_nombre }}{% if sucursal_nombre %} / {{ sucursal_nombre }}{% endif %}</div>
+        <div class="linea"></div>
+        <div style="text-align: left;">
+            <div><strong>Nombre del Cajero:</strong> {{ cajero_nombre }}</div>
+            <div><strong>Fecha y Hora de Cierre:</strong> {{ f_cierre_str }}</div>
+            <div><strong>Estado del Turno:</strong> {{ 'Cerrado' if cierre else 'Resumen del día' }}</div>
+        </div>
+    </div>
+
+    <!-- 2. Resumen Documentos (Fiscal) -->
+    <div class="seccion">
+        <div class="seccion-titulo">2. Resumen Documentos (Fiscal)</div>
+        <table>
+            <tr><td>Facturas (01):</td><td class="text-end">{{ f.cantidad }} doc · ${{ "{:,.2f}".format(f.total|float) }}</td></tr>
+            <tr><td>Créditos Fiscales (03):</td><td class="text-end">{{ cf.cantidad }} doc · ${{ "{:,.2f}".format(cf.total|float) }}</td></tr>
+            <tr><td>Notas de Crédito (05):</td><td class="text-end">{{ nc.cantidad }} doc · Restando ${{ "{:,.2f}".format((nc.total|float)|abs) }}</td></tr>
+            <tr><td>Sujeto Excluido (14):</td><td class="text-end">{{ se.cantidad }} doc · ${{ "{:,.2f}".format(se.total|float) }}</td></tr>
+            {% if (tk.total|float) != 0 %}
+            <tr><td>Tickets:</td><td class="text-end">{{ tk.cantidad }} doc · ${{ "{:,.2f}".format(tk.total|float) }}</td></tr>
+            {% endif %}
+        </table>
+        <div class="linea"></div>
+        <table><tr><td class="fw-bold">TOTAL VENTA BRUTA:</td><td class="text-end fw-bold">${{ "{:,.2f}".format(datos.total_ventas|default(0)|float) }}</td></tr></table>
+    </div>
+
+    <!-- 3. Desglose por Método de Pago -->
+    <div class="seccion">
+        <div class="seccion-titulo">3. Método de Pago (Financiero)</div>
+        <table>
+            <tr><td>Efectivo:</td><td class="text-end">${{ "{:,.2f}".format(pagos.EFECTIVO|default(0)|float) }}</td></tr>
+            <tr><td>Tarjeta Créd/Déb:</td><td class="text-end">${{ "{:,.2f}".format(pagos.TARJETA|default(0)|float) }}</td></tr>
+            <tr><td>Transferencia:</td><td class="text-end">${{ "{:,.2f}".format(pagos.TRANSFERENCIA|default(0)|float) }}</td></tr>
+            <tr><td>Bitcoin (Chivo):</td><td class="text-end">${{ "{:,.2f}".format(pagos.BITCOIN|default(0)|float) }}</td></tr>
+        </table>
+        <div class="linea"></div>
+        <table><tr><td class="fw-bold">TOTAL RECIBIDO:</td><td class="text-end fw-bold">${{ "{:,.2f}".format(datos.total_ventas|default(0)|float) }}</td></tr></table>
+    </div>
+
+    <!-- 4. Arqueo (si hay cierre) -->
+    {% if cierre %}
+    <div class="seccion">
+        <div class="seccion-titulo">4. Arqueo de Efectivo (Cuadre)</div>
+        <table>
+            <tr><td>Fondo Apertura:</td><td class="text-end">${{ "{:,.2f}".format(cierre.monto_apertura|default(0)|float) }}</td></tr>
+            <tr><td>(+) Ventas Efectivo:</td><td class="text-end">${{ "{:,.2f}".format(cierre.ventas_efectivo|default(0)|float) }}</td></tr>
+            <tr><td>(-) Salidas:</td><td class="text-end">${{ "{:,.2f}".format(cierre.salidas_efectivo|default(0)|float) }}</td></tr>
+            <tr><td class="fw-bold">(=) Esperado:</td><td class="text-end fw-bold">${{ "{:,.2f}".format(cierre.monto_esperado|default(0)|float) }}</td></tr>
+            <tr><td>( ) Real contado:</td><td class="text-end">${{ "{:,.2f}".format(cierre.monto_real|default(0)|float) }}</td></tr>
+            <tr><td class="fw-bold">(+/-) Diferencia:</td><td class="text-end fw-bold">${{ "{:,.2f}".format(cierre.diferencia|default(0)|float) }}</td></tr>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- 5. Firmas -->
+    <div class="seccion firmas">
+        <div class="linea-doble"></div>
+        <div>Firma Cajero: <span class="firma-linea"></span></div>
+        <div style="margin-top: 8px;">Firma Supervisor: <span class="firma-linea"></span></div>
+    </div>
+
+    <div class="no-print text-center">
+        <button type="button" onclick="window.print();" class="btn-imp">🖨️ Imprimir ticket 80mm</button>
+        <br>
+        <a href="{{ url_for('admin.reporte_corte_caja') }}?fecha={{ fecha }}&usuario_id={{ usuario_id|default('') }}&sucursal_id={{ sucursal_id|default('') }}" style="margin-top:8px;display:inline-block;color:#64748b;">← Volver al reporte</a>
+    </div>
+</div>
+</body>
+</html>

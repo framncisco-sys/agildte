@@ -819,6 +819,14 @@ class PerfilUsuario(models.Model):
     )
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
+    acceso_posagil = models.BooleanField(
+        default=False,
+        help_text="Muestra en AgilDTE el acceso al módulo PosAgil (botón Abrir Pos Agil).",
+    )
+    facturacion_solo_pos = models.BooleanField(
+        default=False,
+        help_text="Oculta la facturación nativa de AgilDTE; la emisión DTE se hace vía PosAgil.",
+    )
 
     class Meta:
         verbose_name = "Perfil de Usuario"

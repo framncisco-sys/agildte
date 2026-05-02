@@ -1,0 +1,149 @@
+<!-- Programador: Oscar Amaya Romero -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <a href="{{ url_for('admin.usuarios') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Usuarios</a>
+            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-clock-history text-primary"></i> Historial de Usuarios</h2>
+            <p class="text-muted small mb-0">Accesos, cambios y acciones del sistema</p>
+        </div>
+    </div>
+
+    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
+        <form method="GET" action="{{ url_for('admin.historial_usuarios') }}" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Evento</label>
+                <select name="evento" class="form-select">
+                    <option value="">— Todos —</option>
+                    <optgroup label="Sesión">
+                        <option value="LOGIN" {{ 'selected' if evento_actual == 'LOGIN' else '' }}>Login exitoso</option>
+                        <option value="LOGIN_FALLO" {{ 'selected' if evento_actual == 'LOGIN_FALLO' else '' }}>Login fallido</option>
+                        <option value="LOGOUT" {{ 'selected' if evento_actual == 'LOGOUT' else '' }}>Cierre de sesión</option>
+                        <option value="CAMBIO_PASSWORD" {{ 'selected' if evento_actual == 'CAMBIO_PASSWORD' else '' }}>Cambio contraseña</option>
+                    </optgroup>
+                    <optgroup label="Ventas">
+                        <option value="VENTA_CREADA" {{ 'selected' if evento_actual == 'VENTA_CREADA' else '' }}>Venta creada</option>
+                        <option value="VENTA_EDITADA" {{ 'selected' if evento_actual == 'VENTA_EDITADA' else '' }}>Venta editada</option>
+                        <option value="VENTA_ANULADA" {{ 'selected' if evento_actual == 'VENTA_ANULADA' else '' }}>Venta anulada</option>
+                    </optgroup>
+                    <optgroup label="Productos / Inventario">
+                        <option value="PRODUCTO_CREADO" {{ 'selected' if evento_actual == 'PRODUCTO_CREADO' else '' }}>Producto creado</option>
+                        <option value="PRODUCTO_EDITADO" {{ 'selected' if evento_actual == 'PRODUCTO_EDITADO' else '' }}>Producto editado</option>
+                        <option value="PRODUCTO_ELIMINADO" {{ 'selected' if evento_actual == 'PRODUCTO_ELIMINADO' else '' }}>Producto eliminado</option>
+                        <option value="AJUSTE_INVENTARIO" {{ 'selected' if evento_actual == 'AJUSTE_INVENTARIO' else '' }}>Ajuste inventario</option>
+                        <option value="CONTEO_FISICO" {{ 'selected' if evento_actual == 'CONTEO_FISICO' else '' }}>Conteo físico</option>
+                    </optgroup>
+                    <optgroup label="Catálogos">
+                        <option value="CLIENTE_CREADO" {{ 'selected' if evento_actual == 'CLIENTE_CREADO' else '' }}>Cliente creado</option>
+                        <option value="CLIENTE_EDITADO" {{ 'selected' if evento_actual == 'CLIENTE_EDITADO' else '' }}>Cliente editado</option>
+                        <option value="CLIENTE_ELIMINADO" {{ 'selected' if evento_actual == 'CLIENTE_ELIMINADO' else '' }}>Cliente eliminado</option>
+                        <option value="COMPRA_REGISTRADA" {{ 'selected' if evento_actual == 'COMPRA_REGISTRADA' else '' }}>Compra registrada</option>
+                        <option value="PROVEEDOR_GUARDADO" {{ 'selected' if evento_actual == 'PROVEEDOR_GUARDADO' else '' }}>Proveedor guardado</option>
+                        <option value="PROVEEDOR_ELIMINADO" {{ 'selected' if evento_actual == 'PROVEEDOR_ELIMINADO' else '' }}>Proveedor eliminado</option>
+                    </optgroup>
+                    <optgroup label="Administración">
+                        <option value="USUARIO_CREADO" {{ 'selected' if evento_actual == 'USUARIO_CREADO' else '' }}>Usuario creado</option>
+                        <option value="USUARIO_EDITADO" {{ 'selected' if evento_actual == 'USUARIO_EDITADO' else '' }}>Usuario editado</option>
+                        <option value="USUARIO_ELIMINADO" {{ 'selected' if evento_actual == 'USUARIO_ELIMINADO' else '' }}>Usuario eliminado</option>
+                        <option value="PROMOCION_CREADA" {{ 'selected' if evento_actual == 'PROMOCION_CREADA' else '' }}>Promoción creada</option>
+                        <option value="PROMOCION_EDITADA" {{ 'selected' if evento_actual == 'PROMOCION_EDITADA' else '' }}>Promoción editada</option>
+                        <option value="PROMOCION_ELIMINADA" {{ 'selected' if evento_actual == 'PROMOCION_ELIMINADA' else '' }}>Promoción eliminada</option>
+                        <option value="SUCURSAL_CREADA" {{ 'selected' if evento_actual == 'SUCURSAL_CREADA' else '' }}>Sucursal creada</option>
+                        <option value="SUCURSAL_EDITADA" {{ 'selected' if evento_actual == 'SUCURSAL_EDITADA' else '' }}>Sucursal editada</option>
+                        <option value="SUCURSAL_ELIMINADA" {{ 'selected' if evento_actual == 'SUCURSAL_ELIMINADA' else '' }}>Sucursal eliminada</option>
+                        <option value="CONFIG_EMPRESA" {{ 'selected' if evento_actual == 'CONFIG_EMPRESA' else '' }}>Config. empresa</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">ID Usuario</label>
+                <input type="number" name="usuario_id" class="form-control" value="{{ usuario_id_filtro or '' }}" placeholder="Opcional" min="1">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Límite</label>
+                <select name="limite" class="form-select">
+                    <option value="50" {{ 'selected' if limite == 50 else '' }}>50</option>
+                    <option value="100" {{ 'selected' if limite == 100 else '' }}>100</option>
+                    <option value="200" {{ 'selected' if limite == 200 else '' }}>200</option>
+                    <option value="500" {{ 'selected' if limite == 500 else '' }}>500</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-filter"></i> Filtrar</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h6 class="m-0 fw-bold text-primary"><i class="bi bi-list-ul me-1"></i> Registros recientes</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle m-0 table-hover table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Fecha / Hora</th>
+                        <th>Usuario</th>
+                        <th>Evento</th>
+                        <th>Detalle</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in registros %}
+                    <tr>
+                        <td class="ps-4">{{ r[6] if r|length > 6 else '—' }}</td>
+                        <td>
+                            {% if r[1] %}
+                            <a href="{{ url_for('admin.historial_usuarios', usuario_id=r[1]) }}" class="text-decoration-none">{{ r[2] or '—' }}</a>
+                            <small class="text-muted">#{{ r[1] }}</small>
+                            {% else %}
+                            <span class="text-muted">{{ r[2] or '—' }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if r[3] == 'LOGIN' %}
+                            <span class="badge bg-success">Login</span>
+                            {% elif r[3] == 'LOGIN_FALLO' %}
+                            <span class="badge bg-danger">Login fallido</span>
+                            {% elif r[3] == 'LOGOUT' %}
+                            <span class="badge bg-secondary">Logout</span>
+                            {% elif r[3] == 'CAMBIO_PASSWORD' %}
+                            <span class="badge bg-info">Cambio clave</span>
+                            {% elif r[3] in ('VENTA_CREADA', 'VENTA_EDITADA', 'VENTA_ANULADA') %}
+                            <span class="badge bg-primary">{{ r[3]|replace('_',' ')|title }}</span>
+                            {% elif r[3] in ('PRODUCTO_CREADO', 'PRODUCTO_EDITADO', 'PRODUCTO_ELIMINADO', 'AJUSTE_INVENTARIO', 'CONTEO_FISICO') %}
+                            <span class="badge bg-warning text-dark">{{ r[3]|replace('_',' ')|title }}</span>
+                            {% elif r[3] in ('CLIENTE_CREADO', 'CLIENTE_EDITADO', 'CLIENTE_ELIMINADO', 'COMPRA_REGISTRADA', 'PROVEEDOR_GUARDADO', 'PROVEEDOR_ELIMINADO') %}
+                            <span class="badge bg-info">{{ r[3]|replace('_',' ')|title }}</span>
+                            {% elif r[3] in ('USUARIO_CREADO', 'USUARIO_EDITADO', 'USUARIO_ELIMINADO', 'PROMOCION_CREADA', 'PROMOCION_EDITADA', 'PROMOCION_ELIMINADA', 'SUCURSAL_CREADA', 'SUCURSAL_EDITADA', 'SUCURSAL_ELIMINADA', 'CONFIG_EMPRESA') %}
+                            <span class="badge bg-dark">{{ r[3]|replace('_',' ')|title }}</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark">{{ r[3] or '—' }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="small">{{ (r[4] or '—')[:60] }}{% if r[4] and r[4]|length > 60 %}...{% endif %}</td>
+                        <td class="small text-muted">{{ r[5] or '—' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay registros de historial.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if registros and registros|length >= limite %}
+        <div class="card-footer bg-white py-2 border-top">
+            <a href="{{ url_for('admin.historial_usuarios', evento=evento_actual or '', usuario_id=usuario_id_filtro or '', limite=limite, offset=offset + limite) }}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-arrow-down-circle"></i> Ver más
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

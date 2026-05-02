@@ -2,11 +2,18 @@ import { useNavigate } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useEmpresaStore } from '../stores/useEmpresaStore'
+import { useAuth } from '../context/AuthContext'
+import { ROLE_AGILDTE_ADMIN, ROLE_POSAGIL_ADMIN } from '../constants/roles'
+import { getPosAgilSsoUrl } from '../utils/posAgilUrl'
 
 export function Navbar({ onMenuClick }) {
   const navigate = useNavigate()
+  const { user, role } = useAuth()
   const logout = useAuthStore((s) => s.logout)
   const isSuperuser = useAuthStore((s) => s.user?.is_superuser) ?? false
+  const mostrarAbrirPos =
+    user?.acceso_posagil &&
+    (role === ROLE_AGILDTE_ADMIN || role === ROLE_POSAGIL_ADMIN || user?.is_superuser)
   const empresaId = useEmpresaStore((s) => s.empresaId)
   const empresaNombre = useEmpresaStore((s) => s.empresaNombre)
   const empresas = useEmpresaStore((s) => s.empresas)
@@ -49,12 +56,26 @@ export function Navbar({ onMenuClick }) {
         ) : null}
         </div>
       </div>
-      <button
-        onClick={handleLogout}
-        className="text-sm text-agil-text-secondary hover:text-red-600 transition-colors"
-      >
-        Cerrar sesión
-      </button>
+      <div className="flex items-center gap-3 shrink-0">
+        {mostrarAbrirPos && (
+          <button
+            type="button"
+            onClick={() => {
+              const t = useAuthStore.getState().token
+              window.location.href = getPosAgilSsoUrl(t)
+            }}
+            className="text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            Abrir Pos Agil
+          </button>
+        )}
+        <button
+          onClick={handleLogout}
+          className="text-sm text-agil-text-secondary hover:text-red-600 transition-colors"
+        >
+          Cerrar sesión
+        </button>
+      </div>
     </header>
   )
 }
