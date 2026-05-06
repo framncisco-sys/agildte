@@ -83,6 +83,15 @@ def _complemento_receptor(valor):
     """Complemento de direccion: usar 'San Miguel' para prueba (evitar '...')."""
     return "San Miguel"
 
+def _cliente_general_ticket():
+    """Datos por defecto para ticket/CF sin cliente asociado."""
+    return {
+        "nombre": "Cliente General",
+        "correo": "Cosnumidorfinal@gmail.com",
+        "telefono": "2222-2222",
+        "direccion": "San Miguel, San Miguel",
+    }
+
 
 def _es_valor_vacio(valor):
     """True si el valor debe omitirse (None, "", o string solo espacios). V3: no enviar null."""
@@ -430,7 +439,7 @@ class DTEGenerator:
             "direccion": {
                 "departamento": codigo_departamento,
                 "municipio": codigo_municipio,
-                "complemento": (self.empresa.direccion or "").strip()
+                "complemento": (self.empresa.direccion or "").strip() or "San Miguel, San Miguel"
             },
             "codEstableMH": cod_estable,   # MH: null si no asignó; usar nuestro código
             "codEstable": cod_estable,     # Contribuyente
@@ -462,6 +471,28 @@ class DTEGenerator:
         cliente = self.venta.cliente
         tipo_dte = '01' if self.venta.tipo_venta == 'CF' else '03'
         
+        # CF sin cliente: usar consumidor general para evitar rechazos/errores en generación.
+        if not cliente and tipo_dte == '01':
+            cfg = _cliente_general_ticket()
+            return {
+                "tipoDocumento": None,
+                "numDocumento": None,
+                "nombre": cfg["nombre"],
+                "nrc": None,
+                "codActividad": None,
+                "descActividad": None,
+                "direccion": {
+                    "departamento": "06",
+                    "municipio": "14",
+                    "complemento": cfg["direccion"],
+                },
+                "telefono": cfg["telefono"],
+                "correo": cfg["correo"],
+            }
+
+        if not cliente:
+            raise ValueError("La venta no tiene cliente asociado para este tipo de DTE.")
+
         # Obtener código de departamento/municipio desde el cliente
         # CRÍTICO: municipio debe ser 2 dígitos, no 4
         # Priorizar los valores del cliente, usar defaults si están vacíos

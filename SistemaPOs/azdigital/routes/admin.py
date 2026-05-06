@@ -40,6 +40,7 @@ from azdigital.utils.precio_umb_desde_caja import (
     aplicar_derivacion_desde_presentacion,
     presentacion_tiene_monto_derivable,
 )
+from azdigital.integration.agildte_client import AgilDTEAPIError, login_client_from_request_or_env
 from database import ConexionDB
 
 bp = Blueprint("admin", __name__)
@@ -5501,6 +5502,157 @@ def gestion_ventas():
     try:
         rows = ventas_repo.listar_ventas_recientes(cur, empresa_id=emp_id, limit=150) or []
         return render_template("gestion_ventas.html", ventas=rows)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _resolver_venta_remota_agildte(cli, *, empresa_id: int, codigo_generacion: str, numero_control: str, venta_local_id: int) -> int | None:
+    """
+    Busca el ID remoto en AgilDTE para la venta local.
+    Prioriza codigo_generacion y luego numero_control.
+    """
+    def _extraer_resultados(payload):
+        if isinstance(payload, dict):
+            results = payload.get("results")
+            if isinstance(results, list):
+                return results
+            if isinstance(payload.get("ventas"), list):
+                return payload.get("ventas")
+        if isinstance(payload, list):
+            return payload
+        return []
+
+    def _buscar(search_txt: str) -> int | None:
+        q = (search_txt or "").strip()
+        if not q:
+            return None
+        data = cli.get_json(
+            "/api/ventas/listar/",
+            params={"empresa_id": empresa_id, "search": q, "page": 1, "page_size": 20},
+        )
+        candidatos = _extraer_resultados(data)
+        if not candidatos:
+            return None
+        q_upper = q.upper()
+        for it in candidatos:
+            if not isinstance(it, dict):
+                continue
+            cg = str(it.get("codigo_generacion") or "").strip().upper()
+            nc = str(it.get("numero_control") or "").strip().upper()
+            if q_upper and (cg == q_upper or nc == q_upper):
+                rid = it.get("id")
+                if isinstance(rid, int):
+                    return rid
+                if isinstance(rid, str) and rid.isdigit():
+                    return int(rid)
+        first = candidatos[0]
+        if isinstance(first, dict):
+            rid = first.get("id")
+            if isinstance(rid, int):
+                return rid
+            if isinstance(rid, str) and rid.isdigit():
+                return int(rid)
+        return None
+
+    rid = _buscar(codigo_generacion) or _buscar(numero_control)
+    if rid is not None:
+        return rid
+    # Último fallback: algunos ambientes mantienen ids cercanos entre POS y backend central.
+    return int(venta_local_id) if venta_local_id else None
+
+
+@bp.route("/gestion_ventas/<int:venta_id>/generar-json")
+@rol_requerido("GERENTE")
+def gestion_ventas_generar_json(venta_id):
+    emp_id = _empresa_id()
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        venta = ventas_repo.get_venta(cur, venta_id, empresa_id=emp_id)
+        if not venta:
+            flash("Venta no encontrada.", "danger")
+            return redirect(url_for("admin.gestion_ventas"))
+        codigo_generacion = str(venta[14] or "").strip()
+        numero_control = str(venta[15] or "").strip()
+        cli = login_client_from_request_or_env()
+        remote_id = _resolver_venta_remota_agildte(
+            cli,
+            empresa_id=emp_id,
+            codigo_generacion=codigo_generacion,
+            numero_control=numero_control,
+            venta_local_id=venta_id,
+        )
+        if not remote_id:
+            flash("No se encontró la venta remota en AgilDTE para generar JSON.", "warning")
+            return redirect(url_for("admin.gestion_ventas"))
+        data = cli.get_json(f"/api/ventas/{int(remote_id)}/generar-dte/", params={"empresa_id": emp_id})
+        dte_json = data.get("dte_json") if isinstance(data, dict) else data
+        nombre = numero_control or codigo_generacion or f"venta_{venta_id}"
+        blob = BytesIO(json.dumps(dte_json, ensure_ascii=False, indent=2).encode("utf-8"))
+        return send_file(
+            blob,
+            mimetype="application/json; charset=utf-8",
+            as_attachment=True,
+            download_name=f"{nombre}.json",
+        )
+    except AgilDTEAPIError as e:
+        flash(f"No se pudo generar JSON desde AgilDTE: {e}", "danger")
+        return redirect(url_for("admin.gestion_ventas"))
+    except Exception as e:
+        flash(f"Error generando JSON: {e}", "danger")
+        return redirect(url_for("admin.gestion_ventas"))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@bp.route("/gestion_ventas/<int:venta_id>/generar-pdf")
+@rol_requerido("GERENTE")
+def gestion_ventas_generar_pdf(venta_id):
+    emp_id = _empresa_id()
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        venta = ventas_repo.get_venta(cur, venta_id, empresa_id=emp_id)
+        if not venta:
+            flash("Venta no encontrada.", "danger")
+            return redirect(url_for("admin.gestion_ventas"))
+        codigo_generacion = str(venta[14] or "").strip()
+        numero_control = str(venta[15] or "").strip()
+        cli = login_client_from_request_or_env()
+        remote_id = _resolver_venta_remota_agildte(
+            cli,
+            empresa_id=emp_id,
+            codigo_generacion=codigo_generacion,
+            numero_control=numero_control,
+            venta_local_id=venta_id,
+        )
+        if not remote_id:
+            flash("No se encontró la venta remota en AgilDTE para generar PDF.", "warning")
+            return redirect(url_for("admin.gestion_ventas"))
+        resp = cli.request(
+            "GET",
+            f"/api/ventas/{int(remote_id)}/generar-pdf/",
+            params={"empresa_id": emp_id},
+        )
+        if resp.status_code >= 400:
+            raise AgilDTEAPIError(f"HTTP {resp.status_code}: {resp.text[:400]}", status_code=resp.status_code, body=None)
+        nombre = numero_control or codigo_generacion or f"venta_{venta_id}"
+        return send_file(
+            BytesIO(resp.content),
+            mimetype="application/pdf",
+            as_attachment=False,
+            download_name=f"{nombre}.pdf",
+        )
+    except AgilDTEAPIError as e:
+        flash(f"No se pudo generar PDF desde AgilDTE: {e}", "danger")
+        return redirect(url_for("admin.gestion_ventas"))
+    except Exception as e:
+        flash(f"Error generando PDF: {e}", "danger")
+        return redirect(url_for("admin.gestion_ventas"))
     finally:
         cur.close()
         conn.close()

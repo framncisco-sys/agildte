@@ -33,7 +33,12 @@
                         <td>{{ v[4] }}</td>
                         <td class="text-end fw-bold">${{ "%.2f"|format(v[2]|float) }}</td>
                         <td class="text-end">
-                            <a href="{{ url_for('admin.gestion_ventas_editar', venta_id=v[0]) }}" class="btn btn-sm btn-outline-primary">Editar</a>
+                            <a href="{{ url_for('admin.gestion_ventas_generar_json', venta_id=v[0]) }}" class="btn btn-sm btn-outline-secondary" title="Generar JSON DTE AgilDTE">
+                                <i class="bi bi-braces"></i> JSON
+                            </a>
+                            <a href="{{ url_for('admin.gestion_ventas_generar_pdf', venta_id=v[0]) }}" class="btn btn-sm btn-outline-primary" target="_blank" title="Generar PDF AgilDTE">
+                                <i class="bi bi-file-earmark-pdf"></i> PDF
+                            </a>
                             <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalAnular{{ v[0] }}">Anular</button>
                             <div class="modal fade" id="modalAnular{{ v[0] }}" tabindex="-1">
                                 <div class="modal-dialog">

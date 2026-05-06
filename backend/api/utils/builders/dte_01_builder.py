@@ -11,6 +11,12 @@ class DTE01Builder(DTE03Builder):
 
     TIPO_DTE = '01'
     VERSION_DTE = 1
+    TICKET_CLIENTE_GENERAL = {
+        "nombre": "Cliente General",
+        "correo": "Cosnumidorfinal@gmail.com",
+        "telefono": "2222-2222",
+        "direccion": "San Miguel, San Miguel",
+    }
 
     def _construir_emisor(self):
         """
@@ -31,7 +37,7 @@ class DTE01Builder(DTE03Builder):
 
         # Consumidor Final sin cliente: datos de venta.direccion_receptor, correo_receptor, documento_receptor
         if not cliente:
-            nombre = self.venta.nombre_receptor or "Consumidor Final"
+            nombre = self.TICKET_CLIENTE_GENERAL["nombre"]
             doc = getattr(self.venta, 'documento_receptor', None) and str(self.venta.documento_receptor).strip()
             tdoc = getattr(self.venta, 'tipo_doc_receptor', None) or 'NIT'
             tipo_doc = "36" if tdoc == 'NIT' and doc else "13" if doc else None
@@ -41,15 +47,12 @@ class DTE01Builder(DTE03Builder):
                 num_doc = doc_limpio.zfill(9) if tipo_doc == "13" else doc_limpio.zfill(14)
             else:
                 num_doc = None
-            dir_comp = getattr(self.venta, 'direccion_receptor', None) and str(self.venta.direccion_receptor).strip()
-            correo_raw = getattr(self.venta, 'correo_receptor', None) and str(self.venta.correo_receptor).strip()
-            correo = None
-            if correo_raw and '@' in correo_raw and '.' in correo_raw.split('@')[-1]:
-                correo = correo_raw[:200]
+            dir_comp = self.TICKET_CLIENTE_GENERAL["direccion"]
+            correo = self.TICKET_CLIENTE_GENERAL["correo"]
             direccion_obj = {
                 "departamento": "06",
                 "municipio": "14",
-                "complemento": dir_comp or "San Salvador",
+                "complemento": dir_comp,
             }
             return {
                 "tipoDocumento": tipo_doc,
@@ -59,7 +62,7 @@ class DTE01Builder(DTE03Builder):
                 "codActividad": None,
                 "descActividad": None,
                 "direccion": direccion_obj,
-                "telefono": "22222222",
+                "telefono": self.TICKET_CLIENTE_GENERAL["telefono"],
                 "correo": correo,
             }
 

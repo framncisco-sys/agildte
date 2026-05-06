@@ -8,10 +8,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY: Usar variables de entorno en producción
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-dev-only-!(2sc4w)13(5ev2szrmeg7c*k85pp2d5h&xoj7fnoanmti_9*-'
-)
+DEFAULT_DEV_SECRET_KEY = 'django-insecure-dev-only-!(2sc4w)13(5ev2szrmeg7c*k85pp2d5h&xoj7fnoanmti_9*-'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', DEFAULT_DEV_SECRET_KEY)
 
 DEBUG = os.environ.get('DJANGO_DEBUG', 'false').lower() in ('1', 'true', 'yes')
 
@@ -156,9 +154,9 @@ POSAGIL_FACTURACION_SINCRONA = os.environ.get(
 ).lower() in ('1', 'true', 'yes')
 
 # --- Ministerio de Hacienda (DTE / Facturación Electrónica) ---
-# PRUEBA: Si está definido, se usa esta contraseña en lugar de la BD (para validar espacios/caracteres).
-# Ejemplo: MH_PASSWORD_OVERRIDE=2Caballo.Azul  -> quitar después de probar
-MH_PASSWORD_OVERRIDE = os.environ.get('MH_PASSWORD_OVERRIDE') or None
+# PRUEBA: Si está definido, se usa esta contraseña en lugar de la BD (solo desarrollo).
+# En producción siempre se desactiva para evitar bypass accidental de credenciales reales.
+MH_PASSWORD_OVERRIDE = (os.environ.get('MH_PASSWORD_OVERRIDE') or None) if DEBUG else None
 # Firma: si True, se firma dentro del backend (no hace falta contenedor firmador).
 USE_INTERNAL_FIRMADOR = os.environ.get('USE_INTERNAL_FIRMADOR', 'true').lower() in ('1', 'true', 'yes')
 # URL del firmador externo (solo si USE_INTERNAL_FIRMADOR=False). En Docker: FIRMADOR_URL=http://firmador:8113/
@@ -191,6 +189,8 @@ CORS_ALLOW_CREDENTIALS = True
 # ─── SEGURIDAD HTTPS (producción detrás de nginx) ────────────────────────────
 # Django necesita saber que está detrás de un proxy HTTPS para generar URLs correctas.
 if not DEBUG:
+    if SECRET_KEY == DEFAULT_DEV_SECRET_KEY:
+        raise RuntimeError("DJANGO_SECRET_KEY es obligatorio en producción.")
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True

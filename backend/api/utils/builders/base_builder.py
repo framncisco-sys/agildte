@@ -82,7 +82,8 @@ class BaseDTEBuilder(ABC):
             "direccion": {
                 "departamento": codigo_departamento,
                 "municipio": codigo_municipio,
-                "complemento": (self.empresa.direccion or "").strip()
+                # MH rechaza el documento si complemento va vacío.
+                "complemento": (self.empresa.direccion or "").strip() or "San Miguel, San Miguel"
             },
             "codEstableMH": cod_estable,
             "codEstable": cod_estable,
