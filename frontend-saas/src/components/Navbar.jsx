@@ -11,9 +11,11 @@ export function Navbar({ onMenuClick }) {
   const { user, role } = useAuth()
   const logout = useAuthStore((s) => s.logout)
   const isSuperuser = useAuthStore((s) => s.user?.is_superuser) ?? false
+  // Superusuario Django: siempre puede abrir PosAgil por SSO (sin depender del flag en PerfilUsuario).
   const mostrarAbrirPos =
-    user?.acceso_posagil &&
-    (role === ROLE_AGILDTE_ADMIN || role === ROLE_POSAGIL_ADMIN || user?.is_superuser)
+    Boolean(user?.is_superuser) ||
+    (user?.acceso_posagil === true &&
+      (role === ROLE_AGILDTE_ADMIN || role === ROLE_POSAGIL_ADMIN))
   const empresaId = useEmpresaStore((s) => s.empresaId)
   const empresaNombre = useEmpresaStore((s) => s.empresaNombre)
   const empresas = useEmpresaStore((s) => s.empresas)

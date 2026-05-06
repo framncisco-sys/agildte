@@ -70,10 +70,19 @@ def _user_has_any_group(user, *group_names: str) -> bool:
 def get_perfil_pos_flags(user) -> tuple[bool, bool]:
     """
     (acceso_posagil, facturacion_solo_pos) desde PerfilUsuario activo.
+    Los superusuarios de Django pueden abrir PosAgil vía SSO aunque el perfil
+    no tenga acceso_posagil marcado (equivalente a administración de plataforma).
     """
     if not user or not user.is_authenticated:
         return False, False
     from .models import PerfilUsuario
+
+    if getattr(user, "is_superuser", False):
+        try:
+            p = PerfilUsuario.objects.get(user=user, activo=True)
+            return True, bool(p.facturacion_solo_pos)
+        except PerfilUsuario.DoesNotExist:
+            return True, False
 
     try:
         p = PerfilUsuario.objects.get(user=user, activo=True)

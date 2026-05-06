@@ -18,10 +18,10 @@ def map_agildte_role_to_pos_rol(
 ) -> str:
     """Mapea role JSON de AgilDTE a rol del POS (usuarios.rol).
 
-    is_superuser (Django): se alinea con ADMIN en el POS (panel y permisos amplios).
+    is_superuser (Django): mismo nivel que superusuario local del POS (SUPERADMIN).
     """
     if is_superuser:
-        return "ADMIN"
+        return "SUPERADMIN"
     r = (api_role or "").strip().upper()
     if r in ("POSAGIL_VENDEDOR", "POS_VENDEDOR", "AGILDTE_VENDEDOR"):
         return "CAJERO"
