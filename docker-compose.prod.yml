@@ -32,6 +32,9 @@ services:
       - media_volume:/app/media
     expose:
       - "8000"
+    networks:
+      - default
+      - agildte_net
 
   frontend:
     build:
