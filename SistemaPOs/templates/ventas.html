@@ -418,6 +418,14 @@
         if (POSAGIL_AGILDTE_AUTH) h['Authorization'] = POSAGIL_AGILDTE_AUTH;
         return h;
     }
+    /** Prefijo público del POS (p. ej. /pos). Impresión y window.open deben usarlo. */
+    const POS_URL_PREFIX = {{ (POS_URL_PREFIX or '') | tojson }};
+    function posUrl(rel) {
+        const p = (POS_URL_PREFIX || '').replace(/\/$/, '');
+        const r = (rel || '').startsWith('/') ? (rel || '') : '/' + (rel || '');
+        if (!p) return r;
+        return p + r;
+    }
     let carrito = [];
     const CACHE_KEY = 'pos_productos_cache_v2';
     const CACHE_EMPRESA_KEY = 'pos_productos_empresa_id';
@@ -1526,7 +1534,7 @@
             }
             if (res.status === 'ok') {
                 const tc = datos.tipo_comprobante || 'TICKET';
-                let url = '/imprimir_ticket/' + res.venta_id + '?copias=1';
+                let url = posUrl('/imprimir_ticket/' + res.venta_id + '?copias=1');
                 if (tc === 'FACTURA' || tc === 'CREDITO_FISCAL') {
                     url += '&formato=ticket';
                 }

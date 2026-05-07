@@ -179,7 +179,7 @@
                         </td>
                         <td class="text-end fw-bold text-dark">$ {{ "{:,.2f}".format(v[4] if v|length > 4 else 0) }}</td>
                         <td class="text-center">
-                            <a href="/imprimir_ticket/{{ v[0] if v|length > 0 else '' }}?copias=2" target="_blank" class="btn btn-sm btn-light border text-primary fw-bold">
+                            <a href="{{ (POS_URL_PREFIX or '') }}/imprimir_ticket/{{ v[0] if v|length > 0 else '' }}?copias=2" target="_blank" class="btn btn-sm btn-light border text-primary fw-bold">
                                 <i class="bi bi-printer"></i> REIMPRIMIR
                             </a>
                         </td>

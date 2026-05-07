@@ -4,6 +4,7 @@ Configuración desde entorno para producción (DigitalOcean, VPS, etc.).
 
 - DATABASE_URL / AZ_DATABASE_URL: cadena PostgreSQL (Heroku/DO). Evita HOST=127.0.0.1 en el servidor.
 - PUBLIC_BASE_URL / AZ_PUBLIC_BASE_URL: URL HTTPS pública (sin barra final) para enlaces y WhatsApp.
+- POSAGIL_URL_PREFIX / APPLICATION_ROOT: ruta bajo la que se publica el POS (ej. /pos). Si falta, se infiere del path de PUBLIC_BASE_URL.
 """
 from __future__ import annotations
 
@@ -27,6 +28,22 @@ def get_public_base_url() -> str:
         if v:
             return v
     return ""
+
+
+def get_application_url_prefix() -> str:
+    """
+    Prefijo de ruta bajo el que el navegador ve el POS (ej. /pos para https://dominio.com/pos).
+    Usar en window.open / enlaces absolutos para no caer en la SPA de AgilDTE en la raíz.
+    """
+    raw = (os.environ.get("POSAGIL_URL_PREFIX") or os.environ.get("APPLICATION_ROOT") or "").strip()
+    if raw:
+        p = raw.rstrip("/")
+        return p if p.startswith("/") else f"/{p}"
+    base = get_public_base_url()
+    if not base:
+        return ""
+    path = (urlparse(base).path or "").strip().rstrip("/")
+    return path if path else ""
 
 
 def trust_proxy() -> bool:

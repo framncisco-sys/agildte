@@ -8,7 +8,12 @@ from azdigital.routes.admin import bp as admin_bp
 from azdigital.routes.auth import bp as auth_bp
 from azdigital.routes.core import bp as core_bp
 from azdigital.routes.pos import bp as pos_bp
-from azdigital.utils.env_config import get_public_base_url, is_production_mode, trust_proxy
+from azdigital.utils.env_config import (
+    get_application_url_prefix,
+    get_public_base_url,
+    is_production_mode,
+    trust_proxy,
+)
 import logging
 from logging.handlers import RotatingFileHandler
 from werkzeug.exceptions import InternalServerError
@@ -281,8 +286,11 @@ def create_app() -> Flask:
 
     @app.context_processor
     def inject_public_base_url():
-        """Plantillas: {{ PUBLIC_BASE_URL }} para enlaces absolutos (evitar 127.0.0.1 en producción)."""
-        return {"PUBLIC_BASE_URL": get_public_base_url()}
+        """Plantillas: URL pública y prefijo /pos para enlaces y window.open."""
+        return {
+            "PUBLIC_BASE_URL": get_public_base_url(),
+            "POS_URL_PREFIX": get_application_url_prefix(),
+        }
 
     return app
 
