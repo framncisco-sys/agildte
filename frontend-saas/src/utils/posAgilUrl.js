@@ -24,7 +24,12 @@ export function getPosAgilEntryUrl() {
  */
 export function getPosAgilSsoUrl(accessToken) {
   const base = getPosAgilEntryUrl().replace(/\/+$/, '')
-  const u = new URL(`${base}/auth/agildte`)
+  const path = `${base}/auth/agildte`
+  // Producción sin VITE_POSAGIL_PUBLIC_URL: base es ruta relativa (/pos). new URL('/x') falla sin base.
+  const u =
+    path.startsWith('http://') || path.startsWith('https://')
+      ? new URL(path)
+      : new URL(path, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
   if (accessToken && typeof accessToken === 'string') {
     u.searchParams.set('access_token', accessToken)
   }
