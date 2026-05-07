@@ -59,6 +59,9 @@ services:
       # Certbot: certificados (rw para renovar) y desafíos ACME
       - certbot_certs:/etc/letsencrypt
       - certbot_www:/var/www/certbot:ro
+    networks:
+      - default
+      - agildte_net
 
   # ─── CERTBOT ──────────────────────────────────────────────────────────────
   # Solo se usa para emitir/renovar certificados. No necesita estar siempre activo.
@@ -121,3 +124,8 @@ volumes:
   certbot_certs:
   certbot_www:
   backup_volume:
+
+networks:
+  agildte_net:
+    external: true
+    name: agildte_net
