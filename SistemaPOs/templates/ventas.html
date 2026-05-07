@@ -461,7 +461,7 @@
     async function favoritosSyncSubidaAhora(arr) {
         if (!navigator.onLine) return;
         try {
-            const resp = await fetch('/pos/favoritos', {
+            const resp = await fetch('/favoritos', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ favoritos: arr })
@@ -477,7 +477,7 @@
         if (!navigator.onLine) return;
         const localAntes = favoritosLista();
         try {
-            const resp = await fetch('/pos/favoritos');
+            const resp = await fetch('/favoritos');
             const data = await resp.json().catch(() => ({}));
             if (!resp.ok || !data.ok) return;
             if (data.sync === false) return;
@@ -648,7 +648,7 @@
         if (navigator.onLine) {
             if (load) load.classList.remove('d-none');
             try {
-                const resp = await fetch('/pos/catalogo_productos');
+                const resp = await fetch('/catalogo_productos');
                 const data = await resp.json();
                 catalogoProductosModalCache = Array.isArray(data.productos) ? data.productos : [];
             } catch (e) {
