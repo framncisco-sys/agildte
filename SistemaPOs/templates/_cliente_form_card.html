@@ -1,0 +1,101 @@
+{# Tarjeta de formulario cliente: misma lógica que /clientes (admin.guardar_cliente). #}
+<h5 class="fw-bold mb-3">{{ 'Editar Cliente' if cliente else 'Nuevo Cliente' }}</h5>
+{% if session.get('empresa_nombre') and not es_superadmin %}
+<p class="small text-muted mb-2"><i class="bi bi-building"></i> Empresa: <strong>{{ session.empresa_nombre }}</strong></p>
+{% endif %}
+<form action="{{ url_for('admin.guardar_cliente') }}" method="POST">
+    {% if embed_mode|default(false) %}
+    <input type="hidden" name="embed" value="1">
+    {% endif %}
+    <input type="hidden" name="cliente_id" value="{{ cliente_dict.id if cliente_dict else '' }}">
+    <div class="mb-3">
+        <label class="form-label small fw-bold">Razón Social / Nombre <span class="text-danger">*</span></label>
+        <input type="text" name="nombre_cliente" class="form-control" value="{{ cliente_dict.nombre if cliente_dict else '' }}" required placeholder="Nombre o razón social del cliente">
+    </div>
+    {% set es_super = (es_superadmin or (rol_actual or session.get('rol')) in ('ADMIN', 'SUPERADMIN')) %}
+    {% if es_super %}
+    <div class="mb-3">
+        <label class="form-label small fw-bold">Empresa <span class="text-danger">*</span></label>
+        <select name="empresa_id" id="sel_empresa" class="form-select" {{ 'required' if empresas else '' }}>
+            {% if not empresas %}<option value="">— No hay empresas —</option>{% endif %}
+            {% for e in (empresas or []) %}
+            <option value="{{ e[0] }}" data-emp="{{ e[0] }}" {{ 'selected' if (cliente_dict and cliente_dict.empresa_id == e[0]) or (not cliente_dict and session.get('empresa_id') == e[0]) else '' }}>{{ e[1] }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label small fw-bold">Sucursal</label>
+        <select name="sucursal_id" id="sel_sucursal" class="form-select">
+            <option value="" data-emp="">— Sin sucursal —</option>
+            {% for s in (sucursales_todas or []) %}
+            <option value="{{ s[0] }}" data-emp="{{ s[2] }}" {{ 'selected' if cliente_dict and cliente_dict.sucursal_id == s[0] else '' }}>{{ s[1] }}{% if (empresas_map or {}) and s[2] %} ({{ (empresas_map or {}).get(s[2], '') }}){% endif %}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    <div class="mb-3">
+        <label class="form-label small fw-bold">Tipo de Documento</label>
+        <select name="tipo_documento" class="form-select">
+            <option value="">— Sin documento —</option>
+            <option value="NIT" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'NIT' else '' }}>NIT</option>
+            <option value="NRC" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'NRC' else '' }}>NRC</option>
+            <option value="DUI" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'DUI' else '' }}>DUI</option>
+            <option value="Pasaporte" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'Pasaporte' else '' }}>Pasaporte</option>
+            <option value="Carné Residencia" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'Carné Residencia' else '' }}>Carné Residencia</option>
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label small fw-bold">Número de Documento</label>
+        <input type="text" id="numero_documento" name="numero_documento" class="form-control" value="{{ cliente_dict.numero_documento if cliente_dict else '' }}" placeholder="Según tipo: NIT 0614-161386-001-4, DUI 00000000-0">
+    </div>
+    <div class="mb-3">
+        <label class="form-label small fw-bold">Actividad Económica (código)</label>
+        <input type="text" list="actividades_cliente" name="codigo_actividad_economica" class="form-control" value="{{ (cliente_dict.get('codigo_actividad_economica') or '') if cliente_dict else '' }}" placeholder="Busque código (ej: 47111)...">
+        {% if actividades %}
+        <datalist id="actividades_cliente">
+            {% for a in actividades %}
+            <option value="{{ a[0] }}">{{ a[0] }} — {{ (a[1] or '')[:70] }}</option>
+            {% endfor %}
+        </datalist>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label small fw-bold">Correo Electrónico</label>
+        <input type="email" name="correo" class="form-control" value="{{ cliente_dict.correo if cliente_dict else '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label small fw-bold">Dirección</label>
+        <textarea name="direccion" class="form-control" rows="2">{{ cliente_dict.direccion if cliente_dict else '' }}</textarea>
+    </div>
+    <div class="mb-3">
+        <label class="form-label small fw-bold">Teléfono</label>
+        <input type="text" name="telefono" class="form-control" value="{{ cliente_dict.telefono if cliente_dict else '' }}" placeholder="2222-2222">
+    </div>
+    <div class="mb-3">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="es_contribuyente" {% if cliente_dict and cliente_dict.es_contribuyente %}checked{% endif %}>
+            <label class="form-check-label small">Es contribuyente</label>
+        </div>
+    </div>
+    <div class="mb-3">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="es_gran_contribuyente" {% if cliente_dict and cliente_dict.get('es_gran_contribuyente') %}checked{% endif %}>
+            <label class="form-check-label small">Gran Contribuyente</label>
+        </div>
+        <small class="text-muted">Retención IVA 1% aplica si cliente y empresa difieren en Gran Contribuyente y venta gravada &gt; $100.</small>
+    </div>
+    <button type="submit" class="btn btn-primary w-100 fw-bold">{{ 'Actualizar Cliente' if cliente else 'Registrar Cliente' }}</button>
+    {% if cliente %}
+        {% if embed_mode|default(false) %}
+        <button type="button" class="btn btn-outline-secondary w-100 mt-2" id="btnClienteEmbedVolver">Cerrar</button>
+        {% else %}
+        <a href="{{ url_for('admin.clientes') }}" class="btn btn-outline-secondary w-100 mt-2">Cancelar</a>
+        {% endif %}
+    {% endif %}
+</form>
+{% if embed_mode|default(false) and cliente_dict and cliente_dict.id %}
+<form action="{{ url_for('admin.eliminar_cliente', cliente_id=cliente_dict.id) }}" method="POST" class="mt-2" onsubmit="return confirm('¿Eliminar este cliente?');">
+    <input type="hidden" name="embed" value="1">
+    <button type="submit" class="btn btn-outline-danger w-100"><i class="bi bi-trash"></i> Eliminar cliente</button>
+</form>
+{% endif %}

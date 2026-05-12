@@ -18,9 +18,9 @@
             <p class="page-subtitle small mb-0">Resumen operativo · {{ session.get('username', 'admin') }}</p>
         </div>
         <div class="d-flex align-items-center gap-2 flex-wrap">
-            <div id="mh-semaforo" class="d-flex align-items-center gap-1 px-2 py-1 rounded-pill bg-light" style="font-size: 0.85rem;">
+            <div id="agildte-semaforo" class="d-flex align-items-center gap-1 px-2 py-1 rounded-pill bg-light" style="font-size: 0.85rem;">
                 <span class="semaforo-dot" style="width:8px;height:8px;border-radius:50%;background:#94a3b8;"></span>
-                <span class="text-muted">Servidor MH: Verificando...</span>
+                <span class="text-muted">AgilDTE: comprobando…</span>
             </div>
         {% if suscripcion and suscripcion.vigente %}
         <div class="card border-0 shadow-sm px-3 py-2" style="border-radius: 12px;">
@@ -325,25 +325,93 @@
         });
     }
 
-    // Semáforo MH: estado del servidor Hacienda
-    const mhEl = document.getElementById('mh-semaforo');
+    // Semáforo: conectividad con API AgilDTE (mismo backend que facturas / sync)
+    const mhEl = document.getElementById('agildte-semaforo');
     if (mhEl) {
         const dot = mhEl.querySelector('.semaforo-dot');
         const txt = mhEl.querySelector('span:last-child');
-        fetch('/api/mh_status')
-            .then(r => r.json())
-            .then(data => {
-                if (data.online) {
-                    if (dot) dot.style.background = '#22c55e';
-                    if (txt) { txt.textContent = 'Servidor MH: En Línea'; txt.classList.remove('text-muted'); txt.classList.add('text-success'); }
-                } else {
-                    if (dot) dot.style.background = '#ef4444';
-                    if (txt) { txt.textContent = 'Servidor MH: Fuera de línea'; txt.classList.remove('text-muted'); txt.classList.add('text-danger'); }
+        function pintarAgildte(data) {
+            if (data.configured === false) {
+                if (dot) dot.style.background = '#94a3b8';
+                if (txt) {
+                    txt.textContent = 'AgilDTE: URL no configurada (.env)';
+                    txt.classList.remove('text-muted', 'text-success', 'text-danger');
+                    txt.classList.add('text-warning');
                 }
-            })
-            .catch(() => {
+                return;
+            }
+            if (data.online) {
+                if (dot) dot.style.background = '#22c55e';
+                if (txt) {
+                    txt.textContent = 'AgilDTE: en línea';
+                    txt.classList.remove('text-muted', 'text-danger', 'text-warning');
+                    txt.classList.add('text-success');
+                }
+            } else {
                 if (dot) dot.style.background = '#ef4444';
-                if (txt) { txt.textContent = 'Servidor MH: Sin conexión'; txt.classList.remove('text-muted'); txt.classList.add('text-danger'); }
+                if (txt) {
+                    txt.textContent = 'AgilDTE: sin respuesta';
+                    txt.classList.remove('text-muted', 'text-success', 'text-warning');
+                    txt.classList.add('text-danger');
+                }
+            }
+        }
+        fetch('/posagil/agildte_status', {
+            credentials: 'same-origin',
+            redirect: 'manual',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(async function (r) {
+                if (r.type === 'opaqueredirect' || r.status === 302 || r.status === 301) {
+                    if (dot) dot.style.background = '#f59e0b';
+                    if (txt) {
+                        txt.textContent = 'AgilDTE: sesión expirada (vuelva a entrar)';
+                        txt.classList.remove('text-muted', 'text-success', 'text-danger');
+                        txt.classList.add('text-warning');
+                    }
+                    return;
+                }
+                if (r.status === 401) {
+                    if (dot) dot.style.background = '#f59e0b';
+                    if (txt) {
+                        txt.textContent = 'AgilDTE: no autorizado (401)';
+                        txt.classList.remove('text-muted', 'text-success', 'text-danger');
+                        txt.classList.add('text-warning');
+                    }
+                    return;
+                }
+                var raw = '';
+                try { raw = await r.text(); } catch (e) { raw = ''; }
+                var t = (raw || '').trim();
+                var data = {};
+                if (t) {
+                    try {
+                        data = JSON.parse(t);
+                    } catch (e) {
+                        if (dot) dot.style.background = '#ef4444';
+                        if (txt) {
+                            txt.textContent = 'AgilDTE: respuesta no JSON (¿proxy?)';
+                            txt.classList.remove('text-muted', 'text-success', 'text-warning');
+                            txt.classList.add('text-danger');
+                        }
+                        return;
+                    }
+                } else if (r.ok) {
+                    data = { online: false, configured: true, detail: 'empty_body' };
+                }
+                if (!r.ok) {
+                    pintarAgildte(Object.assign({ online: false, configured: data.configured !== false }, data));
+                    return;
+                }
+                pintarAgildte(data);
+            })
+            .catch(function () {
+                if (dot) dot.style.background = '#ef4444';
+                if (txt) {
+                    txt.textContent = 'AgilDTE: sin conexión al POS';
+                    txt.classList.remove('text-muted', 'text-success', 'text-warning');
+                    txt.classList.add('text-danger');
+                }
             });
     }
 })();

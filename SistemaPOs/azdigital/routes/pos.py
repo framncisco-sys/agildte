@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from datetime import date
 import os
+from pathlib import Path
 
 import psycopg2
-from flask import Blueprint, current_app, jsonify, render_template, request, session
+from flask import Blueprint, current_app, flash, jsonify, make_response, redirect, render_template, request, session, url_for
 
 from azdigital.decorators import login_required, rol_requerido
 from azdigital.repositories import (
@@ -17,6 +18,7 @@ from azdigital.repositories import (
     presentaciones_repo,
     productos_repo,
     promociones_repo,
+    sucursales_repo,
     usuarios_repo,
     ventas_repo,
 )
@@ -28,9 +30,23 @@ from azdigital.utils.historial_helper import registrar_accion
 from azdigital.utils.mh_cat003_unidades import normalizar_codigo_mh
 from azdigital.utils.numero_letras import numero_a_letras_dolares
 from azdigital.utils.qr_dte import generar_qr_dte_base64, url_consulta_publica_dte
+from azdigital.utils.validar_documentos import validar_nit, validar_nrc
 from database import ConexionDB
 
 bp = Blueprint("pos", __name__)
+
+
+def _pos_es_superadmin_db(cur) -> bool:
+    uid = session.get("user_id")
+    if not uid:
+        return False
+    cur.execute("SELECT rol FROM usuarios WHERE id = %s AND activo = TRUE", (uid,))
+    r = cur.fetchone()
+    rol = str(r[0] or "").strip().upper() if r else ""
+    return rol in ("ADMIN", "SUPERADMIN")
+
+# Roles de tienda con acceso al POS y a las APIs usadas por ventas.html (ADMIN/SUPERADMIN pasan siempre en ``rol_requerido``).
+_ROLES_POS = ("GERENTE", "CAJERO", "BODEGUERO")
 
 
 def _empresa_fiscal_por_fila(empresa) -> dict:
@@ -105,6 +121,10 @@ def _parse_cliente_id(raw) -> int | None:
 @bp.route("/ventas_pos")
 @login_required
 def ventas_pos():
+    """
+    Pantalla única ``ventas.html`` para ADMIN, SUPERADMIN, GERENTE, CAJERO y BODEGUERO
+    (tema visual: ``body.layout-superuser|gerente|cajero|bodeguero`` en ``layout.html``).
+    """
     r = (session.get("rol") or "").strip().upper()
     es_super = r in ("ADMIN", "SUPERADMIN")
     requiere_clave_supervisor = r in ("CAJERO", "BODEGUERO")
@@ -120,7 +140,8 @@ def ventas_pos():
     except (TypeError, ValueError):
         sucursal_id_pos = None
     tok_ag = (session.get("agildte_access_token") or "").strip()
-    return render_template(
+    _sr = (request.script_root or "").strip().rstrip("/")
+    html = render_template(
         "ventas.html",
         es_superadmin=es_super,
         requiere_clave_supervisor=requiere_clave_supervisor,
@@ -129,11 +150,80 @@ def ventas_pos():
         empresa_id_pos=empresa_id_pos,
         sucursal_id_pos=sucursal_id_pos,
         agildte_bearer_para_fetch=tok_ag if tok_ag else None,
+        pos_script_root=_sr or "",
     )
+    # Evita HTML del POS en caché (proxy/navegador) para que cambios en ventas.html se vean al recargar.
+    resp = make_response(html)
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    resp.headers["X-Postagil-POS-UI"] = "2026-05-12-escanner-ancho-igual"
+    try:
+        _tpl = Path(__file__).resolve().parent.parent.parent / "templates" / "ventas.html"
+        if _tpl.is_file():
+            resp.headers["X-Postagil-Ventas-Tpl-Mtime"] = str(int(_tpl.stat().st_mtime))
+    except OSError:
+        pass
+    return resp
+
+
+@bp.route("/ventas_pos/clientes/embed")
+@bp.route("/ventas_pos/clientes/embed/<int:cid>")
+@rol_requerido("GERENTE", "CAJERO")
+def ventas_pos_clientes_embed(cid: int | None = None):
+    """
+    Formulario de cliente para iframe en el POS (misma ficha que /clientes).
+    Va en el blueprint ``pos`` para que siempre exista junto a ``/ventas_pos`` (evita 404 si el despliegue no carga rutas nuevas de admin).
+    """
+    from azdigital.routes.admin import _cliente_dict_desde_fila
+
+    try:
+        emp_id = int(session.get("empresa_id") or 1)
+    except (TypeError, ValueError):
+        emp_id = 1
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        es_super = _pos_es_superadmin_db(cur)
+        empresas = (empresas_repo.listar_empresas(cur) or []) if es_super else []
+        sucursales_todas = (sucursales_repo.listar_sucursales_con_empresa(cur) or []) if es_super else []
+        empresas_map = {e[0]: e[1] for e in empresas} if empresas else {}
+        actividades: list = []
+        try:
+            cur.execute("SELECT codigo, descripcion FROM actividades_economicas ORDER BY codigo")
+            actividades = cur.fetchall() or []
+        except Exception:
+            pass
+        cliente_edit = None
+        cliente_dict = None
+        if cid is not None:
+            cliente_edit = clientes_repo.get_cliente(cur, cid)
+            if not cliente_edit:
+                flash("Cliente no encontrado.", "danger")
+                return redirect(url_for("pos.ventas_pos_clientes_embed"))
+            if not es_super and len(cliente_edit) > 1 and cliente_edit[1] != emp_id:
+                flash("Cliente no pertenece a su empresa.", "danger")
+                return redirect(url_for("pos.ventas_pos_clientes_embed"))
+            cliente_dict = _cliente_dict_desde_fila(cliente_edit)
+        return render_template(
+            "clientes_embed.html",
+            cliente=cliente_edit,
+            cliente_dict=cliente_dict,
+            empresas=empresas,
+            sucursales_todas=sucursales_todas,
+            empresas_map=empresas_map,
+            es_superadmin=es_super,
+            actividades=actividades,
+            embed_mode=True,
+        )
+    finally:
+        cur.close()
+        conn.close()
 
 
 @bp.route("/autorizar_eliminar_item", methods=["POST"])
-@rol_requerido("GERENTE", "CAJERO", "BODEGUERO")
+@rol_requerido(*_ROLES_POS)
 def autorizar_eliminar_item():
     """Valida usuario y clave de Gerente/Admin para autorizar borrar item del carrito (anti-fraude)."""
     datos = request.get_json() or {}
@@ -161,7 +251,7 @@ def autorizar_eliminar_item():
 
 
 @bp.route("/buscar_clientes")
-@rol_requerido("GERENTE", "CAJERO")
+@rol_requerido(*_ROLES_POS)
 def buscar_clientes():
     q = (request.args.get("q") or "").strip().upper()
     db = ConexionDB()
@@ -190,18 +280,26 @@ def buscar_clientes():
 
 
 @bp.route("/cliente/<int:cliente_id>/datos")
-@rol_requerido("GERENTE", "CAJERO")
+@rol_requerido(*_ROLES_POS)
 def cliente_datos(cliente_id: int):
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
-        emp_id = session.get("empresa_id", 1)
+        try:
+            emp_id = int(session.get("empresa_id") or 1)
+        except (TypeError, ValueError):
+            emp_id = 1
+        es_super = _pos_es_superadmin_db(cur)
         cl = clientes_repo.get_cliente(cur, cliente_id)
-        if not cl or (cl[1] != emp_id and cl[1] is not None):
+        if not cl:
+            return jsonify({"error": "No encontrado"}), 404
+        if not es_super and len(cl) > 1 and cl[1] is not None and cl[1] != emp_id:
             return jsonify({"error": "No encontrado"}), 404
         return jsonify({
             "id": cl[0],
+            "empresa_id": cl[1] if len(cl) > 1 else None,
+            "sucursal_id": cl[2] if len(cl) > 2 else None,
             "nombre": (cl[3] or "").strip(),
             "tipo_documento": (cl[4] or "").strip(),
             "numero_documento": (cl[5] or "").strip(),
@@ -217,8 +315,279 @@ def cliente_datos(cliente_id: int):
         conn.close()
 
 
-@bp.route("/buscar_producto/<codigo>")
+def _pos_listar_sucursales_super_safe(cur) -> list:
+    """Filas (id, nombre, empresa_id|None) para superusuario; tolera esquemas sin empresa_id."""
+    try:
+        return list(sucursales_repo.listar_sucursales_con_empresa(cur) or [])
+    except Exception as ex:
+        current_app.logger.warning("listar_sucursales_con_empresa POS: %s", ex)
+        try:
+            cur.execute("SELECT id, nombre FROM sucursales ORDER BY nombre ASC")
+            return [(r[0], r[1], None) for r in cur.fetchall() or []]
+        except Exception:
+            return []
+
+
+@bp.route("/cliente/form_meta")
+@rol_requerido(*_ROLES_POS)
+def cliente_form_meta():
+    """Listas para el modal de cliente en el POS (empresa/sucursal si es super; actividades)."""
+    db = ConexionDB()
+    conn = None
+    cur = None
+    try:
+        try:
+            conn = psycopg2.connect(**db.config)
+        except Exception as ex:
+            current_app.logger.exception("cliente_form_meta: conexión DB")
+            try:
+                emp_sess = int(session.get("empresa_id") or 1)
+            except (TypeError, ValueError):
+                emp_sess = 1
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "msg": "No se pudo conectar a la base de datos. Revise AZ_DATABASE_URL / AZ_DB_* y que PostgreSQL esté en ejecución.",
+                        "es_super": False,
+                        "empresa_id_sesion": emp_sess,
+                        "empresas": [],
+                        "sucursales": [],
+                        "actividades": [],
+                    }
+                ),
+                503,
+            )
+        try:
+            conn.set_client_encoding(os.environ.get("AZ_DB_CLIENT_ENCODING", "UTF8"))
+        except Exception:
+            pass
+        cur = conn.cursor()
+        es_super = _pos_es_superadmin_db(cur)
+        empresas: list = []
+        sucursales: list = []
+        if es_super:
+            try:
+                empresas = empresas_repo.listar_empresas(cur) or []
+            except Exception as ex:
+                current_app.logger.warning("cliente_form_meta empresas: %s", ex)
+                empresas = []
+            sucursales = _pos_listar_sucursales_super_safe(cur)
+        actividades: list[dict[str, str]] = []
+        try:
+            cur.execute("SELECT codigo, descripcion FROM actividades_economicas ORDER BY codigo LIMIT 8000")
+            for row in cur.fetchall() or []:
+                actividades.append({"codigo": str(row[0] or ""), "descripcion": str(row[1] or "")[:120]})
+        except Exception:
+            pass
+        try:
+            emp_sess = int(session.get("empresa_id") or 1)
+        except (TypeError, ValueError):
+            emp_sess = 1
+        return jsonify(
+            {
+                "ok": True,
+                "es_super": es_super,
+                "empresa_id_sesion": emp_sess,
+                "empresas": [{"id": e[0], "nombre": (e[1] or "") if len(e) > 1 else ""} for e in empresas],
+                "sucursales": [
+                    {
+                        "id": s[0],
+                        "nombre": (s[1] or "") if len(s) > 1 else "",
+                        "empresa_id": (s[2] if len(s) > 2 else None),
+                    }
+                    for s in sucursales
+                ],
+                "actividades": actividades,
+            }
+        )
+    except Exception as ex:
+        current_app.logger.exception("cliente_form_meta")
+        try:
+            emp_sess = int(session.get("empresa_id") or 1)
+        except (TypeError, ValueError):
+            emp_sess = 1
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "msg": "Error al preparar el formulario de cliente. Revise el registro del servidor.",
+                    "es_super": False,
+                    "empresa_id_sesion": emp_sess,
+                    "empresas": [],
+                    "sucursales": [],
+                    "actividades": [],
+                }
+            ),
+            500,
+        )
+    finally:
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+@bp.route("/cliente/guardar", methods=["POST"])
 @rol_requerido("GERENTE", "CAJERO")
+def cliente_guardar_json():
+    """Crear o actualizar cliente (misma lógica que ``admin.guardar_cliente``), respuesta JSON para el POS."""
+    data = request.get_json(silent=True) or {}
+    cliente_id_raw = data.get("cliente_id")
+    cliente_id = str(cliente_id_raw).strip() if cliente_id_raw is not None else ""
+    nombre_cliente = (data.get("nombre_cliente") or "").strip()
+    tipo_documento = (data.get("tipo_documento") or "").strip()
+    numero_documento = (data.get("numero_documento") or "").strip()
+    correo = (data.get("correo") or "").strip()
+    es_contribuyente = bool(data.get("es_contribuyente"))
+    es_gran_contribuyente = bool(data.get("es_gran_contribuyente"))
+    direccion = (data.get("direccion") or "").strip()
+    telefono = (data.get("telefono") or "").strip()
+    codigo_actividad = (data.get("codigo_actividad_economica") or "").strip()
+
+    if not nombre_cliente:
+        return jsonify({"ok": False, "msg": "El nombre es obligatorio."}), 400
+
+    tipo_doc = (tipo_documento or "").strip().upper()
+    if tipo_doc == "NIT" and numero_documento:
+        ok_nit, msg = validar_nit(numero_documento)
+        if not ok_nit:
+            return jsonify({"ok": False, "msg": msg}), 400
+    if tipo_doc == "NRC" and numero_documento:
+        ok_nrc, msg = validar_nrc(numero_documento)
+        if not ok_nrc:
+            return jsonify({"ok": False, "msg": msg}), 400
+
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        es_super = _pos_es_superadmin_db(cur)
+        emp_form = data.get("empresa_id")
+        try:
+            emp_default = int(session.get("empresa_id") or 1)
+        except (TypeError, ValueError):
+            emp_default = 1
+        empresa_id = int(emp_form) if es_super and emp_form is not None and str(emp_form).strip().isdigit() else emp_default
+        suc_raw = data.get("sucursal_id")
+        sucursal_id = int(suc_raw) if suc_raw is not None and str(suc_raw).strip().isdigit() else None
+
+        nuevo_id: int | None = None
+        if cliente_id.isdigit():
+            ex = clientes_repo.get_cliente(cur, int(cliente_id))
+            if not ex:
+                return jsonify({"ok": False, "msg": "Cliente no encontrado."}), 404
+            if not es_super and len(ex) > 1 and ex[1] is not None and ex[1] != emp_default:
+                return jsonify({"ok": False, "msg": "Cliente no pertenece a su empresa."}), 403
+            try:
+                clientes_repo.actualizar_cliente(
+                    cur,
+                    int(cliente_id),
+                    nombre_cliente,
+                    tipo_documento,
+                    numero_documento,
+                    correo,
+                    es_contribuyente,
+                    direccion,
+                    telefono,
+                    empresa_id=empresa_id if es_super else None,
+                    sucursal_id=sucursal_id,
+                    actualizar_sucursal=es_super,
+                    codigo_actividad_economica=codigo_actividad,
+                    es_gran_contribuyente=es_gran_contribuyente,
+                )
+            except Exception:
+                conn.rollback()
+                clientes_repo.actualizar_cliente(
+                    cur,
+                    int(cliente_id),
+                    nombre_cliente,
+                    tipo_documento,
+                    numero_documento,
+                    correo,
+                    es_contribuyente,
+                    direccion,
+                    telefono,
+                    empresa_id=empresa_id if es_super else None,
+                    sucursal_id=None,
+                    actualizar_sucursal=False,
+                    codigo_actividad_economica=codigo_actividad,
+                    es_gran_contribuyente=es_gran_contribuyente,
+                )
+        else:
+            nuevo_id = clientes_repo.crear_cliente(
+                cur,
+                empresa_id=empresa_id,
+                nombre_cliente=nombre_cliente,
+                tipo_documento=tipo_documento,
+                numero_documento=numero_documento,
+                correo=correo,
+                es_contribuyente=es_contribuyente,
+                direccion=direccion,
+                telefono=telefono,
+                sucursal_id=sucursal_id if es_super else None,
+                codigo_actividad_economica=codigo_actividad,
+                es_gran_contribuyente=es_gran_contribuyente,
+            )
+        registrar_accion(
+            cur,
+            historial_usuarios_repo.EVENTO_CLIENTE_EDITADO if cliente_id.isdigit() else historial_usuarios_repo.EVENTO_CLIENTE_CREADO,
+            f"Cliente {nombre_cliente} guardado (POS)",
+        )
+        conn.commit()
+        out_id = int(cliente_id) if cliente_id.isdigit() else int(nuevo_id or 0)
+        return jsonify({"ok": True, "id": out_id, "msg": "Cliente guardado."})
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+
+@bp.route("/cliente/<int:cliente_id>/eliminar", methods=["POST"])
+@rol_requerido("GERENTE", "CAJERO")
+def cliente_eliminar_json(cliente_id: int):
+    try:
+        emp_id = int(session.get("empresa_id") or 1)
+    except (TypeError, ValueError):
+        emp_id = 1
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        es_super = _pos_es_superadmin_db(cur)
+        c = clientes_repo.get_cliente(cur, cliente_id)
+        if not c:
+            return jsonify({"ok": False, "msg": "Cliente no encontrado."}), 404
+        if not es_super and len(c) > 1 and c[1] is not None and c[1] != emp_id:
+            return jsonify({"ok": False, "msg": "Cliente no pertenece a su empresa."}), 403
+        clientes_repo.eliminar_cliente(cur, cliente_id)
+        registrar_accion(cur, historial_usuarios_repo.EVENTO_CLIENTE_ELIMINADO, f"Cliente #{cliente_id} eliminado (POS)")
+        conn.commit()
+        return jsonify({"ok": True, "msg": "Cliente eliminado."})
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+
+@bp.route("/buscar_producto/<codigo>")
+@rol_requerido(*_ROLES_POS)
 def buscar_producto(codigo: str):
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
@@ -254,6 +623,7 @@ def buscar_producto(codigo: str):
         nom_prod = str(r[1] or "").strip() if len(r) > 1 else None
         pres = presentaciones_repo.lista_para_pos_json(cur, int(r[0]), uxdoc, uxcaja, nombre_producto=nom_prod)
         ex_val = float(r[10]) if len(r) > 10 and r[10] is not None else 0.0
+        pres_scan = int(r[11]) if len(r) > 11 and r[11] is not None else None
         return jsonify({
             "id": r[0], "nombre": r[1], "precio": float(r[2]), "codigo": (r[3] or "").strip(),
             "promocion_tipo": promo_tipo, "promocion_valor": promo_val,
@@ -261,6 +631,7 @@ def buscar_producto(codigo: str):
             "fraccionable": fracc, "unidades_por_caja": uxcaja, "unidades_por_docena": uxdoc, "mh_codigo_unidad": mh,
             "presentaciones": pres,
             "existencia": ex_val,
+            "presentacion_escaneada_id": pres_scan,
         })
     finally:
         cur.close()
@@ -268,7 +639,7 @@ def buscar_producto(codigo: str):
 
 
 @bp.route("/productos_pos_cache")
-@rol_requerido("GERENTE", "CAJERO", "BODEGUERO")
+@rol_requerido(*_ROLES_POS)
 def productos_pos_cache():
     """Lista todos los productos para cache offline del POS. Máx 800 para no exceder localStorage."""
     db = ConexionDB()
@@ -365,7 +736,7 @@ def _fila_a_producto_pos_json(cur, r: tuple, emp_id: int) -> dict:
 
 
 @bp.route("/pos/catalogo_productos")
-@rol_requerido("GERENTE", "CAJERO", "BODEGUERO")
+@rol_requerido(*_ROLES_POS)
 def pos_catalogo_productos():
     """Catálogo completo para modal POS: existencia + precio (misma sucursal/empresa que sesión)."""
     db = ConexionDB()
@@ -384,7 +755,7 @@ def pos_catalogo_productos():
 
 
 @bp.route("/buscar_por_nombre")
-@rol_requerido("GERENTE", "CAJERO")
+@rol_requerido(*_ROLES_POS)
 def buscar_por_nombre():
     q = request.args.get("q", "").upper()
     db = ConexionDB()
@@ -436,7 +807,7 @@ def buscar_por_nombre():
 
 
 @bp.route("/guardar_venta", methods=["POST"])
-@rol_requerido("GERENTE", "CAJERO", "BODEGUERO")
+@rol_requerido(*_ROLES_POS)
 def guardar_venta():
     datos = request.get_json() or {}
     carrito = datos.get("carrito", [])
@@ -932,7 +1303,7 @@ def _tpl_comprobante_venta(
 
 
 @bp.route("/imprimir_ticket/<int:venta_id>")
-@rol_requerido("GERENTE", "CAJERO")
+@rol_requerido(*_ROLES_POS)
 def imprimir_ticket(venta_id: int):
     sess_emp = int(session.get("empresa_id") or 1)
     formato = (request.args.get("formato") or "").strip().lower()
@@ -1035,7 +1406,7 @@ def _sucursal_session_int() -> int | None:
 
 
 @bp.route("/pos/favoritos", methods=["GET"])
-@rol_requerido("GERENTE", "CAJERO", "BODEGUERO")
+@rol_requerido(*_ROLES_POS)
 def pos_favoritos_get():
     """Favoritos del POS compartidos por empresa + sucursal (sesión)."""
     emp_id = int(session.get("empresa_id") or 1)
@@ -1061,7 +1432,7 @@ def pos_favoritos_get():
 
 
 @bp.route("/pos/favoritos", methods=["POST"])
-@rol_requerido("GERENTE", "CAJERO", "BODEGUERO")
+@rol_requerido(*_ROLES_POS)
 def pos_favoritos_post():
     emp_id = int(session.get("empresa_id") or 1)
     suc_id = _sucursal_session_int()

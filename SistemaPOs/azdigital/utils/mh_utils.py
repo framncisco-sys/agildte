@@ -3,7 +3,7 @@
 
 
 def check_mh_online(timeout: int = 3) -> bool:
-    """Verifica si el servidor MH (Hacienda El Salvador) responde."""
+    """Ping directo al portal web MH (legado). El panel del POS usa ``check_agildte_api_reachable``."""
     import urllib.request
     import ssl
 

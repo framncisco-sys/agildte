@@ -42,13 +42,31 @@ def tabla_existe(cur) -> bool:
     return cur.fetchone() is not None
 
 
-def listar_por_producto(cur, producto_id: int) -> list[tuple[Any, ...]]:
-    """Filas: id, nombre, factor_umb, es_umb, orden."""
+def tiene_columna_codigo_barra(cur) -> bool:
+    """True si existe ``producto_presentacion.codigo_barra`` (migración códigos por presentación)."""
     if not tabla_existe(cur):
-        return []
+        return False
     cur.execute(
         """
-        SELECT id, nombre, factor_umb, es_umb, orden
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'producto_presentacion'
+          AND column_name = 'codigo_barra'
+        LIMIT 1
+        """,
+    )
+    return cur.fetchone() is not None
+
+
+def listar_por_producto(cur, producto_id: int) -> list[tuple[Any, ...]]:
+    """Filas: id, nombre, factor_umb, es_umb, orden [, codigo_barra si existe columna]."""
+    if not tabla_existe(cur):
+        return []
+    cols = "id, nombre, factor_umb, es_umb, orden"
+    if tiene_columna_codigo_barra(cur):
+        cols += ", codigo_barra"
+    cur.execute(
+        f"""
+        SELECT {cols}
         FROM producto_presentacion
         WHERE producto_id = %s
         ORDER BY orden NULLS LAST, id
@@ -145,39 +163,107 @@ def factores_permitidos(cur, producto_id: int) -> set[Decimal]:
     return out
 
 
-def _validar_filas(filas: list[tuple[str, Decimal, bool]]) -> None:
+def _validar_filas(filas: list[tuple[Any, ...]]) -> None:
     if not filas:
         raise ValueError("Debe existir al menos una presentación (UMB).")
     umb = [f for f in filas if f[2]]
     if len(umb) != 1:
         raise ValueError("Debe haber exactamente una presentación marcada como UMB (factor base).")
-    for nombre, fac, _ in filas:
+    for f in filas:
+        nombre, fac = f[0], f[1]
         if not (nombre or "").strip():
             raise ValueError("Cada presentación debe tener nombre.")
         if fac <= 0:
             raise ValueError("Los factores deben ser mayores a cero.")
 
 
+def _fila_con_codigo_opcional(
+    nombre: str,
+    fac: Decimal,
+    es_umb: bool,
+    codigo_barra: str | None = None,
+) -> tuple[Any, ...]:
+    """Tupla de 3 o 4 elementos; el 4.º solo si hay código no vacío."""
+    n = (nombre or "").strip()[:80]
+    c = (codigo_barra or "").strip()[:64] if codigo_barra else ""
+    if c:
+        return (n, fac, es_umb, c)
+    return (n, fac, es_umb)
+
+
+def _codigo_desde_fila(fila: tuple[Any, ...]) -> str | None:
+    if len(fila) <= 3 or not fila[3]:
+        return None
+    s = str(fila[3]).strip()[:64]
+    return s or None
+
+
+def _snapshot_codigos_presentacion(cur, producto_id: int) -> dict[tuple[Decimal, str], str]:
+    """Antes de reemplazar filas: mapa (factor normalizado, nombre lower) -> código."""
+    if not tabla_existe(cur) or not tiene_columna_codigo_barra(cur):
+        return {}
+    cur.execute(
+        """
+        SELECT nombre, factor_umb, codigo_barra
+        FROM producto_presentacion
+        WHERE producto_id = %s
+        """,
+        (producto_id,),
+    )
+    out: dict[tuple[Decimal, str], str] = {}
+    for r in cur.fetchall() or []:
+        if not r or len(r) < 3:
+            continue
+        cb = r[2] if len(r) > 2 else None
+        if not cb or not str(cb).strip():
+            continue
+        try:
+            fac = _factor_normalizado(r[1])
+        except Exception:
+            continue
+        key = (fac, str(r[0] or "").strip().lower())
+        out[key] = str(cb).strip()[:64]
+    return out
+
+
 def reemplazar_todas(
     cur,
     producto_id: int,
-    filas: list[tuple[str, Decimal, bool]],
+    filas: list[tuple[Any, ...]],
 ) -> None:
     """
-    filas: (nombre, factor_umb, es_umb). Una sola fila con es_umb=True (típicamente factor 1).
+    filas: (nombre, factor_umb, es_umb) o (nombre, factor_umb, es_umb, codigo_barra).
+    Si existe columna codigo_barra, conserva códigos de la BD por (factor, nombre) al
+    reordenar o guardar desde inventario.
     """
     if not tabla_existe(cur):
         return
+    preservar = _snapshot_codigos_presentacion(cur, producto_id)
     _validar_filas(filas)
     cur.execute("DELETE FROM producto_presentacion WHERE producto_id = %s", (producto_id,))
-    for i, (nombre, fac, es_u) in enumerate(filas):
-        cur.execute(
-            """
-            INSERT INTO producto_presentacion (producto_id, nombre, factor_umb, es_umb, orden)
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            (producto_id, nombre.strip()[:80], fac, es_u, i),
-        )
+    use_cb = tiene_columna_codigo_barra(cur)
+    for i, fila in enumerate(filas):
+        nombre, fac, es_u = fila[0], fila[1], fila[2]
+        cb = _codigo_desde_fila(fila)
+        if cb is None and preservar:
+            k = (_factor_normalizado(fac), str(nombre or "").strip().lower())
+            cb = preservar.get(k)
+        if use_cb:
+            cur.execute(
+                """
+                INSERT INTO producto_presentacion (producto_id, nombre, factor_umb, es_umb, orden, codigo_barra)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (producto_id, str(nombre).strip()[:80], fac, es_u, i, cb),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO producto_presentacion (producto_id, nombre, factor_umb, es_umb, orden)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (producto_id, str(nombre).strip()[:80], fac, es_u, i),
+            )
 
 
 def _factor_normalizado(val) -> Decimal:
@@ -246,7 +332,13 @@ def lista_para_pos_json(
         ]
 
     out: list[dict[str, Any]] = [
-        {"id": int(r[0]), "nombre": str(r[1] or "").strip(), "factor": float(r[2]), "es_umb": bool(r[3])}
+        {
+            "id": int(r[0]),
+            "nombre": str(r[1] or "").strip(),
+            "factor": float(r[2]),
+            "es_umb": bool(r[3]),
+            **({"codigo_barra": str(r[5] or "").strip()} if len(r) > 5 else {}),
+        }
         for r in rows
     ]
     factores_db = {_factor_normalizado(r[2]) for r in rows}
@@ -267,21 +359,31 @@ def construir_filas_desde_legacy(
     nombre_umb: str,
     unidades_por_docena: int,
     unidades_por_caja: int | None,
-    extras: list[tuple[str, float]] | None = None,
-) -> list[tuple[str, Decimal, bool]]:
-    """UMB + Docena + Caja (si aplica) + filas extra (nombre, factor)."""
+    extras: list[tuple[str, float] | tuple[str, float, str | None]] | None = None,
+    *,
+    codigo_barra_umb: str | None = None,
+    codigo_barra_docena: str | None = None,
+    codigo_barra_caja: str | None = None,
+) -> list[tuple[Any, ...]]:
+    """UMB + Docena + Caja (si aplica) + filas extra (nombre, factor [, codigo_barra])."""
     umb = (nombre_umb or "Unidad base").strip()[:80] or "Unidad base"
-    rows: list[tuple[str, Decimal, bool]] = [(umb, Decimal("1"), True)]
+    rows: list[tuple[Any, ...]] = [_fila_con_codigo_opcional(umb, Decimal("1"), True, codigo_barra_umb)]
     upd = int(unidades_por_docena or 12)
     if upd < 2:
         upd = 12
     if upd > 1:
-        rows.append(("Docena", Decimal(upd), False))
+        rows.append(_fila_con_codigo_opcional("Docena", Decimal(upd), False, codigo_barra_docena))
     if unidades_por_caja is not None and int(unidades_por_caja) > 0:
-        rows.append(("Caja", Decimal(int(unidades_por_caja)), False))
+        rows.append(
+            _fila_con_codigo_opcional("Caja", Decimal(int(unidades_por_caja)), False, codigo_barra_caja)
+        )
     if extras:
-        for nom, fac in extras:
-            n = (nom or "").strip()[:80]
+        for x in extras:
+            if len(x) >= 3:
+                nom, fac, cb = x[0], x[1], x[2]
+            else:
+                nom, fac, cb = x[0], x[1], None
+            n = (str(nom) or "").strip()[:80]
             if not n:
                 continue
             try:
@@ -290,5 +392,5 @@ def construir_filas_desde_legacy(
                 continue
             if f <= 0:
                 continue
-            rows.append((n, f, False))
+            rows.append(_fila_con_codigo_opcional(n, f, False, str(cb) if cb is not None else None))
     return rows

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import psycopg2
-from flask import Blueprint, jsonify, redirect, render_template, session, url_for
+from flask import Blueprint, current_app, jsonify, redirect, render_template, session, url_for
 
 from azdigital.decorators import login_required, _rol_desde_bd
 from azdigital.repositories import empresas_repo, productos_repo
@@ -261,12 +261,37 @@ def dashboard():
     return _render_dashboard()
 
 
+@bp.route("/posagil/agildte_status")
 @bp.route("/api/mh_status")
+@bp.route("/api/agildte_status")
 @login_required
-def api_mh_status():
-    """Devuelve {online: true/false} para el semáforo DTE."""
-    from azdigital.utils.mh_utils import check_mh_online
-    return jsonify(online=check_mh_online())
+def api_agildte_status():
+    """
+    Estado del canal DTE vía AgilDTE (el POS ya no habla directo con el portal MH).
+
+    La ruta canónica es ``/posagil/agildte_status`` para evitar proxies que reenvían
+    ``/api/*`` a otro backend (respuesta HTML → «respuesta no JSON» en el dashboard).
+
+    Compatibilidad: ``/api/mh_status`` y ``/api/agildte_status`` siguen sirviendo el mismo JSON.
+    """
+    try:
+        from azdigital.integration.agildte_client import check_agildte_api_reachable
+
+        st = check_agildte_api_reachable()
+        return jsonify(
+            online=st["online"],
+            configured=st.get("configured", True),
+            detail=st.get("detail"),
+            source="agildte",
+        )
+    except Exception:
+        current_app.logger.exception("api_agildte_status")
+        return jsonify(
+            online=False,
+            configured=True,
+            detail="pos_error",
+            source="agildte",
+        )
 
 
 @bp.route("/")

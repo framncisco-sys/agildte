@@ -206,6 +206,13 @@
                                     <span class="text-muted small">Así lo verá el cajero en el POS</span>
                                 </div>
                                 <div class="col-md-6">
+                                    <label class="form-label fw-bold" for="umb_codigo_barra">Código de barras de 1 UMB (opcional)</label>
+                                    <input type="text" name="umb_codigo_barra" id="umb_codigo_barra" class="form-control" maxlength="64" placeholder="Si difiere del «Código o barra» de arriba" autocomplete="off">
+                                    <span class="text-muted small">El POS puede leer este EAN al vender 1 unidad base</span>
+                                </div>
+                            </div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-12">
                                     <label class="form-label fw-bold" for="prod_mh_unidad">Tipo según Ministerio de Hacienda (DTE)</label>
                                     <select name="mh_codigo_unidad" id="prod_mh_unidad" class="form-select form-select-sm">
                                         {% if catalogo_mh_grupos %}
@@ -265,6 +272,16 @@
                                     <span class="text-muted small">Normalmente 12</span>
                                 </div>
                             </div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold" for="docena_codigo_barra">Código de barras — docena (opcional)</label>
+                                    <input type="text" name="docena_codigo_barra" id="docena_codigo_barra" class="form-control form-control-sm" maxlength="64" placeholder="EAN al escanear 1 docena" autocomplete="off">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold" for="caja_codigo_barra">Código de barras — caja (opcional)</label>
+                                    <input type="text" name="caja_codigo_barra" id="caja_codigo_barra" class="form-control form-control-sm" maxlength="64" placeholder="EAN al escanear 1 caja" autocomplete="off">
+                                </div>
+                            </div>
 
                             <div class="rounded border bg-light p-3 mb-3">
                                 <p class="small fw-bold text-secondary mb-2 mb-md-0"><i class="bi bi-calculator me-1"></i>Si pensás en precio de <strong>caja completa</strong> (opcional)</p>
@@ -288,7 +305,7 @@
                             </div>
 
                             <label class="form-label fw-bold">Otras formas de vender</label>
-                            <p class="small text-muted mb-2">Ej. «Tira», «Six pack». Nombre + cuántas unidades lleva.</p>
+                            <p class="small text-muted mb-2">Ej. «Tira», «Six pack». Nombre, factor en UMB y opcionalmente código de barras de esa presentación.</p>
                             <div id="pres_extra_rows" class="small"></div>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_pres_extra_add"><i class="bi bi-plus-lg"></i> Agregar presentación</button>
                             <input type="hidden" name="presentaciones_extra_json" id="presentaciones_extra_json" value="[]">
@@ -579,31 +596,43 @@ document.addEventListener('DOMContentLoaded', function() {
         rows.forEach(function(row) {
             var n = row.querySelector('.pres-extra-nombre');
             var f = row.querySelector('.pres-extra-factor');
+            var c = row.querySelector('.pres-extra-codigo');
             if (n && f && n.value.trim()) {
                 var fac = parseFloat(f.value);
-                if (fac > 0) arr.push({ nombre: n.value.trim(), factor: fac });
+                if (fac > 0) {
+                    var o = { nombre: n.value.trim(), factor: fac };
+                    if (c && c.value.trim()) o.codigo_barra = c.value.trim().slice(0, 64);
+                    arr.push(o);
+                }
             }
         });
         var hid = document.getElementById('presentaciones_extra_json');
         if (hid) hid.value = JSON.stringify(arr);
     }
 
-    function addPresExtraRow(nombre, factor) {
+    function addPresExtraRow(nombre, factor, codigo) {
         var wrap = document.getElementById('pres_extra_rows');
         if (!wrap) return;
         var div = document.createElement('div');
         div.className = 'pres-extra-row row g-1 mb-1 align-items-center';
         var nv = (nombre || '').replace(/"/g, '&quot;');
         var fv = factor != null && factor !== '' ? String(factor) : '';
-        div.innerHTML = '<div class="col"><input type="text" class="form-control form-control-sm pres-extra-nombre" placeholder="Ej. Tira" value="' + nv + '"></div>' +
-            '<div class="col-auto" style="min-width:7rem"><input type="number" min="0.0001" step="any" class="form-control form-control-sm pres-extra-factor" placeholder="Factor" value="' + fv + '"></div>' +
+        var cv = (codigo != null && codigo !== undefined && String(codigo).trim() !== '') ? String(codigo).replace(/"/g, '&quot;') : '';
+        div.innerHTML = '<div class="col-12 col-md-3"><input type="text" class="form-control form-control-sm pres-extra-nombre" placeholder="Ej. Tira" value="' + nv + '"></div>' +
+            '<div class="col-6 col-md-auto" style="min-width:6.5rem"><input type="number" min="0.0001" step="any" class="form-control form-control-sm pres-extra-factor" placeholder="Factor" value="' + fv + '"></div>' +
+            '<div class="col-12 col-md"><input type="text" class="form-control form-control-sm pres-extra-codigo" maxlength="64" placeholder="Código barras (opcional)" value="' + cv + '" autocomplete="off"></div>' +
             '<div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger pres-extra-remove" title="Quitar">&times;</button></div>';
-        div.querySelector('.pres-extra-remove').addEventListener('click', function() { div.remove(); });
+        div.querySelector('.pres-extra-remove').addEventListener('click', function() { div.remove(); syncPresExtraJson(); });
         wrap.appendChild(div);
     }
 
+    var presExtraHost = document.getElementById('pres_extra_rows');
+    if (presExtraHost) {
+        presExtraHost.addEventListener('input', function() { syncPresExtraJson(); });
+    }
+
     var btnPresAdd = document.getElementById('btn_pres_extra_add');
-    if (btnPresAdd) btnPresAdd.addEventListener('click', function() { addPresExtraRow('', ''); });
+    if (btnPresAdd) btnPresAdd.addEventListener('click', function() { addPresExtraRow('', '', ''); });
 
     var btnNuevo = document.getElementById('btnNuevoProducto');
     if (btnNuevo) btnNuevo.addEventListener('click', function() {
@@ -638,6 +667,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         var umb = document.getElementById('umb_nombre');
         if (umb) umb.value = 'Unidad base';
+        var umbCb = document.getElementById('umb_codigo_barra');
+        if (umbCb) umbCb.value = '';
+        var docCb = document.getElementById('docena_codigo_barra');
+        if (docCb) docCb.value = '';
+        var cajaCb = document.getElementById('caja_codigo_barra');
+        if (cajaCb) cajaCb.value = '';
         var pr = document.getElementById('pres_extra_rows');
         if (pr) pr.innerHTML = '';
         var pj = document.getElementById('presentaciones_extra_json');
@@ -733,8 +768,14 @@ document.addEventListener('DOMContentLoaded', function() {
         if (pidEdit) {
             fetch('/inventario/presentaciones/' + pidEdit).then(function(r) { return r.json(); }).then(function(d) {
                 if (d && d.umb_nombre && umbEl) umbEl.value = d.umb_nombre;
+                var ucb = document.getElementById('umb_codigo_barra');
+                if (ucb) ucb.value = (d && d.umb_codigo_barra) ? String(d.umb_codigo_barra) : '';
+                var dcb = document.getElementById('docena_codigo_barra');
+                if (dcb) dcb.value = (d && d.docena_codigo_barra) ? String(d.docena_codigo_barra) : '';
+                var ccb = document.getElementById('caja_codigo_barra');
+                if (ccb) ccb.value = (d && d.caja_codigo_barra) ? String(d.caja_codigo_barra) : '';
                 if (d && d.extras && d.extras.length) {
-                    d.extras.forEach(function(ex) { addPresExtraRow(ex.nombre, ex.factor); });
+                    d.extras.forEach(function(ex) { addPresExtraRow(ex.nombre, ex.factor, ex.codigo_barra || ''); });
                 }
                 syncPresExtraJson();
                 if (typeof actualizarAvisoRecuperacionUmb === 'function') actualizarAvisoRecuperacionUmb();

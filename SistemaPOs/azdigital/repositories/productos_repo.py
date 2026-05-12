@@ -24,6 +24,49 @@ def _productos_tiene_columna(cur, nombre_columna: str) -> bool:
     return cur.fetchone() is not None
 
 
+def _buscar_via_presentacion_codigo_barra(
+    cur, codigo: str, empresa_id: int | None, sucursal_id_usuario: int | None
+) -> tuple[Any, ...] | None:
+    """
+    Mismo SELECT que ``buscar_por_codigo`` en producto, pero resolviendo el código en
+    ``producto_presentacion.codigo_barra`` (six-pack, docena, etc.).
+    Añade al final ``presentacion_match_id`` (índice 11) para el POS.
+    """
+    from azdigital.repositories import presentaciones_repo
+
+    if not presentaciones_repo.tabla_existe(cur) or not presentaciones_repo.tiene_columna_codigo_barra(cur):
+        return None
+    c = (codigo or "").strip()
+    if not c:
+        return None
+    suc = sucursal_id_usuario
+    q = (
+        "SELECT p.id, p.nombre, p.precio_unitario, p.codigo_barra, COALESCE(p.promocion_tipo, ''), COALESCE(p.promocion_valor, 0), "
+        "COALESCE(p.fraccionable, FALSE), p.unidades_por_caja, COALESCE(p.unidades_por_docena, 12), "
+        "COALESCE(NULLIF(TRIM(p.mh_codigo_unidad), ''), '59'), "
+        "CASE "
+        "WHEN EXISTS (SELECT 1 FROM producto_stock_sucursal x WHERE x.producto_id = p.id) "
+        "THEN (SELECT COALESCE(SUM(y.cantidad), 0) FROM producto_stock_sucursal y "
+        "WHERE y.producto_id = p.id AND (%s IS NULL OR y.sucursal_id = %s)) "
+        "ELSE COALESCE(p.stock_actual, 0) END AS existencia, "
+        "pp.id AS presentacion_match_id "
+        "FROM productos p "
+        "INNER JOIN producto_presentacion pp ON pp.producto_id = p.id "
+        "AND pp.codigo_barra IS NOT NULL AND length(trim(pp.codigo_barra)) > 0 "
+        "AND TRIM(pp.codigo_barra) = %s"
+    )
+    params: list[Any] = [suc, suc, c]
+    if empresa_id:
+        q += " AND p.empresa_id = %s"
+        params.append(empresa_id)
+    if sucursal_id_usuario is not None:
+        q += " AND (p.sucursal_id IS NULL OR p.sucursal_id = %s)"
+        params.append(sucursal_id_usuario)
+    q += " LIMIT 1"
+    cur.execute(q, tuple(params))
+    return cur.fetchone()
+
+
 def buscar_por_codigo(cur, codigo: str, empresa_id: int = None, sucursal_id_usuario: int | None = None):
     suc = sucursal_id_usuario
     q = (
@@ -46,7 +89,12 @@ def buscar_por_codigo(cur, codigo: str, empresa_id: int = None, sucursal_id_usua
         params.append(sucursal_id_usuario)
     try:
         cur.execute(q, tuple(params))
-        return cur.fetchone()
+        r = cur.fetchone()
+        if r is not None:
+            return r
+        r2 = _buscar_via_presentacion_codigo_barra(cur, codigo.strip(), empresa_id, sucursal_id_usuario)
+        if r2 is not None:
+            return r2
     except Exception:
         cur.connection.rollback()
         q0 = (

@@ -21,7 +21,7 @@ ROLES_SUPER = ("ADMIN", "SUPERADMIN")
 ROLES_GERENTE = ROLES_SUPER + ("GERENTE",)
 ROLES_CONTADOR = ROLES_GERENTE + ("CONTADOR",)
 ROLES_BODEGUERO = ROLES_GERENTE + ("BODEGUERO",)
-ROLES_CAJERO = ROLES_GERENTE + ("CAJERO",)  # Ventas y clientes (BODEGUERO no ve ventas)
+ROLES_CAJERO = ROLES_GERENTE + ("CAJERO", "BODEGUERO")  # POS / ventas / clientes: mismo criterio que ``pos._ROLES_POS`` (+ ADMIN vía ROLES_GERENTE)
 
 
 def login_required(fn: F) -> F:
@@ -106,7 +106,7 @@ def _es_superusuario(rol: str | None) -> bool:
 
 
 def puede_ver_ventas(rol: str | None) -> bool:
-    """POS, ventas, clientes: CAJERO, BODEGUERO, GERENTE, ADMIN."""
+    """Menú lateral: Punto de venta, corte/cierre caja. Roles GERENTE, CAJERO, BODEGUERO, ADMIN, SUPERADMIN."""
     return _rol_tiene_acceso(rol, ROLES_CAJERO)
 
 

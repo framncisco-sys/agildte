@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 
 {% block content %}
+{# pos-ui: 2026-05-12-escanner-ancho-igual — col-md-6 + col-md-6 como búsqueda manual. #}
 <style>
     :root {
         --bg-body: #f8f9fc;
@@ -117,6 +118,35 @@
     body.device-mobile .table { font-size: 0.82rem; }
     body.device-mobile .table thead th { font-size: 0.68rem; }
 
+    /* MODO ESCÁNER: mismo patrón que BÚSQUEDA MANUAL (input-group + btn-outline-primary). */
+    #pos_escanner_root .input-group .form-control {
+        min-width: 0;
+    }
+    /* Texto de ayuda: pantallas pequeñas o puntero táctil */
+    .pos-hint-camara-movil {
+        display: none;
+    }
+    @media (max-width: 991.98px) {
+        .pos-hint-camara-movil { display: block !important; }
+    }
+    @media (hover: none) and (pointer: coarse) {
+        .pos-hint-camara-movil { display: block !important; }
+    }
+    body.device-mobile .pos-hint-camara-movil,
+    body.device-tablet .pos-hint-camara-movil {
+        display: block !important;
+    }
+    #pos_html5qr_reader {
+        min-height: 240px;
+        width: 100%;
+    }
+    #pos_html5qr_reader video {
+        border-radius: 0 0 0.5rem 0.5rem;
+    }
+    #modalScannerBarrasPOS .modal-body {
+        background: #0f172a;
+    }
+
     body.device-tablet .row.g-4 > .col-lg-4 {
         flex: 0 0 100%;
         max-width: 100%;
@@ -163,14 +193,20 @@
         <div class="col-lg-8">
             <div class="card p-4 mb-4">
                 <div class="row g-3">
-                    <div class="col-md-5">
+                    <div class="col-12 col-md-6">
                         <label class="text-primary small fw-bold mb-2">MODO ESCÁNER</label>
-                        <div class="input-group shadow-sm">
-                            <span class="input-group-text bg-light border-0"><i class="bi bi-upc-scan"></i></span>
-                            <input type="text" id="input_codigo" class="form-control border-0" placeholder="Escanee producto..." autofocus>
+                        <p class="small text-muted mb-1 d-none pos-hint-camara-movil">Use el ícono de <strong>cámara</strong> a la derecha del campo o el código con pistola/teclado.</p>
+                        <div class="position-relative" id="pos_escanner_root" data-pos-ui-version="2026-05-12-escanner-ancho-igual">
+                            <div class="input-group shadow-sm">
+                                <span class="input-group-text bg-light border-0"><i class="bi bi-upc-scan"></i></span>
+                                <input type="text" id="input_codigo" class="form-control border-0" placeholder="Escanee producto…" autocomplete="off" autocorrect="off" spellcheck="false" autofocus>
+                                <button type="button" class="btn btn-outline-primary px-3" id="btnPosCamaraBarras" title="Escanear código de barras con la cámara" aria-label="Escanear con la cámara">
+                                    <i class="bi bi-camera-fill fs-5" aria-hidden="true"></i><span class="visually-hidden">Escanear con cámara</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    <div class="col-md-7">
+                    <div class="col-12 col-md-6">
                         <label class="text-primary small fw-bold mb-2">BÚSQUEDA MANUAL</label>
                         <div class="position-relative">
                             <div class="input-group shadow-sm">
@@ -238,6 +274,16 @@
 
                 <div class="mb-2 position-relative" id="cliente_field_wrap">
                     <label class="small fw-bold text-muted mb-1">CLIENTE — buscar por nombre o documento</label>
+                    {% if es_super or ((session.get('rol') or '')|upper) in ('GERENTE', 'CAJERO', 'ADMIN', 'SUPERADMIN') %}
+                    <div class="d-flex flex-wrap gap-1 mb-1">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnPosNuevoCliente" title="Registrar cliente en el catálogo">
+                            <i class="bi bi-person-plus"></i> Nuevo cliente
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPosEditarCliente" style="display:none" title="Editar ficha del cliente seleccionado">
+                            <i class="bi bi-pencil-square"></i> Editar ficha
+                        </button>
+                    </div>
+                    {% endif %}
                     <input type="hidden" id="cliente_id" value="">
                     <input type="text" id="cliente_nombre" class="form-control bg-light border-0" placeholder="Consumidor Final o escriba para buscar..." autocomplete="off">
                     <div id="lista_clientes" class="list-group position-absolute w-100 shadow mt-1" style="display:none; z-index:1000; max-height:220px; overflow-y:auto;"></div>
@@ -407,6 +453,45 @@
     </div>
 </div>
 
+<!-- Modal: escáner de código de barras con cámara (móvil / tablet) -->
+<div class="modal fade" id="modalScannerBarrasPOS" tabindex="-1" aria-labelledby="modalScannerBarrasPOSLabel" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header py-2 border-0 text-white" style="background: linear-gradient(135deg, #1e3a5f, #0f172a);">
+                <h5 class="modal-title fw-bold mb-0" id="modalScannerBarrasPOSLabel"><i class="bi bi-camera-video me-2"></i>Escanear código</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body p-0 position-relative">
+                <p id="pos_scanner_cam_msg" class="small text-white-50 position-absolute top-0 start-0 end-0 text-center py-2 mb-0" style="z-index: 2; pointer-events: none;">Permita el acceso a la cámara si el navegador lo solicita.</p>
+                <div id="pos_html5qr_reader" class="bg-dark"></div>
+            </div>
+            <div class="modal-footer py-2 border-0 bg-dark">
+                <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: mismo formulario que /clientes (iframe → /clientes/embed) -->
+<div class="modal fade" id="modalClientePOS" tabindex="-1" aria-labelledby="modalClientePOSLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-md-down">
+        <div class="modal-content">
+            <div class="modal-header py-2 border-bottom">
+                <h5 class="modal-title fw-bold mb-0" id="modalClientePOSLabel"><i class="bi bi-people text-primary"></i> Clientes</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body p-0 bg-light" style="min-height: 60vh;">
+                <iframe id="iframeClientePOS" title="Alta y edición de clientes" class="w-100 border-0 d-block"
+                    style="min-height: 60vh; height: 75vh; background: #f8f9fa;"
+                    src="about:blank" loading="lazy"></iframe>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     const requiereClaveSupervisor = {{ 'true' if requiere_clave_supervisor|default(false) else 'false' }};
     const requiereClaveSupervisorDescuento = {{ 'true' if requiere_clave_supervisor_descuento|default(false) else 'false' }};
@@ -418,12 +503,25 @@
         if (POSAGIL_AGILDTE_AUTH) h['Authorization'] = POSAGIL_AGILDTE_AUTH;
         return h;
     }
-    /** Prefijo público del POS (p. ej. /pos). Impresión y window.open deben usarlo. */
+    /** Montaje WSGI real (SCRIPT_NAME). Vacío en desarrollo típico; evita 404 al no duplicar /pos con el env. */
+    const POS_SCRIPT_ROOT = {{ (pos_script_root | default('')) | tojson }};
+    /** Prefijo público (env). Solo se antepone si la página cargada está bajo ese path (p. ej. portal /pos). */
     const POS_URL_PREFIX = {{ (POS_URL_PREFIX or '') | tojson }};
     function posUrl(rel) {
-        const p = (POS_URL_PREFIX || '').replace(/\/$/, '');
         const r = (rel || '').startsWith('/') ? (rel || '') : '/' + (rel || '');
+        const sr = (POS_SCRIPT_ROOT || '').replace(/\/$/, '');
+        if (sr) {
+            if (r === sr || r.startsWith(sr + '/')) return r;
+            return sr + r;
+        }
+        const p = (POS_URL_PREFIX || '').replace(/\/$/, '');
         if (!p) return r;
+        if (r === p || r.startsWith(p + '/')) return r;
+        try {
+            const path = (window.location && window.location.pathname) ? window.location.pathname : '';
+            const under = path === p || path.startsWith(p + '/');
+            if (!under) return r;
+        } catch (e) { /* */ }
         return p + r;
     }
     let carrito = [];
@@ -444,6 +542,7 @@
 
     const POS_EMPRESA_ID = {{ empresa_id_pos|default(1)|int }};
     const POS_SUCURSAL_ID = {{ sucursal_id_pos | tojson }};
+    const POS_PUEDE_CRUD_CLIENTE = {{ (es_super or ((session.get('rol') or '')|upper in ('GERENTE', 'CAJERO', 'ADMIN', 'SUPERADMIN'))) | tojson }};
     const FAVORITOS_STORAGE_KEY = 'pos_favoritos_v2_' + POS_EMPRESA_ID + '_' + (POS_SUCURSAL_ID == null ? '0' : POS_SUCURSAL_ID);
     const MAX_FAVORITOS_POS = 14;
     let _favSyncTimer = null;
@@ -469,7 +568,7 @@
     async function favoritosSyncSubidaAhora(arr) {
         if (!navigator.onLine) return;
         try {
-            const resp = await fetch('/favoritos', {
+            const resp = await fetch(posUrl('/pos/favoritos'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ favoritos: arr })
@@ -485,7 +584,7 @@
         if (!navigator.onLine) return;
         const localAntes = favoritosLista();
         try {
-            const resp = await fetch('/favoritos');
+            const resp = await fetch(posUrl('/pos/favoritos'));
             const data = await resp.json().catch(() => ({}));
             if (!resp.ok || !data.ok) return;
             if (data.sync === false) return;
@@ -656,7 +755,7 @@
         if (navigator.onLine) {
             if (load) load.classList.remove('d-none');
             try {
-                const resp = await fetch('/catalogo_productos');
+                const resp = await fetch(posUrl('/pos/catalogo_productos'));
                 const data = await resp.json();
                 catalogoProductosModalCache = Array.isArray(data.productos) ? data.productos : [];
             } catch (e) {
@@ -798,8 +897,21 @@
     function obtenerProductoPorCodigo(cod) {
         const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{"productos":[]}');
         const prods = cache.productos || [];
-        cod = cod.replace(/\s/g, '');
-        return prods.find(p => (p.codigo || '').replace(/\s/g, '') === cod);
+        const c = String(cod || '').replace(/\s/g, '');
+        if (!c) return undefined;
+        const direct = prods.find(p => (p.codigo || '').replace(/\s/g, '') === c);
+        if (direct) return direct;
+        for (const p of prods) {
+            const pres = p.presentaciones || [];
+            const hit = pres.find(pr => pr.codigo_barra && String(pr.codigo_barra).replace(/\s/g, '') === c);
+            if (hit) {
+                return Object.assign({}, p, {
+                    _presentacion_escaneada_id: hit.id,
+                    _codigo_escaneado_cache: c
+                });
+            }
+        }
+        return undefined;
     }
     function buscarProductosEnCache(q) {
         const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{"productos":[]}');
@@ -808,39 +920,219 @@
         if (!q || q.length < 1) return prods.slice(0, 15);
         return prods.filter(p => (p.nombre || '').toUpperCase().includes(q)).slice(0, 15);
     }
+    async function procesarCodigoBarrasPOS(cod, opts) {
+        opts = opts || {};
+        cod = String(cod || '').trim();
+        if (!cod) return false;
+        if (!navigator.onLine) {
+            const p = obtenerProductoPorCodigo(cod);
+            if (p) {
+                agregarAlCarrito(p.id, p.nombre, p.precio, p.codigo || cod, {
+                    tipo: p.promocion_tipo || '', valor: p.promocion_valor || 0,
+                    valor_comprar: p.promocion_valor_comprar || 2, valor_pagar: p.promocion_valor_pagar || 1,
+                    descuento_monto: p.promocion_descuento_monto
+                }, metaProducto(p));
+                inputCodigo.value = '';
+                return true;
+            }
+            alert("⚠️ Producto no encontrado en caché. Conecte internet y actualice el caché.");
+            if (!opts.fromCamera) inputCodigo.value = '';
+            return false;
+        }
+        try {
+            const resp = await fetch(posUrl(`/buscar_producto/${encodeURIComponent(cod)}`));
+            const data = await resp.json();
+            if (data.error) {
+                alert("⚠️ Producto no encontrado");
+                if (!opts.fromCamera) inputCodigo.value = '';
+                return false;
+            }
+            if (!productoPosTieneStockVendible(data)) {
+                alert('Sin existencia en inventario: «' + (data.nombre || 'este producto') + '». No se puede vender hasta cargar stock.');
+                if (!opts.fromCamera) inputCodigo.value = '';
+                return false;
+            }
+            agregarAlCarrito(data.id, data.nombre, data.precio, data.codigo || cod, {
+                tipo: data.promocion_tipo || '', valor: data.promocion_valor || 0,
+                valor_comprar: data.promocion_valor_comprar || 2, valor_pagar: data.promocion_valor_pagar || 1,
+                descuento_monto: data.promocion_descuento_monto
+            }, metaProducto(data));
+            inputCodigo.value = '';
+            return true;
+        } catch (err) {
+            alert("⚠️ Sin respuesta del servidor.");
+            if (!opts.fromCamera) inputCodigo.value = '';
+            return false;
+        }
+    }
     inputCodigo.addEventListener('keypress', async (e) => {
         if (e.key === 'Enter') {
-            let cod = inputCodigo.value.trim();
-            if(!cod) return;
-            if (!navigator.onLine) {
-                const p = obtenerProductoPorCodigo(cod);
-                if (p) {
-                    agregarAlCarrito(p.id, p.nombre, p.precio, p.codigo || cod, {
-                        tipo: p.promocion_tipo || '', valor: p.promocion_valor || 0,
-                        valor_comprar: p.promocion_valor_comprar || 2, valor_pagar: p.promocion_valor_pagar || 1,
-                        descuento_monto: p.promocion_descuento_monto
-                    }, metaProducto(p));
-                } else {
-                    alert("⚠️ Producto no encontrado en caché. Conecte internet y actualice el caché.");
-                }
-                inputCodigo.value = '';
-                return;
-            }
-            try {
-                const resp = await fetch(`/buscar_producto/${encodeURIComponent(cod)}`);
-                const data = await resp.json();
-                if (data.error) alert("⚠️ Producto no encontrado");
-                else if (!productoPosTieneStockVendible(data)) {
-                    alert('Sin existencia en inventario: «' + (data.nombre || 'este producto') + '». No se puede vender hasta cargar stock.');
-                } else agregarAlCarrito(data.id, data.nombre, data.precio, data.codigo || cod, {
-                    tipo: data.promocion_tipo || '', valor: data.promocion_valor || 0,
-                    valor_comprar: data.promocion_valor_comprar || 2, valor_pagar: data.promocion_valor_pagar || 1,
-                    descuento_monto: data.promocion_descuento_monto
-                }, metaProducto(data));
-            } catch (err) { alert("⚠️ Sin respuesta del servidor."); }
-            inputCodigo.value = '';
+            await procesarCodigoBarrasPOS(inputCodigo.value);
         }
     });
+
+    /** Botón cámara solo ícono (mismo borde que Catálogo); texto solo para lectores de pantalla. */
+    function repararUIPosCamaraBarras() {
+        var inp = document.getElementById('input_codigo');
+        if (!inp) return;
+        var ig = inp.closest('.input-group');
+        if (!ig) return;
+
+        var btn = document.getElementById('btnPosCamaraBarras');
+        if (btn && !ig.contains(btn)) {
+            ig.appendChild(btn);
+        }
+        btn = document.getElementById('btnPosCamaraBarras');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.type = 'button';
+            btn.id = 'btnPosCamaraBarras';
+            btn.className = 'btn btn-outline-primary px-3';
+            btn.setAttribute('title', 'Escanear código de barras con la cámara');
+            btn.setAttribute('aria-label', 'Escanear con la cámara');
+            btn.innerHTML = '<i class="bi bi-camera-fill fs-5" aria-hidden="true"></i><span class="visually-hidden">Escanear con cámara</span>';
+            ig.appendChild(btn);
+            return;
+        }
+        btn.className = 'btn btn-outline-primary px-3';
+        btn.removeAttribute('style');
+        btn.setAttribute('title', 'Escanear código de barras con la cámara');
+        btn.setAttribute('aria-label', 'Escanear con la cámara');
+        btn.innerHTML = '<i class="bi bi-camera-fill fs-5" aria-hidden="true"></i><span class="visually-hidden">Escanear con cámara</span>';
+    }
+    repararUIPosCamaraBarras();
+    window.addEventListener('load', function () { setTimeout(repararUIPosCamaraBarras, 450); });
+
+    (function posCamaraBarrasMovil() {
+        var modalEl = document.getElementById('modalScannerBarrasPOS');
+        var btnCam = document.getElementById('btnPosCamaraBarras');
+        var readerId = 'pos_html5qr_reader';
+        var _qr = null;
+        var _starting = false;
+
+        function posCargarHtml5QrcodeLib() {
+            return new Promise(function (resolve, reject) {
+                if (typeof Html5Qrcode !== 'undefined') return resolve();
+                var s = document.createElement('script');
+                s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+                s.async = true;
+                s.onload = function () { resolve(); };
+                s.onerror = function () { reject(new Error('html5-qrcode')); };
+                document.head.appendChild(s);
+            });
+        }
+        function posFormatosBarras() {
+            var F = typeof Html5QrcodeSupportedFormats !== 'undefined' ? Html5QrcodeSupportedFormats : null;
+            if (!F) return undefined;
+            return [
+                F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E,
+                F.CODE_128, F.CODE_39, F.ITF, F.QR_CODE
+            ];
+        }
+        function posSetMsg(t) {
+            var m = document.getElementById('pos_scanner_cam_msg');
+            if (m) m.textContent = t || '';
+        }
+        async function posDetenerCamaraEscaneo() {
+            _starting = false;
+            if (_qr) {
+                try { await _qr.stop(); } catch (e0) { /* */ }
+                try { await _qr.clear(); } catch (e1) { /* */ }
+                _qr = null;
+            }
+            var rd = document.getElementById(readerId);
+            if (rd) rd.innerHTML = '';
+        }
+        async function posIniciarCamaraEscaneo() {
+            if (_starting) return;
+            _starting = true;
+            posSetMsg('Cargando escáner…');
+            await posDetenerCamaraEscaneo();
+            try {
+                await posCargarHtml5QrcodeLib();
+            } catch (e) {
+                posSetMsg('No se pudo cargar la librería de escaneo (red).');
+                _starting = false;
+                return;
+            }
+            var fmt = posFormatosBarras();
+            try {
+                _qr = fmt
+                    ? new Html5Qrcode(readerId, { formatsToSupport: fmt, verbose: false })
+                    : new Html5Qrcode(readerId, { verbose: false });
+            } catch (e2) {
+                posSetMsg('No se pudo preparar la vista de cámara.');
+                _starting = false;
+                return;
+            }
+            var cfg = {
+                fps: 8,
+                qrbox: function (vw, vh) {
+                    var w = Math.floor(Math.min(vw * 0.92, 420));
+                    var h = Math.floor(Math.min(vh * 0.38, 220));
+                    return { width: w, height: Math.max(h, 90) };
+                }
+            };
+            var lastTxt = '';
+            var lastTs = 0;
+            var onScan = function (text) {
+                var t = String(text || '').trim();
+                if (!t) return;
+                var now = Date.now();
+                if (t === lastTxt && now - lastTs < 1000) return;
+                lastTxt = t;
+                lastTs = now;
+                procesarCodigoBarrasPOS(t, { fromCamera: true }).then(function (ok) {
+                    if (ok) {
+                        posDetenerCamaraEscaneo().then(function () {
+                            if (typeof bootstrap !== 'undefined' && modalEl) {
+                                var inst = bootstrap.Modal.getInstance(modalEl);
+                                if (inst) inst.hide();
+                            }
+                        });
+                    }
+                });
+            };
+            var noop = function () {};
+            try {
+                await _qr.start({ facingMode: 'environment' }, cfg, onScan, noop);
+                posSetMsg('Apunte al código de barras. Permita la cámara si el navegador lo pide.');
+            } catch (e3) {
+                try {
+                    var list = await Html5Qrcode.getCameras();
+                    if (list && list.length) {
+                        await _qr.start({ deviceId: { exact: list[list.length - 1].id } }, cfg, onScan, noop);
+                        posSetMsg('Apunte al código de barras.');
+                    } else {
+                        throw e3;
+                    }
+                } catch (e4) {
+                    posSetMsg('No se pudo abrir la cámara. Conceda permiso o use otro navegador.');
+                    console.warn('POS escáner cámara', e4);
+                }
+            }
+            _starting = false;
+        }
+        if (modalEl) {
+            modalEl.addEventListener('hidden.bs.modal', function () {
+                posDetenerCamaraEscaneo();
+            });
+            modalEl.addEventListener('shown.bs.modal', function () {
+                posIniciarCamaraEscaneo();
+            });
+        }
+        if (btnCam && modalEl) {
+            btnCam.addEventListener('click', function (ev) {
+                ev.preventDefault();
+                if (typeof bootstrap === 'undefined') {
+                    alert('Espere a que cargue la página e intente de nuevo.');
+                    return;
+                }
+                posSetMsg('');
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+        }
+    })();
 
     // --- BÚSQUEDA DE CLIENTES (nombre o documento) ---
     const inputCliente = document.getElementById('cliente_nombre');
@@ -888,7 +1180,7 @@
         listaClientes.style.display = 'none';
 
         try {
-            const resp = await fetch(`/cliente/${c.id}/datos`);
+            const resp = await fetch(posUrl(`/cliente/${c.id}/datos`));
             if (resp.ok) {
                 const datos = await resp.json();
                 telefonoClientePos = (datos.telefono || '').trim();
@@ -930,6 +1222,7 @@
                 actualizarPanelWhatsappPos();
             }
         }
+        posActualizarVisibilidadEditarCliente();
     }
 
     function limpiarCliente() {
@@ -941,18 +1234,97 @@
         if (clienteResumen) { clienteResumen.textContent = ''; clienteResumen.style.display = 'none'; }
         if (formularioCliente) formularioCliente.style.display = 'none';
         actualizarPanelWhatsappPos();
+        posActualizarVisibilidadEditarCliente();
     }
+
+    function posActualizarVisibilidadEditarCliente() {
+        var btn = document.getElementById('btnPosEditarCliente');
+        if (!btn) return;
+        var cid = inputClienteId && inputClienteId.value ? String(inputClienteId.value).trim() : '';
+        btn.style.display = cid && /^[0-9]+$/.test(cid) ? '' : 'none';
+    }
+
+    (function posIframeClientePOSInit() {
+        if (!POS_PUEDE_CRUD_CLIENTE) return;
+        var modalEl = document.getElementById('modalClientePOS');
+        var iframe = document.getElementById('iframeClientePOS');
+        var btnNuevo = document.getElementById('btnPosNuevoCliente');
+        var btnEditar = document.getElementById('btnPosEditarCliente');
+        function urlClienteEmbed(cid) {
+            var base = posUrl('/ventas_pos/clientes/embed');
+            if (cid != null && /^[0-9]+$/.test(String(cid))) {
+                return base.replace(/\/?$/, '') + '/' + encodeURIComponent(cid) + '?_=' + Date.now();
+            }
+            return base + '?_=' + Date.now();
+        }
+        function abrirModalCliente(cid) {
+            if (!iframe || !modalEl) return;
+            iframe.setAttribute('src', urlClienteEmbed(cid));
+            if (typeof bootstrap !== 'undefined') {
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            }
+        }
+        if (btnNuevo) btnNuevo.addEventListener('click', function () { abrirModalCliente(null); });
+        if (btnEditar) btnEditar.addEventListener('click', function () {
+            var cid = inputClienteId && inputClienteId.value ? String(inputClienteId.value).trim() : '';
+            if (!/^[0-9]+$/.test(cid)) return;
+            abrirModalCliente(cid);
+        });
+        window.addEventListener('message', function (ev) {
+            var d = ev.data;
+            if (!d || typeof d !== 'object') return;
+            if (d.type === 'posagil_cliente_guardado' && d.cliente_id) {
+                (async function () {
+                    var id = parseInt(d.cliente_id, 10);
+                    if (!id) return;
+                    try {
+                        var r = await fetch(posUrl('/cliente/' + id + '/datos'), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+                        if (r.ok) {
+                            var d2 = await r.json();
+                            await aplicarClienteSeleccionado({
+                                id: d2.id,
+                                nombre: d2.nombre,
+                                documento: d2.numero_documento,
+                                tipo_documento: d2.tipo_documento,
+                                telefono: d2.telefono,
+                                contribuyente: d2.contribuyente
+                            });
+                        }
+                    } catch (e) { /* */ }
+                    if (modalEl && typeof bootstrap !== 'undefined') {
+                        var inst = bootstrap.Modal.getInstance(modalEl);
+                        if (inst) inst.hide();
+                    }
+                })();
+            }
+            if (d.type === 'posagil_cliente_embed_eliminado') {
+                limpiarCliente();
+                if (modalEl && typeof bootstrap !== 'undefined') {
+                    var inst2 = bootstrap.Modal.getInstance(modalEl);
+                    if (inst2) inst2.hide();
+                }
+            }
+            if (d.type === 'posagil_cliente_embed_cerrar' && modalEl && typeof bootstrap !== 'undefined') {
+                var inst3 = bootstrap.Modal.getInstance(modalEl);
+                if (inst3) inst3.hide();
+            }
+        });
+        if (modalEl) modalEl.addEventListener('hidden.bs.modal', function () {
+            if (iframe) iframe.setAttribute('src', 'about:blank');
+        });
+    })();
 
     inputCliente.addEventListener('input', async function() {
         inputClienteId.value = '';
         telefonoClientePos = '';
         actualizarPanelWhatsappPos();
+        posActualizarVisibilidadEditarCliente();
         if (clienteResumen) { clienteResumen.style.display = 'none'; clienteResumen.textContent = ''; }
         if (formularioCliente) formularioCliente.style.display = 'none';
         let q = this.value.trim();
         if (q.length < 1) { listaClientes.style.display = 'none'; return; }
         try {
-            const resp = await fetch(`/buscar_clientes?q=${encodeURIComponent(q)}`);
+            const resp = await fetch(posUrl(`/buscar_clientes?q=${encodeURIComponent(q)}`));
             if (!resp.ok) { listaClientes.style.display = 'none'; return; }
             const clientes = await resp.json();
             if (clientes.length > 0) {
@@ -1012,7 +1384,7 @@
             return;
         }
         try {
-            const resp = await fetch(`/buscar_por_nombre?q=${encodeURIComponent(q)}`);
+            const resp = await fetch(posUrl(`/buscar_por_nombre?q=${encodeURIComponent(q)}`));
             const productos = await resp.json();
             if (productos.length > 0) {
                 listaSugerencias.innerHTML = '';
@@ -1024,12 +1396,15 @@
 
     function metaProducto(p) {
         p = p || {};
+        var pe = p._presentacion_escaneada_id != null ? p._presentacion_escaneada_id : p.presentacion_escaneada_id;
+        if (pe === '' || pe === undefined) pe = null;
         return {
             fraccionable: p.fraccionable,
             unidades_por_caja: p.unidades_por_caja,
             unidades_por_docena: p.unidades_por_docena,
             mh_codigo_unidad: p.mh_codigo_unidad,
-            presentaciones: Array.isArray(p.presentaciones) ? p.presentaciones : []
+            presentaciones: Array.isArray(p.presentaciones) ? p.presentaciones : [],
+            presentacion_escaneada_id: pe != null ? parseInt(pe, 10) : null
         };
     }
 
@@ -1065,10 +1440,20 @@
         let factorUmb = 1;
         let mergeKey = 'leg-UNIDAD';
         if (pres.length) {
-            const def = pres.find(pr => pr.es_umb) || pres[0];
-            if (def && def.id != null && def.id !== '') presId = def.id;
-            factorUmb = def ? (parseFloat(def.factor) || 1) : 1;
-            mergeKey = (presId != null) ? ('id' + presId) : ('fac' + factorUmb);
+            let chosen = null;
+            const esc = meta.presentacion_escaneada_id;
+            if (esc != null && esc !== '' && !isNaN(parseInt(esc, 10))) {
+                const eid = parseInt(esc, 10);
+                chosen = pres.find(pr => pr.id != null && parseInt(String(pr.id), 10) === eid);
+            }
+            if (!chosen) {
+                chosen = pres.find(pr => pr.es_umb) || pres[0];
+            }
+            if (chosen) {
+                if (chosen.id != null && chosen.id !== '') presId = chosen.id;
+                factorUmb = parseFloat(chosen.factor) || 1;
+                mergeKey = (presId != null) ? ('id' + presId) : ('fac' + factorUmb);
+            }
         }
         const esFracc = !!meta.fraccionable;
         const precioN = parseFloat(precio) || 0;
@@ -1389,7 +1774,7 @@
             return;
         }
         try {
-            const resp = await fetch('/autorizar_eliminar_item', {
+            const resp = await fetch(posUrl('/autorizar_eliminar_item'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
@@ -1516,7 +1901,7 @@
             return;
         }
         try {
-            const resp = await fetch('/guardar_venta', {
+            const resp = await fetch(posUrl('/guardar_venta'), {
                 method: 'POST',
                 credentials: 'include',
                 headers: headersGuardarVenta(),
@@ -1667,7 +2052,7 @@
                 const p = document.getElementById('supervisor_password').value;
                 if (!u || !p) return;
                 try {
-                    const r = await fetch('/autorizar_eliminar_item', {
+                    const r = await fetch(posUrl('/autorizar_eliminar_item'), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ username: u, password: p })
@@ -1719,7 +2104,7 @@
     async function cargarCacheProductos() {
         if (!navigator.onLine) return;
         try {
-            const resp = await fetch('/productos_pos_cache');
+            const resp = await fetch(posUrl('/productos_pos_cache'));
             if (resp.ok) {
                 const data = await resp.json();
                 localStorage.setItem(CACHE_KEY, JSON.stringify({ productos: data.productos || [], fecha: new Date().toISOString() }));
@@ -1777,7 +2162,7 @@
         let sincronizadas = 0;
         for (let i = 0; i < cola.length; i++) {
             try {
-                const resp = await fetch('/guardar_venta', {
+                const resp = await fetch(posUrl('/guardar_venta'), {
                     method: 'POST',
                     credentials: 'include',
                     headers: headersGuardarVenta(),

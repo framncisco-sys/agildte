@@ -27,6 +27,21 @@ def _portal_login_url() -> str:
     return (os.environ.get("AGILDTE_PORTAL_LOGIN_URL") or os.environ.get("AZ_AGILDTE_PORTAL_LOGIN_URL") or "").strip()
 
 
+def _portal_login_configured() -> bool:
+    return bool(_portal_login_url())
+
+
+def _password_login_permitted() -> bool:
+    """
+    Formulario usuario+clave en /login.
+
+    - Con POSAGIL_ALLOW_LOCAL_LOGIN: siempre permitido (desarrollo o política explícita).
+    - Sin URL de portal AgilDTE: se permite igualmente (no hay pantalla SSO usable; evita bloqueo total).
+    - Con portal configurado y sin POSAGIL_ALLOW_LOCAL_LOGIN: solo SSO (pantalla portal-only).
+    """
+    return _allow_local_login() or not _portal_login_configured()
+
+
 def _redirect_after_logout():
     if not _allow_local_login():
         p = _portal_login_url()
@@ -189,12 +204,12 @@ def auth_agildte():
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
-        if _allow_local_login():
+        if _password_login_permitted():
             return render_template("login.html")
         return render_template("login_portal_only.html", portal_url=_portal_login_url())
 
     if request.method == "POST":
-        if not _allow_local_login():
+        if not _password_login_permitted():
             flash("El acceso con usuario y contraseña está deshabilitado. Use AgilDTE.", "danger")
             return redirect(url_for("auth.login"))
 

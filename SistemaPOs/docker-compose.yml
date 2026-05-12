@@ -54,6 +54,11 @@ services:
       dockerfile: Dockerfile
     container_name: posagil
     restart: unless-stopped
+    # En desarrollo: monta el código del host para que cambios en templates/ y azdigital/
+    # se reflejen sin rebuild. Reinicie el contenedor si gunicorn no recarga: docker compose restart posagil
+    # En producción: comente el bloque volumes o use una imagen desplegada sin este montaje.
+    volumes:
+      - .:/app
     depends_on:
       db:
         condition: service_healthy

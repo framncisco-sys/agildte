@@ -62,6 +62,54 @@ def _sucursal_id_session() -> int | None:
         return None
 
 
+def _cliente_dict_desde_fila(cl) -> dict:
+    """Convierte fila ``get_cliente`` en dict para plantillas de edición (unificado con ``editar_cliente``)."""
+    if len(cl) >= 11:
+        return {
+            "id": cl[0],
+            "empresa_id": cl[1],
+            "sucursal_id": cl[2],
+            "nombre": cl[3],
+            "tipo_documento": cl[4],
+            "numero_documento": cl[5],
+            "correo": cl[6],
+            "es_contribuyente": cl[7],
+            "es_gran_contribuyente": cl[8],
+            "direccion": cl[9],
+            "telefono": cl[10],
+            "codigo_actividad_economica": cl[11] if len(cl) > 11 else "",
+        }
+    if len(cl) >= 10:
+        return {
+            "id": cl[0],
+            "empresa_id": cl[1],
+            "sucursal_id": cl[2],
+            "nombre": cl[3],
+            "tipo_documento": cl[4],
+            "numero_documento": cl[5],
+            "correo": cl[6],
+            "es_contribuyente": cl[7],
+            "es_gran_contribuyente": False,
+            "direccion": cl[8],
+            "telefono": cl[9],
+            "codigo_actividad_economica": cl[10] if len(cl) > 10 else "",
+        }
+    return {
+        "id": cl[0],
+        "empresa_id": cl[1],
+        "sucursal_id": None,
+        "nombre": cl[2],
+        "tipo_documento": cl[3],
+        "numero_documento": cl[4],
+        "correo": cl[5],
+        "es_contribuyente": cl[6],
+        "es_gran_contribuyente": False,
+        "direccion": cl[7],
+        "telefono": cl[8],
+        "codigo_actividad_economica": "",
+    }
+
+
 def _obtener_ventas_periodo(inicio: str, fin: str, empresa_id: int = None):
     db = ConexionDB()
     emp = empresa_id or _empresa_id()
@@ -1766,14 +1814,19 @@ def contingencia():
     finally:
         cur.close()
         conn.close()
-    from azdigital.utils.mh_utils import CAUSAS_CONTINGENCIA, check_mh_online
-    mh_online = check_mh_online()
+    from azdigital.utils.mh_utils import CAUSAS_CONTINGENCIA
+    from azdigital.integration.agildte_client import check_agildte_api_reachable
+
+    ag_st = check_agildte_api_reachable()
+    agildte_online = bool(ag_st.get("online"))
+    agildte_configured = bool(ag_st.get("configured", True))
     return render_template(
         "contingencia.html",
         dte_pendientes=dte_pendientes,
         eventos=eventos,
         causas=CAUSAS_CONTINGENCIA,
-        mh_online=mh_online,
+        agildte_online=agildte_online,
+        agildte_configured=agildte_configured,
     )
 
 
@@ -3073,24 +3126,57 @@ def inventario_presentaciones_producto(producto_id: int):
         if not _acceso_producto_inventario(cur, producto_id, emp_id, es_super):
             return jsonify({"error": "No autorizado"}), 403
         if not presentaciones_repo.tabla_existe(cur):
-            return jsonify({"umb_nombre": "Unidad base", "extras": []})
+            return jsonify(
+                {
+                    "umb_nombre": "Unidad base",
+                    "umb_codigo_barra": None,
+                    "docena_codigo_barra": None,
+                    "caja_codigo_barra": None,
+                    "extras": [],
+                }
+            )
         rows = presentaciones_repo.listar_por_producto(cur, producto_id)
         if not rows:
-            return jsonify({"umb_nombre": "Unidad base", "extras": []})
+            return jsonify(
+                {
+                    "umb_nombre": "Unidad base",
+                    "umb_codigo_barra": None,
+                    "docena_codigo_barra": None,
+                    "caja_codigo_barra": None,
+                    "extras": [],
+                }
+            )
         umb = "Unidad base"
+        umb_cb = None
+        docena_cb = None
+        caja_cb = None
         extras: list[dict] = []
         for r in rows:
             es_u = bool(r[3]) if len(r) > 3 else False
             nombre = str(r[1] or "").strip()
             fac = float(r[2]) if r[2] is not None else 1.0
+            cb = (str(r[5]).strip() if len(r) > 5 and r[5] is not None else "") or None
             if es_u:
                 umb = nombre or umb
+                umb_cb = cb
                 continue
             low = nombre.lower()
-            if low == "docena" or low == "caja":
+            if low == "docena":
+                docena_cb = cb
                 continue
-            extras.append({"nombre": nombre, "factor": fac})
-        return jsonify({"umb_nombre": umb, "extras": extras})
+            if low == "caja":
+                caja_cb = cb
+                continue
+            extras.append({"nombre": nombre, "factor": fac, "codigo_barra": cb})
+        return jsonify(
+            {
+                "umb_nombre": umb,
+                "umb_codigo_barra": umb_cb,
+                "docena_codigo_barra": docena_cb,
+                "caja_codigo_barra": caja_cb,
+                "extras": extras,
+            }
+        )
     finally:
         cur.close()
         conn.close()
@@ -3951,13 +4037,21 @@ def guardar_producto():
         extra_list = json.loads(raw_extras)
     except json.JSONDecodeError:
         extra_list = []
-    extras: list[tuple[str, float]] = []
+    def _codigo_barra_presentacion_form(raw) -> str | None:
+        s = (raw or "").strip()[:64] if raw is not None else ""
+        return s or None
+
+    extras: list[tuple[str, float, str | None]] = []
     for x in extra_list:
         if isinstance(x, dict) and x.get("nombre") and x.get("factor") is not None:
             try:
-                extras.append((str(x["nombre"]).strip()[:80], float(x["factor"])))
+                cbx = _codigo_barra_presentacion_form(x.get("codigo_barra"))
+                extras.append((str(x["nombre"]).strip()[:80], float(x["factor"]), cbx))
             except (TypeError, ValueError):
                 pass
+    umb_cb = _codigo_barra_presentacion_form(form.get("umb_codigo_barra"))
+    docena_cb = _codigo_barra_presentacion_form(form.get("docena_codigo_barra"))
+    caja_cb = _codigo_barra_presentacion_form(form.get("caja_codigo_barra"))
     emp_id = _empresa_id()
     suc_raw = (form.get("sucursal_id") or "").strip()
     sucursal_id = int(suc_raw) if suc_raw.isdigit() else None
@@ -4107,7 +4201,13 @@ def guardar_producto():
                     suc_para_stock = primera
             if presentaciones_repo.tabla_existe(cur):
                 filas = presentaciones_repo.construir_filas_desde_legacy(
-                    umb_nombre, unidades_por_docena, unidades_por_caja, extras if extras else None
+                    umb_nombre,
+                    unidades_por_docena,
+                    unidades_por_caja,
+                    extras if extras else None,
+                    codigo_barra_umb=umb_cb,
+                    codigo_barra_docena=docena_cb,
+                    codigo_barra_caja=caja_cb,
                 )
                 presentaciones_repo.reemplazar_todas(cur, int(producto_id), filas)
             kardex_repo.reemplazar_stock_unificado(cur, int(producto_id), suc_para_stock, stock_f)
@@ -4153,7 +4253,13 @@ def guardar_producto():
                     suc_para_stock = primera
             if presentaciones_repo.tabla_existe(cur):
                 filas = presentaciones_repo.construir_filas_desde_legacy(
-                    umb_nombre, unidades_por_docena, unidades_por_caja, extras if extras else None
+                    umb_nombre,
+                    unidades_por_docena,
+                    unidades_por_caja,
+                    extras if extras else None,
+                    codigo_barra_umb=umb_cb,
+                    codigo_barra_docena=docena_cb,
+                    codigo_barra_caja=caja_cb,
                 )
                 presentaciones_repo.reemplazar_todas(cur, int(nid), filas)
             kardex_repo.reemplazar_stock_unificado(cur, nid, suc_para_stock, stock_f, registrar_entrada=True)
@@ -4166,6 +4272,8 @@ def guardar_producto():
         err = str(e)
         if "productos_codigo_barra_key" in err or "productos_empresa_codigo_uniq" in err or ("codigo_barra" in err and "duplicad" in err.lower()):
             flash("Ya existe un producto con ese código. Use un código distinto o edite el existente.", "danger")
+        elif "uq_producto_presentacion_codigo_barra" in err or "producto_presentacion_codigo_barra" in err:
+            flash("Ese código de barras ya está en otra presentación o producto. Use otro código.", "danger")
         else:
             flash(f"Error al guardar: {err}", "danger")
         return redirect(url_for("admin.inventario"))
@@ -5145,6 +5253,19 @@ def clientes_slash():
     return redirect(url_for("admin.clientes"))
 
 
+@bp.route("/clientes/embed")
+@bp.route("/clientes/embed/<int:cid>")
+@rol_requerido("GERENTE", "CAJERO")
+def clientes_embed_redirect(cid=None):
+    """Compatibilidad: iframe antiguo apuntaba aquí; la vista vive en ``pos.ventas_pos_clientes_embed``."""
+    q = request.query_string.decode() if request.query_string else ""
+    dest = url_for("pos.ventas_pos_clientes_embed", cid=cid) if cid is not None else url_for("pos.ventas_pos_clientes_embed")
+    if q:
+        sep = "&" if "?" in dest else "?"
+        return redirect(dest + sep + q)
+    return redirect(dest)
+
+
 @bp.route("/clientes/editar/<int:id>")
 @rol_requerido("GERENTE", "CAJERO")
 def editar_cliente(id):
@@ -5163,12 +5284,7 @@ def editar_cliente(id):
             flash("Cliente no pertenece a su empresa.", "danger")
             return redirect(url_for("admin.clientes"))
         cl = cliente_edit
-        if len(cl) >= 11:
-            cliente_dict = {"id": cl[0], "empresa_id": cl[1], "sucursal_id": cl[2], "nombre": cl[3], "tipo_documento": cl[4], "numero_documento": cl[5], "correo": cl[6], "es_contribuyente": cl[7], "es_gran_contribuyente": cl[8], "direccion": cl[9], "telefono": cl[10], "codigo_actividad_economica": cl[11] if len(cl) > 11 else ""}
-        elif len(cl) >= 10:
-            cliente_dict = {"id": cl[0], "empresa_id": cl[1], "sucursal_id": cl[2], "nombre": cl[3], "tipo_documento": cl[4], "numero_documento": cl[5], "correo": cl[6], "es_contribuyente": cl[7], "es_gran_contribuyente": False, "direccion": cl[8], "telefono": cl[9], "codigo_actividad_economica": cl[10] if len(cl) > 10 else ""}
-        else:
-            cliente_dict = {"id": cl[0], "empresa_id": cl[1], "sucursal_id": None, "nombre": cl[2], "tipo_documento": cl[3], "numero_documento": cl[4], "correo": cl[5], "es_contribuyente": cl[6], "es_gran_contribuyente": False, "direccion": cl[7], "telefono": cl[8], "codigo_actividad_economica": ""}
+        cliente_dict = _cliente_dict_desde_fila(cl)
         empresas = (empresas_repo.listar_empresas(cur) or []) if es_super else []
         sucursales_todas = (sucursales_repo.listar_sucursales_con_empresa(cur) or []) if es_super else []
         empresas_map = {e[0]: e[1] for e in empresas} if empresas else {}
@@ -5189,6 +5305,7 @@ def editar_cliente(id):
 @rol_requerido("GERENTE", "CAJERO")
 def guardar_cliente():
     form = request.form
+    embed = (form.get("embed") or "").strip() == "1"
     cliente_id = form.get("cliente_id")
     nombre_cliente = (form.get("nombre_cliente") or "").strip()
     tipo_documento = (form.get("tipo_documento") or "").strip()
@@ -5201,6 +5318,10 @@ def guardar_cliente():
     codigo_actividad = (form.get("codigo_actividad_economica") or "").strip()
 
     if not nombre_cliente:
+        if embed:
+            if cliente_id and str(cliente_id).isdigit():
+                return redirect(url_for("pos.ventas_pos_clientes_embed", cid=int(cliente_id)))
+            return redirect(url_for("pos.ventas_pos_clientes_embed"))
         return redirect(url_for("admin.clientes"))
 
     tipo_doc = (tipo_documento or "").strip().upper()
@@ -5210,7 +5331,11 @@ def guardar_cliente():
         if not ok_nit:
             flash(msg, "danger")
             if cliente_id and str(cliente_id).isdigit():
+                if embed:
+                    return redirect(url_for("pos.ventas_pos_clientes_embed", cid=int(cliente_id)))
                 return redirect(url_for("admin.editar_cliente", id=cliente_id))
+            if embed:
+                return redirect(url_for("pos.ventas_pos_clientes_embed"))
             return redirect(url_for("admin.clientes"))
     if tipo_doc == "NRC" and numero_documento:
         from azdigital.utils.validar_documentos import validar_nrc
@@ -5218,7 +5343,11 @@ def guardar_cliente():
         if not ok_nrc:
             flash(msg, "danger")
             if cliente_id and str(cliente_id).isdigit():
+                if embed:
+                    return redirect(url_for("pos.ventas_pos_clientes_embed", cid=int(cliente_id)))
                 return redirect(url_for("admin.editar_cliente", id=cliente_id))
+            if embed:
+                return redirect(url_for("pos.ventas_pos_clientes_embed"))
             return redirect(url_for("admin.clientes"))
 
     db = ConexionDB()
@@ -5232,6 +5361,7 @@ def guardar_cliente():
         suc_form = form.get("sucursal_id")
         sucursal_id = int(suc_form) if suc_form and str(suc_form).isdigit() else None
 
+        nuevo_id = None
         if cliente_id and cliente_id.isdigit():
             try:
                 clientes_repo.actualizar_cliente(
@@ -5269,7 +5399,7 @@ def guardar_cliente():
                     es_gran_contribuyente=es_gran_contribuyente,
                 )
         else:
-            clientes_repo.crear_cliente(
+            nuevo_id = clientes_repo.crear_cliente(
                 cur,
                 empresa_id=empresa_id,
                 nombre_cliente=nombre_cliente,
@@ -5286,6 +5416,11 @@ def guardar_cliente():
         registrar_accion(cur, historial_usuarios_repo.EVENTO_CLIENTE_EDITADO if (cliente_id and cliente_id.isdigit()) else historial_usuarios_repo.EVENTO_CLIENTE_CREADO, f"Cliente {nombre_cliente} guardado")
         conn.commit()
         flash("Cliente guardado correctamente.", "success")
+        if embed:
+            cid_final = int(cliente_id) if (cliente_id and str(cliente_id).isdigit()) else nuevo_id
+            if cid_final:
+                return redirect(url_for("pos.ventas_pos_clientes_embed", cid=int(cid_final), guardado=1))
+            return redirect(url_for("pos.ventas_pos_clientes_embed"))
         return redirect(url_for("admin.clientes"))
     except Exception as e:
         try:
@@ -5293,6 +5428,10 @@ def guardar_cliente():
         except Exception:
             pass
         flash(f"Error al guardar: {str(e)}", "danger")
+        if embed:
+            if cliente_id and str(cliente_id).isdigit():
+                return redirect(url_for("pos.ventas_pos_clientes_embed", cid=int(cliente_id)))
+            return redirect(url_for("pos.ventas_pos_clientes_embed"))
         return redirect(url_for("admin.clientes"))
     finally:
         cur.close()
@@ -5304,6 +5443,7 @@ def guardar_cliente():
 def eliminar_cliente(cliente_id):
     if request.method == "GET":
         return redirect(url_for("admin.clientes"))
+    embed = (request.form.get("embed") or "").strip() == "1"
     emp_id = _empresa_id()
     rol_str = str(session.get("rol") or "").strip().upper()
     es_super = rol_str in ("ADMIN", "SUPERADMIN")
@@ -5316,10 +5456,10 @@ def eliminar_cliente(cliente_id):
         c = clientes_repo.get_cliente(cur, cliente_id)
         if not c:
             flash("Cliente no encontrado.", "danger")
-            return redirect(url_for("admin.clientes"))
+            return redirect(url_for("pos.ventas_pos_clientes_embed")) if embed else redirect(url_for("admin.clientes"))
         if not es_super and len(c) > 1 and c[1] != emp_id:
             flash("Cliente no pertenece a su empresa.", "danger")
-            return redirect(url_for("admin.clientes"))
+            return redirect(url_for("pos.ventas_pos_clientes_embed")) if embed else redirect(url_for("admin.clientes"))
         clientes_repo.eliminar_cliente(cur, cliente_id)
         registrar_accion(cur, historial_usuarios_repo.EVENTO_CLIENTE_ELIMINADO, f"Cliente #{cliente_id} eliminado")
         conn.commit()
@@ -5330,6 +5470,8 @@ def eliminar_cliente(cliente_id):
     finally:
         cur.close()
         conn.close()
+    if embed:
+        return redirect(url_for("pos.ventas_pos_clientes_embed", eliminado=1))
     return redirect(url_for("admin.clientes"))
 
 

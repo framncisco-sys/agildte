@@ -155,6 +155,58 @@ def resolve_agildte_base_url() -> str:
     return ""
 
 
+def check_agildte_api_reachable(timeout: float = 4.0) -> dict[str, Any]:
+    """
+    Comprueba si el backend AgilDTE responde (GET sobre varias rutas típicas).
+    Códigos < 500 (incl. 401/403/404) indican que hay **respuesta HTTP** del servidor.
+    Sin ``AGILDTE_BASE_URL`` (o alias en env): ``configured`` False.
+
+    ``AZ_AGILDTE_TLS_VERIFY=0`` desactiva verificación SSL (solo diagnóstico / entornos con proxy TLS).
+    ``AGILDTE_STATUS_PATH`` (ej. ``/api/health/``) se prueba primero si está definido.
+    """
+    base = resolve_agildte_base_url()
+    if not base:
+        return {"online": False, "configured": False, "detail": "no_base_url"}
+    verify_tls = (os.environ.get("AZ_AGILDTE_TLS_VERIFY", "1") or "").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+    custom = (os.environ.get("AGILDTE_STATUS_PATH") or "").strip()
+    suffixes: list[str] = []
+    if custom:
+        suffixes.append(custom if custom.startswith("/") else "/" + custom)
+    suffixes.extend(["/api/", "/api", "/"])
+
+    seen: set[str] = set()
+    urls: list[str] = []
+    root = base.rstrip("/")
+    for suf in suffixes:
+        u = urljoin(root + "/", suf.lstrip("/"))
+        if u not in seen:
+            seen.add(u)
+            urls.append(u)
+
+    last_status: int | None = None
+    for url in urls:
+        try:
+            with httpx.Client(timeout=timeout, follow_redirects=True, verify=verify_tls) as client:
+                r = client.get(url)
+                last_status = r.status_code
+                if r.status_code < 500:
+                    return {"online": True, "configured": True, "detail": f"get_{r.status_code}", "probe": url}
+        except Exception as ex:
+            _logger.debug("check_agildte_api_reachable %s: %s", url, ex)
+            continue
+    return {
+        "online": False,
+        "configured": True,
+        "detail": "unreachable",
+        "last_status": last_status,
+    }
+
+
 @dataclass
 class LoginProfile:
     """Perfil tras login: tokens y empresa por defecto (PerfilUsuario)."""
