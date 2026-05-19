@@ -90,10 +90,29 @@ def _registrar_historial(evento: str, usuario_id=None, username=None, detalle=No
         pass
 
 
-@bp.route("/auth/agildte", methods=["GET"])
+def _sso_token_desde_request() -> str:
+    """Token JWT solo por POST (form o JSON); nunca por query string."""
+    if request.method == "GET":
+        return ""
+    data = request.get_json(silent=True) or {}
+    return (
+        (request.form.get("access_token") or request.form.get("token") or "")
+        or str(data.get("access_token") or data.get("token") or "")
+    ).strip()
+
+
+@bp.route("/auth/agildte", methods=["GET", "POST"])
 def auth_agildte():
     """SSO: valida JWT con /api/auth/me/, crea empresa/usuario local si faltan (lista única = AgilDTE) y abre sesión."""
-    token = (request.args.get("access_token") or request.args.get("token") or "").strip()
+    if request.method == "GET":
+        if (request.args.get("access_token") or request.args.get("token") or "").strip():
+            flash(
+                "Por seguridad el token ya no se acepta en la URL. Use «Abrir Pos Agil» desde el portal AgilDTE.",
+                "danger",
+            )
+        return redirect(url_for("auth.login"))
+
+    token = _sso_token_desde_request()
     if not token:
         flash("Falta el token de AgilDTE. Abra el POS desde el portal (Abrir Pos Agil).", "danger")
         return redirect(url_for("auth.login"))

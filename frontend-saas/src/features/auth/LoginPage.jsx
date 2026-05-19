@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { shouldRedirectFromAgildteToPos } from '../../constants/roles'
-import { getPosAgilSsoUrl } from '../../utils/posAgilUrl'
+import { openPosAgilSso } from '../../utils/posAgilUrl'
 
 /**
  * Página de login: logo, card con inputs Usuario y Contraseña (iconos),
@@ -24,7 +24,7 @@ export function LoginPage() {
   /** Tras login con contraseña: vendedor PosAgil puede ir al POS por SSO (una sola vez). */
   function redirectPosAgilHard() {
     const t = token || useAuthStore.getState().token
-    window.location.href = getPosAgilSsoUrl(t)
+    openPosAgilSso(t)
   }
 
   // Si ya hay sesión y se abre /login, volver al área privada (incluye personal PosAgil: el POS se abre con el botón).

@@ -876,12 +876,14 @@ def _bearer_desde_cabecera_authorization() -> str | None:
     return None
 
 
-def login_client_from_request_or_env() -> AgilDTEClient:
+def login_client_from_request_or_env(*, trust_request_bearer: bool = False) -> AgilDTEClient:
     """
     Obtiene cliente autenticado contra AgilDTE:
     1) Sesión Flask: agildte_access_token + empresa_id (SSO «Abrir PosAgil»).
-    2) Cabecera Authorization: Bearer … (misma sesión u otra integración).
+    2) Cabecera Authorization: Bearer … solo si trust_request_bearer=True (integraciones explícitas).
     3) POST /api/auth/login/ con AGILDTE_USERNAME y AGILDTE_PASSWORD (Docker, cron).
+
+    Sync de ventas y contingencia deben usar trust_request_bearer=False para evitar confused deputy.
     """
     try:
         from flask import has_request_context, session as flask_session
@@ -890,7 +892,7 @@ def login_client_from_request_or_env() -> AgilDTEClient:
     if not has_request_context():
         return login_client_from_env()
     token = (flask_session.get("agildte_access_token") or "").strip()
-    if not token:
+    if not token and trust_request_bearer:
         token = (_bearer_desde_cabecera_authorization() or "").strip()
     if not token:
         return login_client_from_env()
@@ -937,4 +939,29 @@ def debe_generar_dte_remoto(tipo_comprobante_pos: str) -> bool:
     """Regla por defecto: documentos fiscalizables en MH (incl. Ticket = FCF DTE-01)."""
     tc = (tipo_comprobante_pos or "").strip().upper()
     return tc in ("FACTURA", "CREDITO_FISCAL", "TICKET")
+
+
+_PUBLIC_SYNC_KEYS = frozenset(
+    {
+        "ok",
+        "error",
+        "venta_remota_id",
+        "mensaje_usuario",
+        "mensaje_agildte",
+        "facturacion",
+        "dte_persistido",
+    }
+)
+
+
+def public_sync_result(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Filtra resultado de sync AgilDTE para respuestas JSON al navegador (sin detalle API)."""
+    if raw is None:
+        return None
+    out: dict[str, Any] = {k: raw[k] for k in _PUBLIC_SYNC_KEYS if k in raw}
+    if "ok" in raw:
+        out["ok"] = raw["ok"]
+    if "mensaje_usuario" not in out and raw.get("mensaje"):
+        out["mensaje_usuario"] = str(raw["mensaje"])[:500]
+    return out
 

@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { useEmpresaStore } from '../stores/useEmpresaStore'
 import { useAuth } from '../context/AuthContext'
 import { ROLE_AGILDTE_ADMIN, ROLE_POSAGIL_ADMIN } from '../constants/roles'
-import { getPosAgilSsoUrl } from '../utils/posAgilUrl'
+import { openPosAgilSso } from '../utils/posAgilUrl'
 
 export function Navbar({ onMenuClick }) {
   const navigate = useNavigate()
@@ -64,7 +64,7 @@ export function Navbar({ onMenuClick }) {
             type="button"
             onClick={() => {
               const t = useAuthStore.getState().token
-              window.location.href = getPosAgilSsoUrl(t)
+              openPosAgilSso(t)
             }}
             className="text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors"
           >

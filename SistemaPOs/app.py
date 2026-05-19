@@ -124,7 +124,7 @@ def create_app() -> Flask:
     def _csrf_origin_check():
         if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
             return None
-        if request.path in ("/login", "/logout"):
+        if request.path in ("/login", "/logout", "/auth/agildte"):
             return None
         origin = request.headers.get("Origin")
         referer = request.headers.get("Referer")

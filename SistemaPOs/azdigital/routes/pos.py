@@ -24,6 +24,7 @@ from azdigital.repositories import (
 )
 from azdigital.services.auth_service import verificar_password
 from azdigital.services.whatsapp_notificacion_service import preparar_envio_whatsapp_venta
+from azdigital.integration.agildte_client import public_sync_result
 from azdigital.integration.agildte_sync import intentar_sync_venta_si_habilitado
 from azdigital.services.ventas_service import aplicar_descuento, crear_venta_desde_carrito, persistir_venta
 from azdigital.utils.historial_helper import registrar_accion
@@ -139,7 +140,6 @@ def ventas_pos():
         sucursal_id_pos = int(suc_u) if suc_u is not None and str(suc_u).strip().isdigit() else None
     except (TypeError, ValueError):
         sucursal_id_pos = None
-    tok_ag = (session.get("agildte_access_token") or "").strip()
     _sr = (request.script_root or "").strip().rstrip("/")
     html = render_template(
         "ventas.html",
@@ -149,7 +149,6 @@ def ventas_pos():
         limite_descuento_cajero=limite_descuento_cajero,
         empresa_id_pos=empresa_id_pos,
         sucursal_id_pos=sucursal_id_pos,
-        agildte_bearer_para_fetch=tok_ag if tok_ag else None,
         pos_script_root=_sr or "",
     )
     # Evita HTML del POS en caché (proxy/navegador) para que cambios en ventas.html se vean al recargar.
@@ -1059,7 +1058,7 @@ def guardar_venta():
             "whatsapp": whatsapp_info,
         }
         if agildte_sync is not None:
-            payload["agildte_sync"] = agildte_sync
+            payload["agildte_sync"] = public_sync_result(agildte_sync)
         return jsonify(payload)
     except Exception as e:
         if conn:

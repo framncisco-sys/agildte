@@ -19,21 +19,43 @@ export function getPosAgilEntryUrl() {
   return '/pos/'
 }
 
-/**
- * Entrada al PosAgil con sesión AgilDTE: el backend Flask valida el JWT en /auth/agildte.
- */
-export function getPosAgilSsoUrl(accessToken) {
+/** Endpoint SSO PosAgil (POST); el JWT no va en la URL. */
+export function getPosAgilAuthEndpointUrl() {
   const base = getPosAgilEntryUrl().replace(/\/+$/, '')
   const path = `${base}/auth/agildte`
-  // Producción sin VITE_POSAGIL_PUBLIC_URL: base es ruta relativa (/pos). new URL('/x') falla sin base.
-  const u =
-    path.startsWith('http://') || path.startsWith('https://')
-      ? new URL(path)
-      : new URL(path, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
-  if (accessToken && typeof accessToken === 'string') {
-    u.searchParams.set('access_token', accessToken)
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
   }
-  return u.toString()
+  if (typeof window !== 'undefined') {
+    return new URL(path, window.location.origin).toString()
+  }
+  return path
+}
+
+/**
+ * Abre PosAgil con sesión AgilDTE vía POST (token en cuerpo, no en query ni en HTML).
+ */
+export function openPosAgilSso(accessToken) {
+  if (!accessToken || typeof accessToken !== 'string') return
+  const form = document.createElement('form')
+  form.method = 'POST'
+  form.action = getPosAgilAuthEndpointUrl()
+  form.style.display = 'none'
+  const input = document.createElement('input')
+  input.type = 'hidden'
+  input.name = 'access_token'
+  input.value = accessToken
+  form.appendChild(input)
+  document.body.appendChild(form)
+  form.submit()
+}
+
+/**
+ * @deprecated Use openPosAgilSso(accessToken). Ya no incluye el JWT en la URL.
+ */
+export function getPosAgilSsoUrl(accessToken) {
+  void accessToken
+  return getPosAgilAuthEndpointUrl()
 }
 
 /**

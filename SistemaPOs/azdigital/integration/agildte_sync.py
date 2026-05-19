@@ -21,6 +21,7 @@ from azdigital.integration.agildte_client import (
     AgilDTEUnauthorizedError,
     build_crear_venta_con_detalles_payload,
     login_client_from_request_or_env,
+    public_sync_result,
 )
 from azdigital.repositories import ventas_repo
 
@@ -101,7 +102,7 @@ def sync_venta_a_agildte(
     cli = cliente
     try:
         if cli is None:
-            cli = login_client_from_request_or_env()
+            cli = login_client_from_request_or_env(trust_request_bearer=False)
         if cli.empresa_id is None:
             cli.set_empresa_id(empresa_id_local)
         eid = int(cli.empresa_id or empresa_id_local)
@@ -158,13 +159,31 @@ def sync_venta_a_agildte(
                 out["dte_json_preview"] = None
                 out["dte_json_error"] = str(e)
 
-        return out
-    except AgilDTEUnauthorizedError as e:
-        return {"ok": False, "error": "unauthorized", "mensaje": str(e), "detalle": e.body}
-    except AgilDTEForbiddenError as e:
-        return {"ok": False, "error": "forbidden", "mensaje": str(e), "detalle": e.body}
-    except AgilDTEAuthError as e:
-        return {"ok": False, "error": "auth", "mensaje": str(e), "detalle": e.body}
+        return public_sync_result(out) or out
+    except AgilDTEUnauthorizedError:
+        return public_sync_result(
+            {
+                "ok": False,
+                "error": "unauthorized",
+                "mensaje_usuario": "Sesión AgilDTE expirada. Vuelva a abrir el POS desde el portal.",
+            }
+        ) or {"ok": False, "error": "unauthorized"}
+    except AgilDTEForbiddenError:
+        return public_sync_result(
+            {
+                "ok": False,
+                "error": "forbidden",
+                "mensaje_usuario": "Sin permiso para facturar en AgilDTE con esta empresa.",
+            }
+        ) or {"ok": False, "error": "forbidden"}
+    except AgilDTEAuthError:
+        return public_sync_result(
+            {
+                "ok": False,
+                "error": "auth",
+                "mensaje_usuario": "No hay sesión AgilDTE. Abra el POS desde el portal o configure credenciales de servicio.",
+            }
+        ) or {"ok": False, "error": "auth"}
     except AgilDTEAPIError as e:
         try:
             from azdigital.integration.agildte_client import _format_api_error_body as _fmt_err
@@ -172,17 +191,18 @@ def sync_venta_a_agildte(
             texto_plano = _fmt_err(e.body)
         except Exception:
             texto_plano = ""
-        mu = (texto_plano or "").strip() or str(e)
-        return {
-            "ok": False,
-            "error": "api",
-            "mensaje": str(e),
-            "mensaje_usuario": mu,
-            "detalle": e.body,
-            "status": e.status_code,
-        }
-    except Exception as e:
-        return {"ok": False, "error": "interno", "mensaje": str(e)}
+        mu = (texto_plano or "").strip() or "No se pudo sincronizar la venta con AgilDTE."
+        return public_sync_result(
+            {"ok": False, "error": "api", "mensaje_usuario": mu[:500]}
+        ) or {"ok": False, "error": "api"}
+    except Exception:
+        return public_sync_result(
+            {
+                "ok": False,
+                "error": "interno",
+                "mensaje_usuario": "Error interno al sincronizar con AgilDTE.",
+            }
+        ) or {"ok": False, "error": "interno"}
 
 
 def intentar_sync_venta_si_habilitado(

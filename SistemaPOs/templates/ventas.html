@@ -496,12 +496,8 @@
     const requiereClaveSupervisor = {{ 'true' if requiere_clave_supervisor|default(false) else 'false' }};
     const requiereClaveSupervisorDescuento = {{ 'true' if requiere_clave_supervisor_descuento|default(false) else 'false' }};
     const limiteDescuentoCajero = {{ limite_descuento_cajero|default(5) }};
-    /** JWT AgilDTE (SSO) para que /guardar_venta reciba Authorization aunque falle la cookie de sesión. */
-    const POSAGIL_AGILDTE_AUTH = {% if agildte_bearer_para_fetch %}{{ ('Bearer ' ~ agildte_bearer_para_fetch) | tojson }}{% else %}null{% endif %};
     function headersGuardarVenta() {
-        const h = { 'Content-Type': 'application/json' };
-        if (POSAGIL_AGILDTE_AUTH) h['Authorization'] = POSAGIL_AGILDTE_AUTH;
-        return h;
+        return { 'Content-Type': 'application/json' };
     }
     /** Montaje WSGI real (SCRIPT_NAME). Vacío en desarrollo típico; evita 404 al no duplicar /pos con el env. */
     const POS_SCRIPT_ROOT = {{ (pos_script_root | default('')) | tojson }};

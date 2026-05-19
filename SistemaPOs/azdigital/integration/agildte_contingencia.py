@@ -29,7 +29,7 @@ def procesar_contingencia_completa_remoto(
         dict con claves al menos: ok (bool), respuesta (data API) o error/mensaje.
     """
     try:
-        cli = login_client_from_request_or_env()
+        cli = login_client_from_request_or_env(trust_request_bearer=False)
         eid = int(cli.empresa_id or empresa_id_local)
         if cli.empresa_id is None:
             cli.set_empresa_id(eid)
