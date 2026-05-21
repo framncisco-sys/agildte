@@ -522,9 +522,14 @@
         return '';
     }
     function posUrl(rel) {
-        const r = (rel || '').startsWith('/') ? (rel || '') : '/' + (rel || '');
+        let r = (rel || '').startsWith('/') ? (rel || '') : '/' + (rel || '');
         const base = posBasePrefix();
         if (!base) return r;
+        // Nginx publica /pos/* → Flask ve /* (sin el primer /pos). Evitar /pos/pos/... en el navegador.
+        const dup = base + '/pos';
+        if (r === dup || r.startsWith(dup + '/')) {
+            r = base + r.slice(dup.length);
+        }
         if (r === base || r.startsWith(base + '/')) return r;
         return base + r;
     }
@@ -572,7 +577,7 @@
     async function favoritosSyncSubidaAhora(arr) {
         if (!navigator.onLine) return;
         try {
-            const resp = await fetch(posUrl('/pos/favoritos'), {
+            const resp = await fetch(posUrl('/favoritos'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ favoritos: arr })
@@ -588,7 +593,7 @@
         if (!navigator.onLine) return;
         const localAntes = favoritosLista();
         try {
-            const resp = await fetch(posUrl('/pos/favoritos'));
+            const resp = await fetch(posUrl('/favoritos'));
             const data = await resp.json().catch(() => ({}));
             if (!resp.ok || !data.ok) return;
             if (data.sync === false) return;
@@ -759,7 +764,7 @@
         if (navigator.onLine) {
             if (load) load.classList.remove('d-none');
             try {
-                const resp = await fetch(posUrl('/pos/catalogo_productos'), { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+                const resp = await fetch(posUrl('/catalogo_productos'), { credentials: 'same-origin', headers: { Accept: 'application/json' } });
                 let data = {};
                 try { data = await resp.json(); } catch (e) { data = {}; }
                 if (!resp.ok) {

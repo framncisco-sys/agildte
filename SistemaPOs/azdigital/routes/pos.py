@@ -758,7 +758,8 @@ def _fila_a_producto_pos_json(cur, r: tuple, emp_id: int) -> dict:
     }
 
 
-@bp.route("/pos/catalogo_productos")
+@bp.route("/catalogo_productos")
+@bp.route("/pos/catalogo_productos")  # acceso directo sin prefijo nginx /pos/
 @rol_requerido(*_ROLES_POS)
 def pos_catalogo_productos():
     """Catálogo completo para modal POS: existencia + precio (misma sucursal/empresa que sesión)."""
@@ -1428,6 +1429,7 @@ def _sucursal_session_int() -> int | None:
         return None
 
 
+@bp.route("/favoritos", methods=["GET"])
 @bp.route("/pos/favoritos", methods=["GET"])
 @rol_requerido(*_ROLES_POS)
 def pos_favoritos_get():
@@ -1454,6 +1456,7 @@ def pos_favoritos_get():
         conn.close()
 
 
+@bp.route("/favoritos", methods=["POST"])
 @bp.route("/pos/favoritos", methods=["POST"])
 @rol_requerido(*_ROLES_POS)
 def pos_favoritos_post():
