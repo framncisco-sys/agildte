@@ -212,6 +212,15 @@ class EmpresaAdmin(admin.ModelAdmin):
             'fields': ('email_lectura', 'clave_correo', 'hora_sync'),
             'classes': ('collapse',)
         }),
+        ('WhatsApp Cloud API (Meta)', {
+            'fields': (
+                'whatsapp_premium_enabled',
+                'whatsapp_phone_number_id',
+                'whatsapp_access_token',
+                'whatsapp_business_account_id',
+            ),
+            'description': 'Envío de facturas por API de Meta. Token cifrado en BD.',
+        }),
     )
 
 @admin.register(Producto)

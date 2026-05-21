@@ -2,6 +2,7 @@ from rest_framework import serializers
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
 from django.db.models import Q, Max
+from .constants import DTE_LINEA_DESCRIPCION_MAX_LENGTH
 from .models import (
     Cliente,
     Compra,
@@ -35,6 +36,7 @@ class EmpresaSerializer(serializers.ModelSerializer):
             'clave_certificado': {'write_only': True},
             'clave_correo': {'write_only': True},
             'smtp_password': {'write_only': True},
+            'whatsapp_access_token': {'write_only': True},
         }
 
     def get_logo_url(self, obj):
@@ -256,6 +258,10 @@ class ProductoSerializer(serializers.ModelSerializer):
 class DetalleVentaSerializer(serializers.ModelSerializer):
     producto = ProductoSerializer(read_only=True)
     producto_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    # PosAgil envía subtotal; no es campo del modelo pero se usa al crear la línea (precio × cant = 0).
+    subtotal = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, write_only=True, allow_null=True
+    )
     venta = serializers.PrimaryKeyRelatedField(read_only=True)  # Solo lectura para evitar validación
     
     class Meta:
@@ -420,7 +426,9 @@ class VentaSerializer(serializers.ModelSerializer):
     json_url = serializers.SerializerMethodField()
     observaciones_mh = serializers.SerializerMethodField()
     fecha_hora_emision = serializers.SerializerMethodField()
-    
+    cliente_telefono = serializers.SerializerMethodField()
+    whatsapp_premium_enabled = serializers.SerializerMethodField()
+
     class Meta:
         model = Venta
         fields = '__all__'
@@ -478,6 +486,16 @@ class VentaSerializer(serializers.ModelSerializer):
             hora = '12:00:00'
         # Devolver en ISO sin TZ (hora local DTE = El Salvador)
         return f"{fecha_str}T{hora}"
+
+    def get_cliente_telefono(self, obj):
+        if obj.cliente_id and obj.cliente:
+            return (getattr(obj.cliente, 'telefono', None) or '').strip() or None
+        return None
+
+    def get_whatsapp_premium_enabled(self, obj):
+        if obj.empresa_id and obj.empresa:
+            return bool(getattr(obj.empresa, 'whatsapp_premium_enabled', False))
+        return False
 
     def get_observaciones_mh(self, obj):
         """
@@ -744,7 +762,7 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             if (cliente_obj.email_contacto or '') != (correo_limpio or ''):
                 cliente_obj.email_contacto = correo_limpio
                 actualizar = True
-        for campo in ('nit', 'dui', 'tipo_documento', 'documento_identidad', 'nombre_comercial', 'cod_actividad', 'desc_actividad', 'departamento', 'municipio', 'telefono'):
+        for campo in ('nit', 'dui', 'nrc', 'tipo_documento', 'documento_identidad', 'nombre_comercial', 'cod_actividad', 'desc_actividad', 'departamento', 'municipio', 'telefono'):
             val = kwargs.get(campo)
             if val is not None:
                 val_str = str(val).strip() if val else None
@@ -767,6 +785,13 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
         cliente_input = validated_data.pop('cliente', None)
         cliente_id = validated_data.pop('cliente_id', None)
         tipo_dte = validated_data.pop('tipo_dte', None)
+        tipo_venta_in = (validated_data.get('tipo_venta') or '').strip().upper()
+        if not tipo_dte:
+            tipo_dte = {'CF': '01', 'CCF': '03', 'NC': '05', 'ND': '06', 'FSE': '14'}.get(tipo_venta_in)
+        elif str(tipo_dte).strip() in ('1', '3', '5', '6', '14'):
+            tipo_dte = str(tipo_dte).strip().zfill(2)
+        from .utils.pos_detalle_sync import es_consumidor_final_dte
+        es_cf_dte = es_consumidor_final_dte(tipo_dte, tipo_venta_in)
         documento_relacionado_id = validated_data.pop('documento_relacionado_id', None)
         documento_receptor = validated_data.pop('documento_receptor', None)
         tipo_doc_receptor = validated_data.pop('tipo_doc_receptor', None)
@@ -782,9 +807,18 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
         cod_act_receptor = validated_data.get('cod_actividad_receptor')
         desc_act_receptor = validated_data.get('desc_actividad_receptor')
         
+        from .utils.mh_documento import normalizar_nrc_mh
+
         cliente_input_limpio = None
         if cliente_input and str(cliente_input).strip() and str(cliente_input).lower() != 'null':
             cliente_input_limpio = str(cliente_input).strip()
+        nrc_form = (validated_data.get('nrc_receptor') or '').strip()
+        if not cliente_input_limpio and nrc_form:
+            cliente_input_limpio = nrc_form
+        if cliente_input_limpio:
+            nrc_norm_in = normalizar_nrc_mh(cliente_input_limpio)
+            if nrc_norm_in:
+                cliente_input_limpio = nrc_norm_in
         
         cliente_obj = None
         if tipo_dte == '14':
@@ -794,7 +828,7 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             validated_data['cliente'] = None
             validated_data['nombre_receptor'] = nombre_receptor.strip() or 'Proveedor Sujeto Excluido'
             validated_data['documento_receptor'] = str(documento_receptor).strip() if documento_receptor else None
-            validated_data['tipo_doc_receptor'] = str(tipo_doc_receptor).strip() if tipo_doc_receptor else 'NIT'
+            validated_data['tipo_doc_receptor'] = str(tipo_doc_receptor).strip() if tipo_doc_receptor else None
             validated_data['direccion_receptor'] = str(receptor_direccion).strip() if receptor_direccion else None
             validated_data['correo_receptor'] = str(receptor_correo).strip() if receptor_correo else None
         elif tipo_venta == 'CF' and not cliente_input_limpio and not cliente_id:
@@ -803,43 +837,18 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             validated_data['nombre_receptor'] = nombre_receptor.strip() or 'Consumidor Final'
             validated_data['nrc_receptor'] = validated_data.get('nrc_receptor')
             validated_data['documento_receptor'] = str(documento_receptor).strip() if documento_receptor else None
-            validated_data['tipo_doc_receptor'] = str(tipo_doc_receptor).strip() if tipo_doc_receptor else 'NIT'
+            validated_data['tipo_doc_receptor'] = str(tipo_doc_receptor).strip() if tipo_doc_receptor else None
             validated_data['direccion_receptor'] = str(receptor_direccion).strip() if receptor_direccion else None
             validated_data['correo_receptor'] = str(receptor_correo).strip() if receptor_correo else None
-        elif cliente_id:
-            # CASO A: Cliente existente por ID
-            try:
-                cliente_obj = Cliente.objects.get(pk=cliente_id)
-                nit_raw = (nit_receptor or '').strip() or None
-                nit_val = dui_val = tipo_doc = doc_dig = None
-                if nit_raw:
-                    doc_dig = ''.join(c for c in nit_raw if c.isdigit())
-                    if len(doc_dig) == 10:
-                        doc_dig = doc_dig[:9]
-                    es_dui = len(doc_dig) == 9
-                    tipo_doc = 'DUI' if es_dui else 'NIT'
-                    nit_val = None if es_dui else nit_raw
-                    dui_val = doc_dig if es_dui else None
-                nom_com = (nombre_comercial_receptor or '').strip() or None
-                dept = (receptor_departamento or '').strip() or None
-                muni = (receptor_municipio or '').strip() or None
-                tel = (receptor_telefono or '').strip() or None
-                self._actualizar_cliente_si_cambia(
-                    cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
-                    nit=nit_val, dui=dui_val, tipo_documento=tipo_doc, documento_identidad=doc_dig,
-                    nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
-                    desc_actividad=desc_act_receptor, departamento=dept, municipio=muni, telefono=tel
-                )
-            except Cliente.DoesNotExist:
-                raise serializers.ValidationError({'cliente_id': 'Cliente no encontrado.'})
-            validated_data['cliente'] = cliente_obj
         elif cliente_input_limpio:
-            # CASO B: Cliente por NRC (get_or_create)
-            # CCF requiere NIT o DUI (ley de homologación). 9 dígitos=DUI, 14 dígitos=NIT.
+            # CASO B: Cliente por NRC (get_or_create) — antes que cliente_id (PosAgil envía NRC en «cliente», no el PK de Django)
+            # CCF requiere NIT o DUI. PosAgil envía DUI en documento_receptor; carga masiva en nit_receptor.
             nit_def = (nit_receptor or '').strip() or None
+            if not nit_def and documento_receptor:
+                nit_def = str(documento_receptor).strip()
             if not nit_def:
                 raise serializers.ValidationError({
-                    'nit_receptor': 'Para Crédito Fiscal (CCF) se requiere NIT (14 dígitos) o DUI (9 dígitos) en columna "nit".'
+                    'nit_receptor': 'Para Crédito Fiscal (CCF) se requiere NIT (14 dígitos) o DUI (9 dígitos).'
                 })
             doc_dig = ''.join(c for c in nit_def if c.isdigit())
             # Excel elimina ceros iniciales: 8 dígitos → DUI sin cero → completar a 9
@@ -857,6 +866,7 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             empresa = validated_data.get('empresa')
             defaults = {
                 'nombre': nombre_receptor.strip() or f'Cliente {cliente_input_limpio}',
+                'nrc': cliente_input_limpio,
                 'nit': nit_val,
                 'dui': dui_val,
                 'tipo_documento': tipo_doc,
@@ -884,14 +894,45 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             tel = (receptor_telefono or '').strip() or None
             self._actualizar_cliente_si_cambia(
                 cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
-                nit=nit_val, dui=dui_val, tipo_documento=tipo_doc, documento_identidad=doc_dig,
-                nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
+                nit=nit_val, dui=dui_val, nrc=cliente_input_limpio, tipo_documento=tipo_doc,
+                documento_identidad=doc_dig, nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
                 desc_actividad=desc_act_receptor, departamento=dept, municipio=muni, telefono=tel
             )
             validated_data['cliente'] = cliente_obj
+            validated_data['nrc_receptor'] = cliente_input_limpio
+        elif cliente_id:
+            # CASO A: Cliente existente por ID (portal AgilDTE)
+            try:
+                cliente_obj = Cliente.objects.get(pk=cliente_id)
+                nit_val = dui_val = tipo_doc = doc_dig = None
+                doc_raw = (str(documento_receptor or '').strip() or str(nit_receptor or '').strip() or None)
+                if doc_raw:
+                    from .utils.mh_documento import documento_receptor_desde_payload
+                    tipo_doc, nit_val, dui_val, doc_dig = documento_receptor_desde_payload(
+                        tipo_doc_receptor, doc_raw
+                    )
+                nom_com = (nombre_comercial_receptor or '').strip() or None
+                dept = (receptor_departamento or '').strip() or None
+                muni = (receptor_municipio or '').strip() or None
+                tel = (receptor_telefono or '').strip() or None
+                if tel:
+                    from .utils.mh_documento import normalizar_telefono_mh
+                    tel = normalizar_telefono_mh(tel)
+                self._actualizar_cliente_si_cambia(
+                    cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
+                    nit=nit_val, dui=dui_val, tipo_documento=tipo_doc, documento_identidad=doc_dig,
+                    nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
+                    desc_actividad=desc_act_receptor, departamento=dept, municipio=muni, telefono=tel
+                )
+            except Cliente.DoesNotExist:
+                raise serializers.ValidationError({'cliente_id': 'Cliente no encontrado.'})
+            validated_data['cliente'] = cliente_obj
+            nrc_cli = normalizar_nrc_mh(cliente_obj.nrc) or (cliente_obj.nrc or '').strip() or None
+            if nrc_cli:
+                validated_data['nrc_receptor'] = nrc_cli
         else:
             raise serializers.ValidationError({
-                'cliente': 'Para CCF debes proporcionar cliente_id o cliente (NRC).'
+                'cliente': 'Para CCF debes proporcionar cliente (NRC) o cliente_id válido en AgilDTE.'
             })
         
         # 2b. NC/ND requieren documento_relacionado_id
@@ -941,6 +982,7 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
         for idx, detalle_raw in enumerate(detalles_data):
             # Extraer producto_id si existe
             producto_id = detalle_raw.pop('producto_id', None)
+            subtotal_linea = detalle_raw.pop('subtotal', None)
             producto_obj = None
             if producto_id:
                 try:
@@ -953,20 +995,35 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             detalle_data = {}
             
             # Campos de texto
-            if 'descripcion_libre' in detalle_raw:
-                detalle_data['descripcion_libre'] = detalle_raw.get('descripcion_libre', '')
+            desc_payload = (detalle_raw.get('descripcion_libre') or detalle_raw.get('descripcion') or '').strip()
+            if desc_payload:
+                detalle_data['descripcion_libre'] = desc_payload[:DTE_LINEA_DESCRIPCION_MAX_LENGTH]
+            elif producto_obj:
+                detalle_data['descripcion_libre'] = producto_obj.descripcion
             if 'codigo_libre' in detalle_raw:
                 detalle_data['codigo_libre'] = detalle_raw.get('codigo_libre', '')
+            elif producto_obj and producto_obj.codigo:
+                detalle_data['codigo_libre'] = producto_obj.codigo
             
             # Asegurar numero_item
             detalle_data['numero_item'] = detalle_raw.get('numero_item', idx + 1)
             
-            # Consumidor Final (01): el precio ingresado es TOTAL con IVA. Normalizar para no guardar total como gravado.
-            if tipo_dte == '01':
+            # Consumidor Final (01 / CF): el precio ingresado es TOTAL con IVA. Normalizar para no guardar total como gravado.
+            if es_cf_dte:
                 try:
                     cant = Decimal(str(detalle_raw.get('cantidad', 1)))
                     prec = Decimal(str(detalle_raw.get('precio_unitario', 0)))
                     total_linea = (cant * prec).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    if total_linea <= 0 and subtotal_linea is not None:
+                        try:
+                            st_dec = Decimal(str(subtotal_linea)).quantize(
+                                Decimal('0.01'), rounding=ROUND_HALF_UP
+                            )
+                            if st_dec > 0 and cant > 0:
+                                total_linea = st_dec
+                                prec = (st_dec / cant).quantize(Decimal('0.00000001'), rounding=ROUND_HALF_UP)
+                        except (ValueError, TypeError):
+                            pass
                     vg_raw = Decimal(str(detalle_raw.get('venta_gravada', 0)))
                     iva_raw = Decimal(str(detalle_raw.get('iva_item', 0)))
                 except (ValueError, TypeError):
@@ -1014,6 +1071,39 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
                 producto=producto_obj,
                 **detalle_data
             )
+
+        # PosAgil a veces manda total en body sin líneas válidas: una línea desde total del request.
+        if not detalles_data:
+            total_req = None
+            try:
+                raw_total = (self.initial_data or {}).get('total')
+                if raw_total is not None:
+                    total_req = Decimal(str(raw_total)).quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    )
+            except (ValueError, TypeError):
+                total_req = None
+            if total_req and total_req > 0 and es_cf_dte:
+                monto_gravado = (total_req / Decimal('1.13')).quantize(
+                    Decimal('0.01'), rounding=ROUND_HALF_UP
+                )
+                iva_linea = (total_req - monto_gravado).quantize(
+                    Decimal('0.01'), rounding=ROUND_HALF_UP
+                )
+                DetalleVenta.objects.create(
+                    venta=venta,
+                    producto=None,
+                    descripcion_libre='Venta POS',
+                    codigo_libre='LIBRE',
+                    numero_item=1,
+                    cantidad=Decimal('1.00'),
+                    precio_unitario=monto_gravado,
+                    venta_gravada=monto_gravado,
+                    iva_item=iva_linea,
+                    venta_no_sujeta=Decimal('0.00'),
+                    venta_exenta=Decimal('0.00'),
+                    monto_descuento=Decimal('0.00'),
+                )
         
         # 6. Recalcular totales desde los detalles (sobrescribe los valores enviados)
         venta.calcular_totales()

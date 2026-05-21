@@ -4,6 +4,7 @@ import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 import { getEmpresa, updateEmpresa, getCorrelativos, updateCorrelativos, activarContingencia, desactivarContingencia, procesarContingenciaCompleta } from '../../../api/empresa'
 import { changePassword } from '../../../api/auth'
 import { ImagePlus, Save, Building2, Lock, Hash } from 'lucide-react'
+import { ActividadesCatalogoCard } from '../components/ActividadesCatalogoCard'
 
 const AMBIENTES = [
   { value: '01', label: 'Pruebas (MH)' },
@@ -283,8 +284,9 @@ export default function ConfiguracionPage() {
 
   if (!empresaId) {
     return (
-      <div className="p-6 max-w-2xl">
+      <div className="p-6 max-w-4xl mx-auto">
         <h1 className="text-2xl font-bold text-slate-800 mb-4">Configuración</h1>
+        <ActividadesCatalogoCard />
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
           <p className="font-medium">Seleccione una empresa</p>
           <p className="text-sm mt-1">Use el selector del encabezado para elegir la empresa a configurar.</p>
@@ -319,6 +321,8 @@ export default function ConfiguracionPage() {
           </select>
         </div>
       )}
+
+      <ActividadesCatalogoCard />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">

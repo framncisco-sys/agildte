@@ -55,16 +55,21 @@ def _extraer_id_venta_remota(resp: Any) -> int | None:
 def _receptor_desde_cliente_row(cl: tuple | list | None) -> dict[str, Any] | None:
     if not cl:
         return None
-    # get_cliente: (id, empresa_id, sucursal_id, nombre, tipo_doc, num_doc, correo, contrib, gran, dir, tel, cod_act)
+    # get_cliente: 0 id … 11 cod_act, 12 nrc, 13 departamento, 14 municipio
     try:
         nombre = (cl[3] or "").strip() if len(cl) > 3 else ""
         tipo = (cl[4] or "NIT").strip() if len(cl) > 4 else "NIT"
         num = (cl[5] or "").strip() if len(cl) > 5 else ""
         correo = (cl[6] or "").strip() if len(cl) > 6 else ""
-        direccion = (cl[8] or "").strip() if len(cl) > 8 else ""
-        telefono = (cl[9] or "").strip() if len(cl) > 9 else ""
-        nrc = ""
-        return {
+        direccion = (cl[9] or "").strip() if len(cl) > 9 else ""
+        telefono = (cl[10] or "").strip() if len(cl) > 10 else ""
+        cod_act = (cl[11] or "").strip() if len(cl) > 11 else ""
+        nrc = (cl[12] or "").strip() if len(cl) > 12 else ""
+        if not nrc and tipo.upper() == "NRC" and num:
+            nrc = num
+        departamento = (cl[13] or "06").strip() if len(cl) > 13 else "06"
+        municipio = (cl[14] or "14").strip() if len(cl) > 14 else "14"
+        out = {
             "nombre": nombre or "Consumidor Final",
             "tipo_documento": tipo,
             "numero_documento": num,
@@ -72,7 +77,13 @@ def _receptor_desde_cliente_row(cl: tuple | list | None) -> dict[str, Any] | Non
             "direccion": direccion,
             "telefono": telefono,
             "nrc": nrc,
+            "codigo_actividad_economica": cod_act,
         }
+        if departamento:
+            out["departamento"] = departamento
+        if municipio:
+            out["municipio"] = municipio
+        return out
     except Exception:
         return None
 
@@ -113,7 +124,36 @@ def sync_venta_a_agildte(
 
             cl = clientes_repo.get_cliente(cur, int(cliente_id))
             receptor = _receptor_desde_cliente_row(cl)
+            tc = (tipo_comprobante or "").strip().upper()
+            if tc == "CREDITO_FISCAL" and receptor:
+                nrc = (receptor.get("nrc") or "").strip()
+                if not nrc:
+                    return public_sync_result(
+                        {
+                            "ok": False,
+                            "error": "cliente_sin_nrc",
+                            "mensaje_usuario": (
+                                "Para Crédito Fiscal el cliente debe tener NRC en el formulario "
+                                "(campo NRC, no solo tipo de documento). Edite el cliente y guárdelo."
+                            ),
+                        }
+                    ) or {"ok": False, "error": "cliente_sin_nrc"}
+                num_doc = (receptor.get("numero_documento") or "").strip()
+                nrc_d = "".join(c for c in nrc if c.isdigit())
+                doc_d = "".join(c for c in num_doc if c.isdigit())
+                if doc_d and nrc_d and (nrc_d == doc_d or nrc_d in doc_d):
+                    return public_sync_result(
+                        {
+                            "ok": False,
+                            "error": "nrc_igual_documento",
+                            "mensaje_usuario": (
+                                "El NRC del cliente no puede ser el mismo número que el DUI/NIT. "
+                                "Ingrese el NRC oficial del contribuyente en Hacienda."
+                            ),
+                        }
+                    ) or {"ok": False, "error": "nrc_igual_documento"}
 
+        # No enviar cliente_id local: el PK de PosAgil no existe en AgilDTE (provoca "Cliente no encontrado").
         body = build_crear_venta_con_detalles_payload(
             empresa_id=eid,
             tipo_comprobante_pos=tipo_comprobante,
@@ -122,7 +162,7 @@ def sync_venta_a_agildte(
             total_neto=total_neto,
             total_bruto=total_bruto,
             descuento=descuento,
-            cliente_id=cliente_id,
+            cliente_id=None,
             cliente_nombre_ticket=cliente_nombre_ticket,
             receptor=receptor,
             venta_local_id=venta_id_local,

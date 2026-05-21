@@ -3,7 +3,9 @@ Builder para DTE-03 (Comprobante Crédito Fiscal).
 Esquema fe-ccf-v3 - Contribuyente con NRC, Nombre Comercial, Actividad.
 """
 from .base_builder import BaseDTEBuilder
-from api.dte_generator import formatear_decimal
+from api.constants import DTE_LINEA_DESCRIPCION_MAX_LENGTH
+from api.dte_generator import formatear_decimal, formatear_nrc_emisor
+from api.utils.mh_documento import es_nrc_placeholder_mh, normalizar_nrc_mh, solo_digitos
 
 
 class DTE03Builder(BaseDTEBuilder):
@@ -24,12 +26,20 @@ class DTE03Builder(BaseDTEBuilder):
         codigo_departamento = str(getattr(cliente, 'departamento', None) or '06').strip().zfill(2)
         codigo_municipio = str(getattr(cliente, 'municipio', None) or '14').strip().zfill(2)
 
-        # nrc: primero usar el que viene del formulario (nrc_receptor), luego el del cliente en BD
+        # nrc: primero el del formulario (nrc_receptor), luego el del cliente en BD (sin placeholders)
         nrc_receptor_venta = str(self.venta.nrc_receptor or '').strip()
-        ambiente_actual = getattr(self.venta.empresa, 'ambiente', '00') or '00'
-        nrc_cliente = nrc_receptor_venta or cliente.nrc or ("0000000" if ambiente_actual == '00' else None)
-        if not nrc_cliente:
-            raise ValueError(f"Cliente '{cliente.nombre}' no tiene NRC. DTE-03 requiere Contribuyente con NRC.")
+        nrc_cliente = nrc_receptor_venta or (cliente.nrc or '')
+        nrc_final = normalizar_nrc_mh(nrc_cliente) or formatear_nrc_emisor(nrc_cliente)
+        if not nrc_final:
+            raise ValueError(
+                f"Cliente '{cliente.nombre}' no tiene NRC válido. "
+                "Crédito Fiscal exige el NRC oficial del contribuyente (6–7 dígitos, sin guiones)."
+            )
+        if es_nrc_placeholder_mh(nrc_final):
+            raise ValueError(
+                f"Cliente '{cliente.nombre}': el NRC '{nrc_cliente}' parece de prueba o genérico. "
+                "Use el NRC registrado en el Ministerio de Hacienda para ese DUI/NIT."
+            )
 
         # MH requiere NIT/DUI con el cero inicial. Excel elimina ceros al inicio.
         # Regla de normalización:
@@ -67,8 +77,12 @@ class DTE03Builder(BaseDTEBuilder):
         desc_actividad = str(getattr(self.venta, 'desc_actividad_receptor', '') or '').strip() or cliente.desc_actividad or (cliente.giro or "Otros")
         telefono = getattr(cliente, 'telefono', None) or "22222222"
 
-        nrc_limpio = ''.join(c for c in str(nrc_cliente or "").replace('-', '').replace(' ', '') if c.isdigit())
-        nrc_final = (nrc_limpio or "00000000")[:8]
+        doc_digitos = solo_digitos(doc_limpio)
+        if nrc_final == doc_digitos or (len(doc_digitos) >= 6 and nrc_final in doc_digitos):
+            raise ValueError(
+                f"Cliente '{cliente.nombre}': el NRC no puede ser el mismo número que el DUI/NIT. "
+                "Ingrese el NRC del registro de contribuyente en MH."
+            )
 
         # MH fe-ccf-v3: campo "nit" requerido. Enviar dígitos tal como están en BD (sin rellenar
         # con ceros). MH acepta NITs de 9 dígitos (DUI homologado) o 14 dígitos (NIT clásico).
@@ -110,7 +124,9 @@ class DTE03Builder(BaseDTEBuilder):
             for detalle in detalles:
                 codigo_raw = detalle.producto.codigo if detalle.producto else (detalle.codigo_libre or "")
                 codigo = str(codigo_raw).strip() if codigo_raw else "ITEM"
-                descripcion = detalle.producto.descripcion if detalle.producto else (detalle.descripcion_libre or "Item")
+                descripcion = (
+                    detalle.producto.descripcion if detalle.producto else (detalle.descripcion_libre or "Item")
+                )[:DTE_LINEA_DESCRIPCION_MAX_LENGTH]
                 tipo_item = detalle.producto.tipo_item if detalle.producto else 1
                 precio_unitario_bd = float(formatear_decimal(detalle.precio_unitario))
                 cantidad = float(formatear_decimal(detalle.cantidad))

@@ -46,19 +46,10 @@
                             <input type="text" id="nrc_empresa" name="nrc" class="form-control" value="{{ (empresa[3] or '') if empresa and empresa|length > 3 else '' }}" placeholder="123456-7">
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Actividad Económica (código)</label>
-                        <input type="text" list="actividades_empresa" name="codigo_actividad_economica" id="actividad_empresa" class="form-control" value="{{ codigo_actividad_empresa|default('') }}" placeholder="Busque código (ej: 01111) o descripción...">
-                        <input type="hidden" name="actividad" value="{{ (empresa[5] or '') if empresa and empresa|length > 5 else '' }}">
-                        <small class="text-muted">Seleccione del listado al escribir. Código oficial El Salvador.</small>
-                        {% if actividades %}
-                        <datalist id="actividades_empresa">
-                            {% for a in actividades %}
-                            <option value="{{ a[0] }}">{{ a[0] }} — {{ (a[1] or '')[:70] }}</option>
-                            {% endfor %}
-                        </datalist>
-                        {% endif %}
-                    </div>
+                    {% set _desc_act_emp = (empresa[5] or '') if empresa and empresa|length > 5 else '' %}
+                    {% with field_name='codigo_actividad_economica', field_id='actividad_empresa', label='Actividad Económica (código)', codigo_value=codigo_actividad_empresa|default(''), descripcion_value=_desc_act_emp, desc_hidden_name='actividad', hint='Código oficial MH. Mismo catálogo que AgilDTE.' %}
+                    {% include '_campo_actividad_economica.html' %}
+                    {% endwith %}
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Dirección de Casa Matriz</label>
                         <textarea name="direccion" class="form-control" rows="2">{{ (empresa[6] or '') if empresa and empresa|length > 6 else '' }}</textarea>
@@ -183,16 +174,9 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Actividad Económica (código)</label>
-                        <input type="text" list="actividades_nueva" name="codigo_actividad_economica" class="form-control" placeholder="Busque código (ej: 47111)...">
-                        <input type="hidden" name="actividad" value="">
-                        {% if actividades %}
-                        <datalist id="actividades_nueva">
-                            {% for a in actividades %}
-                            <option value="{{ a[0] }}">{{ a[0] }} — {{ (a[1] or '')[:70] }}</option>
-                            {% endfor %}
-                        </datalist>
-                        {% endif %}
+                        {% with field_name='codigo_actividad_economica', label='Actividad Económica (código)', codigo_value='', descripcion_value='', desc_hidden_name='actividad', hint='Catálogo AgilDTE (MH).' %}
+                        {% include '_campo_actividad_economica.html' %}
+                        {% endwith %}
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Dirección de Casa Matriz</label>

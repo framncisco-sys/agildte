@@ -1,0 +1,33 @@
+{# Campo actividad económica + lupa (catálogo AgilDTE). Variables:
+   field_name, label, codigo_value, descripcion_value (opcional), hint, field_id (opcional),
+   desc_hidden_name (opcional, ej. actividad en empresa) #}
+<div class="mb-3" data-actividad-field>
+    <label class="form-label small fw-bold">{{ label|default('Actividad Económica (código)') }}</label>
+    <div class="input-group">
+        <input type="text"
+               class="form-control bg-light"
+               data-actividad-display
+               readonly
+               placeholder="Seleccione desde el catálogo de actividades"
+               value="{% if codigo_value %}{{ codigo_value }}{% if descripcion_value %} — {{ descripcion_value[:80] }}{% endif %}{% endif %}">
+        <input type="hidden"
+               name="{{ field_name }}"
+               data-actividad-codigo
+               {% if field_id %}id="{{ field_id }}"{% endif %}
+               value="{{ codigo_value|default('') }}">
+        {% if desc_hidden_name %}
+        <input type="hidden" name="{{ desc_hidden_name }}" data-actividad-desc-hidden value="{{ descripcion_value|default('') }}">
+        {% endif %}
+        <button type="button"
+                class="btn btn-primary btn-abrir-buscador-actividad"
+                title="Buscar actividad económica"
+                aria-label="Buscar actividad económica">
+            <i class="bi bi-search"></i>
+        </button>
+    </div>
+    {% if hint %}
+    <small class="text-muted d-block mt-1">{{ hint }}</small>
+    {% else %}
+    <small class="text-muted d-block mt-1">Mismo catálogo que AgilDTE; al actualizar allí, aquí verá los cambios.</small>
+    {% endif %}
+</div>

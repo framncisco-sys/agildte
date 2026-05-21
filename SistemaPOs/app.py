@@ -19,10 +19,20 @@ from logging.handlers import RotatingFileHandler
 from werkzeug.exceptions import InternalServerError
 
 
+_DOTENV_OVERRIDE_IF_NONEMPTY = frozenset({
+    "AGILDTE_USERNAME",
+    "AGILDTE_PASSWORD",
+    "AGILDTE_BASE_URL",
+    "AGILDTE_EMPRESA_ID",
+    "AGILDTE_SYNC_ENABLED",
+})
+
+
 def _load_dotenv(path: str = ".env") -> None:
     """
     Carga variables desde un archivo .env simple (KEY=VALUE).
-    Solo setea variables que no existan ya en el entorno.
+    Las claves AgilDTE en .env tienen prioridad si el valor en archivo no está vacío
+    (Docker puede inyectar AGILDTE_USERNAME="" hasta recrear el contenedor).
     """
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -35,7 +45,9 @@ def _load_dotenv(path: str = ".env") -> None:
                 v = v.strip().strip('"').strip("'")
                 if not k:
                     continue
-                if k not in os.environ or os.environ.get(k, "") == "":
+                if k in _DOTENV_OVERRIDE_IF_NONEMPTY and v:
+                    os.environ[k] = v
+                elif k not in os.environ or os.environ.get(k, "") == "":
                     os.environ[k] = v
     except FileNotFoundError:
         return

@@ -1,0 +1,143 @@
+<script>
+(function () {
+    if (window.PosAgilActividadBuscador) return;
+
+    /** Prefijo /pos detrás del gateway nginx (no usar /api/ de la raíz: esa ruta es Django). */
+    var POS_URL_PREFIX = {{ (POS_URL_PREFIX or '') | tojson }};
+
+    function actividadesApiBase() {
+        var p = (POS_URL_PREFIX || '').replace(/\/$/, '');
+        if (p) return p;
+        var path = window.location.pathname || '';
+        if (path.indexOf('/pos/') === 0 || path === '/pos') return '/pos';
+        return '';
+    }
+
+    var modalEl = document.getElementById('modalBuscadorActividad');
+    if (!modalEl || typeof bootstrap === 'undefined') return;
+
+    var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    var inpBusqueda = document.getElementById('modal_actividad_busqueda');
+    var tbody = document.getElementById('modal_actividad_tbody');
+    var loading = document.getElementById('modal_actividad_loading');
+    var errBox = document.getElementById('modal_actividad_error');
+    var vacio = document.getElementById('modal_actividad_vacio');
+    var targetWrap = null;
+    var debounceTimer = null;
+
+    function esc(s) {
+        return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    }
+
+    function setLoading(on) {
+        if (loading) loading.classList.toggle('d-none', !on);
+    }
+
+    function renderRows(list) {
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        var rows = list || [];
+        if (vacio) vacio.classList.toggle('d-none', rows.length > 0);
+        rows.forEach(function (act) {
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td class="ps-3 fw-semibold">' + esc(act.codigo) + '</td>' +
+                '<td class="small">' + esc(act.descripcion) + '</td>' +
+                '<td class="text-center pe-2"><button type="button" class="btn btn-primary btn-sm btn-actividad-elegir">Seleccionar</button></td>';
+            tr.querySelector('.btn-actividad-elegir').addEventListener('click', function () {
+                aplicarSeleccion(act.codigo, act.descripcion);
+                modal.hide();
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    function aplicarSeleccion(codigo, descripcion) {
+        if (!targetWrap) return;
+        var hid = targetWrap.querySelector('[data-actividad-codigo]');
+        var disp = targetWrap.querySelector('[data-actividad-display]');
+        var descHid = targetWrap.querySelector('[data-actividad-desc-hidden]');
+        if (hid) hid.value = codigo || '';
+        var texto = codigo ? (codigo + (descripcion ? ' — ' + descripcion : '')) : '';
+        if (disp) disp.value = texto;
+        if (descHid) descHid.value = descripcion || '';
+        targetWrap.dispatchEvent(new CustomEvent('actividad-seleccionada', {
+            bubbles: true,
+            detail: { codigo: codigo, descripcion: descripcion }
+        }));
+    }
+
+    function cargar() {
+        var q = (inpBusqueda && inpBusqueda.value || '').trim();
+        setLoading(true);
+        if (errBox) { errBox.classList.add('d-none'); errBox.textContent = ''; }
+        var url = actividadesApiBase() + '/api/actividades?limit=50' + (q ? '&search=' + encodeURIComponent(q) : '');
+
+        fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+            .then(function (r) {
+                return r.json().then(function (j) { return { status: r.status, j: j }; })
+                    .catch(function () { return { status: r.status, j: null }; });
+            })
+            .then(function (res) {
+                setLoading(false);
+                var data = res.j || {};
+                if (data.detail && !data.ok) {
+                    data.ok = false;
+                    data.mensaje = 'Sesión expirada o sin permiso. Vuelva a entrar al POS.';
+                }
+                if (!data.ok) {
+                    if (errBox) {
+                        var hint = (res.status === 401 || res.status === 403) ? ' Vuelva a iniciar sesión en el POS.' : '';
+                        errBox.textContent = (data.mensaje || 'No se pudo cargar el catálogo desde AgilDTE.') + hint;
+                        errBox.classList.remove('d-none');
+                    }
+                    renderRows([]);
+                    return;
+                }
+                if (data.mensaje && errBox) {
+                    errBox.textContent = data.mensaje;
+                    errBox.classList.remove('d-none', 'alert-danger');
+                    errBox.classList.add('alert-warning');
+                } else if (errBox) {
+                    errBox.classList.add('d-none');
+                    errBox.classList.remove('alert-warning');
+                    errBox.classList.add('alert-danger');
+                }
+                renderRows(data.results || []);
+            })
+            .catch(function () {
+                setLoading(false);
+                if (errBox) {
+                    errBox.textContent = 'Error de red al consultar AgilDTE.';
+                    errBox.classList.remove('d-none');
+                }
+                renderRows([]);
+            });
+    }
+
+    function abrir(wrap) {
+        targetWrap = wrap;
+        if (inpBusqueda) inpBusqueda.value = '';
+        modal.show();
+        cargar();
+        setTimeout(function () { if (inpBusqueda) inpBusqueda.focus(); }, 350);
+    }
+
+    if (inpBusqueda) {
+        inpBusqueda.addEventListener('input', function () {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(cargar, 280);
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.btn-abrir-buscador-actividad');
+        if (!btn) return;
+        e.preventDefault();
+        var wrap = btn.closest('[data-actividad-field]');
+        if (wrap) abrir(wrap);
+    });
+
+    window.PosAgilActividadBuscador = { abrir: abrir, aplicarSeleccion: aplicarSeleccion };
+})();
+</script>

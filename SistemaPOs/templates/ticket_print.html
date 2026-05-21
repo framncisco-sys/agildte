@@ -145,35 +145,6 @@
     {% endfor %}
     </div>
     <div class="text-center no-print" style="margin-top: 12px;"><a href="/ventas_pos">Volver a Ventas</a></div>
-    <script>
-(function () {
-    var q = window.location.search || '';
-    if (!/[?&]autoprint=1(?:&|$)/.test(q) && !/[?&]autoprint=true(?:&|$)/i.test(q)) return;
-    function runPrint() {
-        setTimeout(function () { window.print(); }, 200);
-    }
-    window.addEventListener('load', function () {
-        var imgs = document.images;
-        var pending = 0;
-        for (var i = 0; i < imgs.length; i++) {
-            if (!imgs[i].complete) pending++;
-        }
-        if (pending === 0) {
-            runPrint();
-            return;
-        }
-        function done() {
-            pending--;
-            if (pending <= 0) runPrint();
-        }
-        for (var j = 0; j < imgs.length; j++) {
-            if (!imgs[j].complete) {
-                imgs[j].addEventListener('load', done);
-                imgs[j].addEventListener('error', done);
-            }
-        }
-    });
-})();
-    </script>
+    {% include '_ticket_autoprint_script.html' %}
 </body>
 </html>

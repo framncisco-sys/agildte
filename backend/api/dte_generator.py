@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 TZ_EL_SALVADOR = timezone(timedelta(hours=-6))
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
+from .constants import DTE_LINEA_DESCRIPCION_MAX_LENGTH
 from .models import Venta, Empresa, Cliente
 
 
@@ -653,7 +654,9 @@ class DTEGenerator:
             # Usar detalles reales
             for detalle in detalles:
                 codigo = detalle.producto.codigo if detalle.producto else (detalle.codigo_libre or "LIBRE")
-                descripcion = detalle.producto.descripcion if detalle.producto else (detalle.descripcion_libre or "Item")
+                descripcion = (
+                    detalle.producto.descripcion if detalle.producto else (detalle.descripcion_libre or "Item")
+                )[:DTE_LINEA_DESCRIPCION_MAX_LENGTH]
                 tipo_item = detalle.producto.tipo_item if detalle.producto else 1
                 
                 # CRÍTICO: Convertir precio_unitario y cantidad a float antes de operar

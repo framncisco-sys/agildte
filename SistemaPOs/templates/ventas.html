@@ -408,13 +408,20 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body pt-2">
-                <p class="mb-3">Comprobante <strong id="mpv_num">#</strong>. Use los botones (el navegador suele bloquear ventanas automáticas tras guardar).</p>
+                <p class="mb-3">Comprobante <strong id="mpv_num">#</strong>. La impresión se abre en una ventana pequeña que se cierra sola al terminar.</p>
                 <div class="d-grid gap-2">
-                    <a id="mpv_btn_print" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary"><i class="bi bi-printer me-1"></i> Imprimir comprobante</a>
+                    <a id="mpv_btn_print" href="#" class="btn btn-primary"><i class="bi bi-printer me-1"></i> Imprimir comprobante</a>
                     <a id="mpv_btn_wa" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-success d-none"><i class="bi bi-whatsapp me-1"></i> Abrir WhatsApp con mensaje</a>
                 </div>
                 <p id="mpv_wa_info" class="small mt-3 mb-0 d-none text-muted"></p>
                 <p id="mpv_agildte_warn" class="small mt-2 mb-0 d-none text-warning"></p>
+                <details class="small mt-3 text-muted">
+                    <summary class="cursor-pointer">¿Imprimir sin confirmar cada venta?</summary>
+                    <p class="mb-1 mt-2">El navegador no lo permite por seguridad en uso normal. En la PC de caja use el acceso directo
+                        <code>scripts/iniciar_chrome_pos_impresion_silenciosa.bat</code> (abre <strong>https://agildte.com/pos/ventas_pos</strong>
+                        con Chrome <code>--kiosk-printing</code>) y deje la <strong>EPSON TM-T20II como impresora predeterminada</strong> en Windows.
+                        Desarrollo local: <code>…bat local</code>. Detalle: <code>docs/IMPRESION_SILENCIOSA_POS.md</code>.</p>
+                </details>
             </div>
             <div class="modal-footer border-0 pt-0">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
@@ -1819,6 +1826,44 @@
         }
     }
 
+    const POS_PRINT_WIN_NAME = 'pos_azdigital_ticket_print';
+    let posPrintWinRef = null;
+
+    function urlImpresionTicket(baseUrl, autoPrint, autoClose) {
+        let u = (baseUrl || '').trim();
+        if (!u || u === '#') return u;
+        const add = function (key) {
+            const s = u.indexOf('?') >= 0 ? '&' : '?';
+            u += s + key;
+        };
+        if (autoPrint) add('autoprint=1');
+        if (autoClose) add('autoclose=1');
+        return u;
+    }
+
+    /** Ventana emergente reutilizable (no acumula pestañas). */
+    function abrirVentanaImpresionTicket(baseUrl, opts) {
+        opts = opts || {};
+        const autoPrint = opts.autoPrint !== false;
+        const autoClose = opts.autoClose !== false;
+        const url = urlImpresionTicket(baseUrl, autoPrint, autoClose);
+        if (!url) return null;
+        const features = [
+            'width=420', 'height=700', 'left=60', 'top=40',
+            'menubar=no', 'toolbar=no', 'location=no', 'status=no',
+            'scrollbars=yes', 'resizable=yes',
+        ].join(',');
+        if (posPrintWinRef && !posPrintWinRef.closed) {
+            try {
+                posPrintWinRef.location.href = url;
+                posPrintWinRef.focus();
+                return posPrintWinRef;
+            } catch (e) { /* recargar en ventana nueva si falla */ }
+        }
+        posPrintWinRef = window.open(url, POS_PRINT_WIN_NAME, features);
+        return posPrintWinRef;
+    }
+
     function mostrarModalVentaGuardada(ventaId, printUrl, waPayload, extra) {
         extra = extra || {};
         const elNum = document.getElementById('mpv_num');
@@ -1835,7 +1880,13 @@
             warnAg.classList.remove('d-none');
         }
         if (elNum) elNum.textContent = '#' + ventaId;
-        if (aPrint) aPrint.href = printUrl || '#';
+        if (aPrint) {
+            aPrint.href = printUrl || '#';
+            aPrint.onclick = function (ev) {
+                ev.preventDefault();
+                abrirVentanaImpresionTicket(printUrl, { autoPrint: true, autoClose: true });
+            };
+        }
         if (aWa) {
             aWa.classList.add('d-none');
             aWa.href = '#';
@@ -1875,14 +1926,15 @@
         if (m && typeof bootstrap !== 'undefined') {
             bootstrap.Modal.getOrCreateInstance(m).show();
             if (extra.autoPrint && printUrl && printUrl !== '#') {
-                const sep = printUrl.indexOf('?') >= 0 ? '&' : '?';
                 setTimeout(function () {
-                    window.open(printUrl + sep + 'autoprint=1', '_blank', 'noopener,noreferrer');
+                    abrirVentanaImpresionTicket(printUrl, { autoPrint: true, autoClose: true });
                 }, 380);
             }
-        } else if (aPrint && printUrl) {
-            const sep = printUrl.indexOf('?') >= 0 ? '&' : '?';
-            window.open(printUrl + (extra.autoPrint ? sep + 'autoprint=1' : ''), '_blank', 'noopener,noreferrer');
+        } else if (printUrl && printUrl !== '#') {
+            abrirVentanaImpresionTicket(printUrl, {
+                autoPrint: !!extra.autoPrint,
+                autoClose: !!extra.autoPrint,
+            });
         }
     }
 

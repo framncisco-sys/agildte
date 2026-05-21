@@ -9,6 +9,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Alias fijo: el backend también está en agildte_net, donde PosAgil expone su Postgres como «db».
+    networks:
+      default:
+        aliases:
+          - agildte-postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sistema_user} -d ${POSTGRES_DB:-sistema_contable}"]
       interval: 10s
@@ -23,6 +28,8 @@ services:
     env_file: .env
     environment:
       MEDIA_ROOT: /app/media
+      # Evita resolver «db» en agildte_net (posagil_db) cuando PosAgil corre en paralelo.
+      POSTGRES_HOST: ${POSTGRES_HOST:-agildte-postgres}
     depends_on:
       db:
         condition: service_healthy
@@ -95,6 +102,29 @@ services:
     env_file: .env
     volumes:
       - media_volume:/app/certificados:ro
+
+  # ─── COLA FACTURACIÓN (USE_ASYNC_FACTURACION=true) ───────────────────────
+  # Procesa TareaFacturacion cada 30s (envío MH, correo). Sin este servicio las facturas
+  # quedan PENDIENTE hasta reenvío manual o hasta que el backend dispare el hilo post-commit.
+  facturacion_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file: .env
+    environment:
+      MEDIA_ROOT: /app/media
+      POSTGRES_HOST: ${POSTGRES_HOST:-agildte-postgres}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py procesar_tareas_facturacion --loop"
+    volumes:
+      - media_volume:/app/media
+    networks:
+      - default
 
   # ─── BACKUP ───────────────────────────────────────────────────────────────
   # Contenedor dedicado que ejecuta el cron de backup diario.

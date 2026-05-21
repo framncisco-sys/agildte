@@ -46,7 +46,7 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - agildte_net
+      - posagil_internal
 
   posagil:
     build:
@@ -54,6 +54,9 @@ services:
       dockerfile: Dockerfile
     container_name: posagil
     restart: unless-stopped
+    # Tras editar .env use: docker compose up -d posagil  (restart NO recarga variables de entorno)
+    env_file:
+      - .env
     # En desarrollo: monta el código del host para que cambios en templates/ y azdigital/
     # se reflejen sin rebuild. Reinicie el contenedor si gunicorn no recarga: docker compose restart posagil
     # En producción: comente el bloque volumes o use una imagen desplegada sin este montaje.
@@ -92,9 +95,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
+      - posagil_internal
       - agildte_net
 
 networks:
+  posagil_internal:
+    driver: bridge
   agildte_net:
     external: true
     name: ${AGILDTE_EXTERNAL_NETWORK:-agildte_net}

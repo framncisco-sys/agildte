@@ -15,6 +15,7 @@ const allNavItems = [
   { to: '/facturacion/carga-masiva', label: 'Carga Masiva' },
   { to: '/contabilidad/libros-iva', label: 'Libros de IVA', roles: ROLES_LIBROS_IVA },
   { to: '/configuracion', label: 'Configuración', roles: ROLES_CONFIG_ADMIN },
+  { to: '/configuracion/catalogo-actividades', label: 'Catálogo actividades MH', roles: ROLES_CONFIG_ADMIN },
   { to: '/items', label: 'Administración de ítems' },
 ]
 

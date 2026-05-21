@@ -1,0 +1,21 @@
+SOLO PARA LA PC DE CAJA
+=======================
+
+Lleve UN archivo al escritorio de la caja:
+
+  AgilDTE_Abrir_Caja.bat   (o iniciar_chrome_pos_impresion_silenciosa.bat, es lo mismo)
+
+NO necesita copiar el proyecto, Python ni Docker.
+El sistema oficial ya esta en: https://agildte.com
+
+En la caja debe tener:
+  - Windows con Google Chrome instalado
+  - Internet
+  - Impresora EPSON TM-T20II como PREDETERMINADA
+
+Uso diario:
+  1. Doble clic en el .bat (no abrir Chrome normal)
+  2. Iniciar sesion en agildte.com si pide login
+  3. Vender e imprimir
+
+Cerrar: Alt+F4

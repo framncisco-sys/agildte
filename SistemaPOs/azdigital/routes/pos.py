@@ -174,7 +174,7 @@ def ventas_pos_clientes_embed(cid: int | None = None):
     Formulario de cliente para iframe en el POS (misma ficha que /clientes).
     Va en el blueprint ``pos`` para que siempre exista junto a ``/ventas_pos`` (evita 404 si el despliegue no carga rutas nuevas de admin).
     """
-    from azdigital.routes.admin import _cliente_dict_desde_fila
+    from azdigital.routes.admin import _cliente_dict_desde_fila, _cliente_template_ctx
 
     try:
         emp_id = int(session.get("empresa_id") or 1)
@@ -215,6 +215,7 @@ def ventas_pos_clientes_embed(cid: int | None = None):
             es_superadmin=es_super,
             actividades=actividades,
             embed_mode=True,
+            **_cliente_template_ctx(),
         )
     finally:
         cur.close()
@@ -308,6 +309,9 @@ def cliente_datos(cliente_id: int):
             "direccion": (cl[9] or "").strip(),
             "telefono": (cl[10] or "").strip(),
             "codigo_actividad": (cl[11] or "").strip() if len(cl) > 11 else "",
+            "nrc": (cl[12] or "").strip() if len(cl) > 12 else "",
+            "departamento": (cl[13] or "06").strip() if len(cl) > 13 else "06",
+            "municipio": (cl[14] or "14").strip() if len(cl) > 14 else "14",
         })
     finally:
         cur.close()
@@ -449,9 +453,17 @@ def cliente_guardar_json():
     direccion = (data.get("direccion") or "").strip()
     telefono = (data.get("telefono") or "").strip()
     codigo_actividad = (data.get("codigo_actividad_economica") or "").strip()
+    nrc = (data.get("nrc") or "").strip()
+    departamento = (data.get("departamento") or "").strip()
+    municipio = (data.get("municipio") or "").strip()
 
     if not nombre_cliente:
         return jsonify({"ok": False, "msg": "El nombre es obligatorio."}), 400
+
+    if nrc:
+        ok_nrc_campo, msg_nrc = validar_nrc(nrc)
+        if not ok_nrc_campo:
+            return jsonify({"ok": False, "msg": msg_nrc}), 400
 
     tipo_doc = (tipo_documento or "").strip().upper()
     if tipo_doc == "NIT" and numero_documento:
@@ -500,6 +512,9 @@ def cliente_guardar_json():
                     actualizar_sucursal=es_super,
                     codigo_actividad_economica=codigo_actividad,
                     es_gran_contribuyente=es_gran_contribuyente,
+                    nrc=nrc,
+                    departamento=departamento,
+                    municipio=municipio,
                 )
             except Exception:
                 conn.rollback()
@@ -518,6 +533,9 @@ def cliente_guardar_json():
                     actualizar_sucursal=False,
                     codigo_actividad_economica=codigo_actividad,
                     es_gran_contribuyente=es_gran_contribuyente,
+                    nrc=nrc,
+                    departamento=departamento,
+                    municipio=municipio,
                 )
         else:
             nuevo_id = clientes_repo.crear_cliente(
@@ -533,6 +551,9 @@ def cliente_guardar_json():
                 sucursal_id=sucursal_id if es_super else None,
                 codigo_actividad_economica=codigo_actividad,
                 es_gran_contribuyente=es_gran_contribuyente,
+                nrc=nrc,
+                departamento=departamento,
+                municipio=municipio,
             )
         registrar_accion(
             cur,

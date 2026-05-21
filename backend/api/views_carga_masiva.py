@@ -365,7 +365,7 @@ def carga_masiva_upload(request):
                         prod_obj = Producto.objects.create(
                             empresa_id=empresa_id,
                             codigo=codigo_safe[:50],
-                            descripcion=prod_str[:200],
+                            descripcion=prod_str[:1000],
                             precio_unitario=precio,
                         )
                     except Exception:

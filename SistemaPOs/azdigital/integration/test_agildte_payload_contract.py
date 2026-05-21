@@ -72,6 +72,67 @@ class BuildPayloadContractTests(unittest.TestCase):
         self.assertEqual(map_tipo_comprobante_pos_a_tipo_dte("TICKET"), "01")
         self.assertEqual(p["tipo_venta"], "CF")
 
+    def test_incluye_descripcion_libre_desde_linea(self):
+        p = build_crear_venta_con_detalles_payload(
+            empresa_id=1,
+            tipo_comprobante_pos="TICKET",
+            tipo_pago="EFECTIVO",
+            lineas=[
+                {
+                    "producto_id": 7,
+                    "cantidad": 1.0,
+                    "precio_unitario": 25.0,
+                    "subtotal": 25.0,
+                    "descripcion": "Prueba",
+                }
+            ],
+            total_neto=25.0,
+            total_bruto=25.0,
+            descuento=0.0,
+            cliente_id=None,
+            cliente_nombre_ticket="Cliente de contado",
+        )
+        self.assertEqual(p["detalles"][0].get("descripcion_libre"), "Prueba")
+
+    def test_precio_cero_usa_subtotal(self):
+        """Evita DTE en $0 cuando el POS manda subtotal correcto y precio_unitario 0."""
+        p = build_crear_venta_con_detalles_payload(
+            empresa_id=1,
+            tipo_comprobante_pos="TICKET",
+            tipo_pago="EFECTIVO",
+            lineas=[{"producto_id": 99, "cantidad": 1.0, "precio_unitario": 0.0, "subtotal": 25.0}],
+            total_neto=25.0,
+            total_bruto=25.0,
+            descuento=0.0,
+            cliente_id=None,
+            cliente_nombre_ticket="Cliente de contado",
+        )
+        d0 = p["detalles"][0]
+        self.assertEqual(d0["precio_unitario"], 25.0)
+        self.assertEqual(d0["subtotal"], 25.0)
+
+    def test_ccf_dui_en_receptor_mapea_nit_receptor(self):
+        p = build_crear_venta_con_detalles_payload(
+            empresa_id=1,
+            tipo_comprobante_pos="CREDITO_FISCAL",
+            tipo_pago="EFECTIVO",
+            lineas=[_linea(1)],
+            total_neto=1.0,
+            total_bruto=1.0,
+            descuento=0.0,
+            cliente_id=None,
+            cliente_nombre_ticket="Francisco",
+            receptor={
+                "nombre": "Francisco",
+                "tipo_documento": "DUI",
+                "numero_documento": "04727688-8",
+                "nrc": "123456-7",
+            },
+        )
+        self.assertEqual(p.get("nit_receptor"), "04727688-8")
+        self.assertEqual(p.get("documento_receptor"), "04727688-8")
+        self.assertEqual(p.get("tipo_doc_receptor"), "DUI")
+
     def test_cf_con_datos_receptor_planos(self):
         rec = {
             "nombre": "Juan Pérez",
@@ -101,7 +162,8 @@ class BuildPayloadContractTests(unittest.TestCase):
         self.assertEqual(p["receptor_direccion"], "San Salvador")
         self.assertEqual(p["receptor_telefono"], "70001234")
 
-    def test_ccf_con_cliente_id(self):
+    def test_ccf_con_receptor_nrc_sin_cliente_id_pos(self):
+        """CCF desde POS: NRC en campo cliente (string), no PK local."""
         p = build_crear_venta_con_detalles_payload(
             empresa_id=2,
             tipo_comprobante_pos="CREDITO_FISCAL",
@@ -110,15 +172,21 @@ class BuildPayloadContractTests(unittest.TestCase):
             total_neto=100.0,
             total_bruto=100.0,
             descuento=0.0,
-            cliente_id=42,
+            cliente_id=None,
             cliente_nombre_ticket="ACME SA",
-            receptor={"nombre": "ACME", "numero_documento": "0614-123456-101-1"},
+            receptor={
+                "nombre": "ACME",
+                "numero_documento": "0614-123456-101-1",
+                "tipo_documento": "NIT",
+                "nrc": "123456-7",
+                "codigo_actividad_economica": "62010",
+            },
         )
         self.assertEqual(p.get("tipo_dte"), "03")
         self.assertEqual(p.get("tipo_venta"), "CCF")
-        self.assertEqual(map_tipo_comprobante_pos_a_tipo_venta("CREDITO_FISCAL"), "CCF")
-        self.assertEqual(p.get("cliente_id"), 42)
-        self.assertEqual(p.get("cliente"), 42)
+        self.assertNotIn("cliente_id", p)
+        self.assertEqual(p.get("cliente"), "123456-7")
+        self.assertEqual(p.get("cod_actividad_receptor"), "62010")
 
 
 class ReceptorFlatTests(unittest.TestCase):

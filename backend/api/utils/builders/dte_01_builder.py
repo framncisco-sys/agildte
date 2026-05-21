@@ -14,7 +14,7 @@ class DTE01Builder(DTE03Builder):
     TICKET_CLIENTE_GENERAL = {
         "nombre": "Cliente General",
         "correo": "Cosnumidorfinal@gmail.com",
-        "telefono": "2222-2222",
+        "telefono": "22222222",
         "direccion": "San Miguel, San Miguel",
     }
 
@@ -37,16 +37,17 @@ class DTE01Builder(DTE03Builder):
 
         # Consumidor Final sin cliente: datos de venta.direccion_receptor, correo_receptor, documento_receptor
         if not cliente:
+            from ..mh_documento import normalizar_telefono_mh, normalizar_tipo_y_numero_mh
+
             nombre = self.TICKET_CLIENTE_GENERAL["nombre"]
             doc = getattr(self.venta, 'documento_receptor', None) and str(self.venta.documento_receptor).strip()
-            tdoc = getattr(self.venta, 'tipo_doc_receptor', None) or 'NIT'
-            tipo_doc = "36" if tdoc == 'NIT' and doc else "13" if doc else None
-            if doc:
-                doc_limpio = doc.replace('-', '').replace(' ', '')
-                # DUI (tipo 13) → 9 dígitos; NIT (tipo 36) → 14 dígitos
-                num_doc = doc_limpio.zfill(9) if tipo_doc == "13" else doc_limpio.zfill(14)
-            else:
-                num_doc = None
+            tdoc = getattr(self.venta, 'tipo_doc_receptor', None) or None
+            try:
+                tipo_doc, num_doc = normalizar_tipo_y_numero_mh(tdoc, doc) if doc else (None, None)
+                if tipo_doc == "13" and num_doc:
+                    tipo_doc = None
+            except ValueError:
+                tipo_doc, num_doc = None, None
             dir_comp = self.TICKET_CLIENTE_GENERAL["direccion"]
             correo = self.TICKET_CLIENTE_GENERAL["correo"]
             direccion_obj = {
@@ -62,27 +63,30 @@ class DTE01Builder(DTE03Builder):
                 "codActividad": None,
                 "descActividad": None,
                 "direccion": direccion_obj,
-                "telefono": self.TICKET_CLIENTE_GENERAL["telefono"],
+                "telefono": normalizar_telefono_mh(self.TICKET_CLIENTE_GENERAL["telefono"]),
                 "correo": correo,
             }
 
+        from ..mh_documento import documento_cliente_para_mh, normalizar_telefono_mh
+
         nombre_receptor = self.venta.nombre_receptor or cliente.nombre or "Consumidor Final"
-        tiene_nit = cliente.nit and str(cliente.nit).strip()
-        tiene_dui = cliente.dui and str(cliente.dui).strip()
-        telefono = getattr(cliente, 'telefono', None) or "22222222"
+        tel_raw = (
+            getattr(cliente, "telefono", None)
+            or getattr(self.venta, "telefono_receptor", None)
+        )
+        telefono = normalizar_telefono_mh(tel_raw)
 
         receptor = {}
-        if tiene_nit:
-            receptor["tipoDocumento"] = "36"
-            # NIT: exactamente 14 dígitos
-            receptor["numDocumento"] = cliente.nit.replace('-', '').replace(' ', '').zfill(14)
-        elif tiene_dui:
-            receptor["tipoDocumento"] = "13"
-            # DUI: exactamente 9 dígitos (NO zfill(14) — MH rechaza DUI de 14 dígitos)
-            receptor["numDocumento"] = cliente.dui.replace('-', '').replace(' ', '').zfill(9)
-        else:
-            receptor["tipoDocumento"] = None
-            receptor["numDocumento"] = None
+        try:
+            tipo_doc, num_doc = documento_cliente_para_mh(cliente)
+        except ValueError:
+            tipo_doc, num_doc = None, None
+        # fe-fc-v1: MH rechaza receptor.tipoDocumento "13" (DUI) en CF (cod. 096 formato numDocumento).
+        # Acepta numDocumento de 9 dígitos con tipoDocumento null.
+        if tipo_doc == "13" and num_doc:
+            tipo_doc = None
+        receptor["tipoDocumento"] = tipo_doc
+        receptor["numDocumento"] = num_doc
 
         receptor["nombre"] = nombre_receptor
         receptor["nrc"] = None

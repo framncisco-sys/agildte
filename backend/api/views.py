@@ -14,6 +14,7 @@ from rest_framework.decorators import api_view, action, permission_classes as dr
 from rest_framework.response import Response
 from rest_framework import status, viewsets, permissions
 from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.renderers import BaseRenderer
 from rest_framework.permissions import IsAuthenticated as DRFIsAuthenticated
 from django.contrib.auth import authenticate
@@ -338,11 +339,10 @@ class EmpresaViewSet(viewsets.ModelViewSet):
             'contingencia_h_fin',
         ])
 
+        from .tasks import encolar_y_disparar_facturacion, disparar_procesamiento_cola
         for v in ventas:
-            TareaFacturacion.objects.get_or_create(
-                venta=v,
-                defaults={'estado': 'Pendiente'}
-            )
+            encolar_y_disparar_facturacion(v.id)
+        disparar_procesamiento_cola(limite=max(len(ventas), 20))
 
         return Response({
             "mensaje": "Contingencia desactivada. Ventas en estado PendienteEnvio encoladas para envío a MH.",
@@ -575,6 +575,12 @@ class ActividadEconomicaViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ActividadEconomicaSerializer
     pagination_class = ActividadEconomicaLimitPagination
 
+    def get_permissions(self):
+        from .permissions import IsAdminUser
+        if self.action == 'importar_catalogo':
+            return [DRFIsAuthenticated(), IsAdminUser()]
+        return [DRFIsAuthenticated()]
+
     def get_queryset(self):
         qs = ActividadEconomica.objects.all().order_by('codigo')
         search = (self.request.query_params.get('search') or '').strip()
@@ -583,6 +589,52 @@ class ActividadEconomicaViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(codigo__icontains=search) | Q(descripcion__icontains=search)
             )
         return qs
+
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='importar-catalogo',
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def importar_catalogo(self, request):
+        """
+        Sube el CSV/Excel oficial del MH y actualiza el catálogo global.
+        POST multipart: campo ``archivo`` (.csv con ; o .xlsx).
+        """
+        from .services.actividades_import import import_actividades_from_fileobj
+
+        archivo = request.FILES.get('archivo') or request.FILES.get('file')
+        if not archivo:
+            return Response(
+                {'detail': "Envíe el archivo en el campo 'archivo' (multipart/form-data)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        nombre = (archivo.name or '').lower()
+        if not (nombre.endswith('.csv') or nombre.endswith('.xlsx') or nombre.endswith('.xls')):
+            return Response(
+                {'detail': 'Formato no soportado. Use .csv (MH, delimitador ;) o .xlsx.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            stats = import_actividades_from_fileobj(archivo, archivo.name)
+        except ValueError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response(
+                {'detail': f'Error al procesar el archivo: {e}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response(
+            {
+                'ok': True,
+                'mensaje': (
+                    f"Catálogo actualizado: {stats['created']} nuevos, {stats['updated']} actualizados. "
+                    f"Total en base de datos: {stats['total_en_bd']}."
+                ),
+                **stats,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class VentaViewSet(viewsets.ModelViewSet):
@@ -627,10 +679,8 @@ class VentaViewSet(viewsets.ModelViewSet):
 
         # Procesamiento asíncrono (alineado con USE_ASYNC_FACTURACION en settings; default False = síncrono)
         if getattr(settings, 'USE_ASYNC_FACTURACION', False):
-            TareaFacturacion.objects.get_or_create(
-                venta=venta,
-                defaults={'estado': 'Pendiente'}
-            )
+            from .tasks import encolar_y_disparar_facturacion
+            encolar_y_disparar_facturacion(venta.id)
             return Response({
                 "mensaje": "Factura en cola. Se procesará en breve (firma, envío a Hacienda y correo).",
                 "venta_id": venta.id,
@@ -762,14 +812,26 @@ class VentaViewSet(viewsets.ModelViewSet):
         if r is not None:
             return r
 
-        # Solo reenviar si está pendiente
-        estados_reenviables = ('Borrador', 'Generado', 'PendienteEnvio', 'ErrorEnvio')
+        # Solo reenviar si está pendiente o fue rechazada (nuevo código de generación)
+        estados_reenviables = ('Borrador', 'Generado', 'PendienteEnvio', 'ErrorEnvio', 'RechazadoMH')
         if venta.estado_dte not in estados_reenviables:
             return Response({
                 "error": "No se puede reenviar",
                 "mensaje": f"La factura está en estado '{venta.estado_dte}'. Solo se puede reenviar cuando está pendiente de envío.",
                 "estado_dte": venta.estado_dte
             }, status=status.HTTP_400_BAD_REQUEST)
+
+        if venta.estado_dte == 'RechazadoMH':
+            import uuid
+            venta.codigo_generacion = str(uuid.uuid4()).upper()
+            venta.numero_control = None
+            venta.sello_recepcion = None
+            venta.dte_firmado = None
+            venta.estado_dte = 'ErrorEnvio'
+            venta.save(update_fields=[
+                'codigo_generacion', 'numero_control', 'sello_recepcion',
+                'dte_firmado', 'estado_dte',
+            ])
 
         if not venta.empresa:
             return Response({
@@ -1620,6 +1682,10 @@ def _crear_venta_con_detalles_response(request, *, desde_pos=False):
     """
     from django.conf import settings
     from .services.facturacion_service import FacturacionService, FacturacionServiceError
+    from .services.whatsapp_post_factura import (
+        enviar_whatsapp_tras_correo_si_aplica,
+        parse_enviar_whatsapp_desde_request,
+    )
 
     empresa_id = request.data.get('empresa_id')
     if empresa_id is not None:
@@ -1632,6 +1698,21 @@ def _crear_venta_con_detalles_response(request, *, desde_pos=False):
         return Response(serializer.errors, status=400)
 
     venta = serializer.save()
+
+    if desde_pos:
+        try:
+            from .utils.pos_detalle_sync import reparar_detalles_venta_desde_payload_pos
+            reparar_detalles_venta_desde_payload_pos(venta, request.data)
+            venta.refresh_from_db()
+        except Exception:
+            logger.exception(
+                'No se pudo reparar detalles POS para venta %s antes de facturar',
+                venta.id,
+            )
+
+    enviar_wa, telefono_wa = parse_enviar_whatsapp_desde_request(request.data)
+    if enviar_wa and not telefono_wa and venta.cliente_id and venta.cliente:
+        telefono_wa = (getattr(venta.cliente, 'telefono', None) or '').strip()
 
     empresa = venta.empresa
     if empresa and getattr(empresa, 'contingencia_activa', False):
@@ -1647,16 +1728,21 @@ def _crear_venta_con_detalles_response(request, *, desde_pos=False):
         usar_async = False
 
     if usar_async:
-        TareaFacturacion.objects.get_or_create(
-            venta=venta,
-            defaults={'estado': 'Pendiente'}
+        from .tasks import encolar_y_disparar_facturacion
+        encolar_y_disparar_facturacion(
+            venta.id,
+            enviar_whatsapp=enviar_wa,
+            whatsapp_telefono=telefono_wa,
         )
         data = VentaSerializer(venta).data
-        data['mensaje'] = 'Factura registrada. Se procesará en breve (firma, envío a Hacienda y correo).'
+        data['mensaje'] = 'Factura registrada. Enviando a Hacienda en segundo plano…'
+        if enviar_wa:
+            data['mensaje'] += ' Se enviará WhatsApp tras aceptación de MH y correo.'
         data['procesamiento'] = 'asincrono'
         return Response(data, status=201)
 
     mensaje = None
+    whatsapp_aviso = None
     dte_preview = None
     receptor_preview = None
     try:
@@ -1670,6 +1756,9 @@ def _crear_venta_con_detalles_response(request, *, desde_pos=False):
                     enviar_factura_email(venta)
                 except Exception as e:
                     logger.warning(f"No se pudo enviar correo para venta {venta.id}: {e}")
+                whatsapp_aviso = enviar_whatsapp_tras_correo_si_aplica(
+                    venta, enviar=enviar_wa, telefono=telefono_wa,
+                )
         else:
             mensaje = resultado.get('mensaje') or str(resultado.get('observaciones', [])) or 'Rechazado por Hacienda'
             dte_preview = resultado.get('dte_json_preview')
@@ -1686,6 +1775,10 @@ def _crear_venta_con_detalles_response(request, *, desde_pos=False):
     data = VentaSerializer(venta).data
     data['mensaje'] = mensaje
     data['procesamiento'] = 'sincrono'
+    if whatsapp_aviso:
+        data['whatsapp_aviso'] = whatsapp_aviso
+    elif enviar_wa and venta.estado_dte == 'AceptadoMH' and not whatsapp_aviso:
+        data['whatsapp_enviado'] = True
     if dte_preview is not None:
         data['dte_json_preview'] = dte_preview
     if receptor_preview is not None:
@@ -2040,6 +2133,73 @@ def listar_ventas(request):
         'has_previous': page > 1,
         'results': serializer.data,
     })
+
+
+@api_view(['POST'])
+def enviar_factura_whatsapp_api(request):
+    """
+    POST /api/facturas/enviar-whatsapp/
+    Body: { "factura_id"|"venta_id": int, "telefono"|"numero": str }
+
+    Requiere whatsapp_premium_enabled en la empresa. Usa credenciales Meta de esa empresa.
+    """
+    from .services.whatsapp_cloud_service import WhatsAppCloudError, enviar_factura_whatsapp
+
+    if not request.user.is_authenticated:
+        return Response({'detail': 'Autenticación requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    raw_id = request.data.get('factura_id') or request.data.get('venta_id')
+    telefono = (request.data.get('telefono') or request.data.get('numero') or '').strip()
+    if not raw_id:
+        return Response({'detail': 'factura_id es requerido'}, status=status.HTTP_400_BAD_REQUEST)
+    if not telefono:
+        return Response({'detail': 'telefono es requerido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        venta_id = int(raw_id)
+    except (TypeError, ValueError):
+        return Response({'detail': 'factura_id inválido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        venta = Venta.objects.select_related('empresa', 'cliente').get(pk=venta_id)
+    except Venta.DoesNotExist:
+        return Response({'detail': 'Factura no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+
+    r = require_object_empresa_allowed(request, venta)
+    if r is not None:
+        return r
+
+    empresa = venta.empresa
+    if not empresa or not empresa.whatsapp_premium_enabled:
+        return Response(
+            {
+                'detail': 'WhatsApp premium no está habilitado para esta empresa.',
+                'code': 'whatsapp_premium_disabled',
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        out = enviar_factura_whatsapp(venta, telefono)
+        return Response(
+            {
+                'ok': out.get('ok', True),
+                'mensaje': out.get('mensaje', 'Mensaje enviado por WhatsApp.'),
+                'whatsapp_message_id': out.get('whatsapp_message_id'),
+            },
+            status=status.HTTP_200_OK,
+        )
+    except WhatsAppCloudError as exc:
+        code = exc.status_code or status.HTTP_400_BAD_REQUEST
+        if code == 403:
+            return Response({'detail': str(exc), 'code': 'whatsapp_premium_disabled'}, status=403)
+        return Response({'detail': str(exc)}, status=code if 400 <= code < 600 else status.HTTP_400_BAD_REQUEST)
+    except Exception as exc:
+        logger.exception('enviar_factura_whatsapp_api venta_id=%s', venta_id)
+        return Response(
+            {'detail': 'Error interno al enviar WhatsApp.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 def _venta_tiene_sello_recepcion_mh(venta) -> bool:

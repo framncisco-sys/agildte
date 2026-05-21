@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Trash2, Loader2, Search, FileText, UserPlus, Info } from 'lucide-react'
+import { Trash2, Loader2, Search, FileText, UserPlus, Info, MessageCircle } from 'lucide-react'
+import { getEmpresa } from '../../../api/empresa'
 import toast from 'react-hot-toast'
 import { ModalBuscadorCliente } from './ModalBuscadorCliente'
 import { BuscarDocumentoModal } from './BuscarDocumentoModal'
@@ -15,6 +16,8 @@ import { crearVenta } from '../../../api/facturas'
 import { createCliente } from '../../../api/clientes'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 import { fechaHoyElSalvadorISO } from '../../../utils/format'
+import { formatApiErrorMessage } from '../../../utils/apiErrors'
+import { DTE_LINEA_DESCRIPCION_MAX } from '../../../constants/dte'
 
 const TITULOS_POR_TIPO = {
   '01': 'NUEVA FACTURA CONSUMIDOR FINAL',
@@ -44,7 +47,13 @@ const schema = z.object({
   items: z.array(
     z.object({
       cantidad: z.coerce.number().min(0.01, 'Cantidad requerida'),
-      descripcion: z.string().min(1, 'Descripción requerida'),
+      descripcion: z
+        .string()
+        .min(1, 'Descripción requerida')
+        .max(
+          DTE_LINEA_DESCRIPCION_MAX,
+          `La descripción no puede superar ${DTE_LINEA_DESCRIPCION_MAX} caracteres`
+        ),
       precioUnitario: z.coerce.number().min(0, 'Precio requerido'),
     })
   ).min(1, 'Debe agregar al menos un ítem'),
@@ -90,6 +99,8 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
   const [editandoFechaFacturacion, setEditandoFechaFacturacion] = useState(false)
   const [retencion1Activa, setRetencion1Activa] = useState(false)
   const [retencionMensaje, setRetencionMensaje] = useState('')
+  const [whatsappPremium, setWhatsappPremium] = useState(false)
+  const [enviarWhatsApp, setEnviarWhatsApp] = useState(true)
   const requiereDocumentoRelacionado = tipoDocumento === '05' || tipoDocumento === '06'
 
   const {
@@ -107,6 +118,25 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'items' })
   const items = watch('items')
   const departamentoSeleccionado = watch('departamento')
+
+  useEffect(() => {
+    if (!empresaId) {
+      setWhatsappPremium(false)
+      return
+    }
+    let cancelado = false
+    getEmpresa(empresaId)
+      .then((emp) => {
+        if (!cancelado) setWhatsappPremium(!!emp?.whatsapp_premium_enabled)
+      })
+      .catch(() => {
+        if (!cancelado) setWhatsappPremium(false)
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [empresaId])
+  const telefonoWatch = watch('telefono')
   const condicionOperacionWatch = watch('condicionOperacion')
   const esCredito = condicionOperacionWatch === '2'
   const municipios = MUNICIPIOS_POR_DEPARTAMENTO[departamentoSeleccionado] ?? []
@@ -325,31 +355,40 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
         plazoPago: data.condicionOperacion === '2' ? (data.plazoPago || '03') : null,
         // periodo_pago → cantidad numérica (ej: 30)
         periodoPago: data.condicionOperacion === '2' ? (Number(data.periodoPago) || 30) : null,
+        enviarWhatsApp: whatsappPremium && enviarWhatsApp && !!(data.telefono || '').trim(),
       }
       const respuesta = await crearVenta(payload)
       const estado = respuesta?.estado_dte || respuesta?.estado
       const mensaje = respuesta?.mensaje
+      const esAsync = respuesta?.procesamiento === 'asincrono'
 
       if (estado === 'AceptadoMH' || estado === 'PROCESADO') {
-        toast.success(mensaje || '¡Factura enviada a Hacienda correctamente!')
-        navigate('/dashboard')
+        if (respuesta?.whatsapp_aviso) {
+          toast.error(`Factura OK. WhatsApp: ${respuesta.whatsapp_aviso}`)
+        } else if (respuesta?.whatsapp_enviado) {
+          toast.success((mensaje || '¡Factura enviada!') + ' WhatsApp enviado al cliente.')
+        } else {
+          toast.success(mensaje || '¡Factura enviada a Hacienda correctamente!')
+        }
+        onChangeTipo()
       } else if (estado === 'RechazadoMH' || estado === 'RECHAZADO') {
         toast.error(mensaje || 'Factura rechazada por Hacienda')
+        // Permanece en el formulario para corregir datos
+      } else if (esAsync) {
+        toast.success(
+          mensaje ||
+            'Factura registrada. Se está enviando a Hacienda; en unos segundos aparecerá como PROCESADA en el listado.'
+        )
+        onChangeTipo()
       } else {
         toast.success(mensaje || 'Documento guardado')
-        navigate('/dashboard')
+        onChangeTipo()
       }
     } catch (err) {
-      const d = err.response?.data
-      let msg = d?.error ?? d?.mensaje ?? err.message ?? 'Error al emitir el documento'
-      if (typeof d === 'string') msg = d
-      else if (d && typeof d === 'object' && !d.error && !d.mensaje) {
-        const parts = Object.entries(d).map(([k, v]) => {
-          const val = Array.isArray(v) ? v.join(', ') : String(v)
-          return `${k}: ${val}`
-        })
-        if (parts.length) msg = parts.join(' | ')
-      }
+      const msg = formatApiErrorMessage(
+        err.response?.data,
+        err.message || 'Error al emitir el documento'
+      )
       toast.error(msg)
     } finally {
       setEnviando(false)
@@ -703,9 +742,33 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
               <input
                 {...register('telefono')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Teléfono de contacto"
+                placeholder="50371234567"
               />
             </div>
+
+            {whatsappPremium && (
+              <div className="sm:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50/80 px-4 py-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enviarWhatsApp}
+                    onChange={(e) => setEnviarWhatsApp(e.target.checked)}
+                    disabled={!(telefonoWatch || '').trim()}
+                    className="mt-1 h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="text-sm text-emerald-900">
+                    <span className="inline-flex items-center gap-1.5 font-medium">
+                      <MessageCircle className="w-4 h-4" />
+                      Enviar factura por WhatsApp
+                    </span>
+                    <span className="block text-xs text-emerald-800/90 mt-1">
+                      Tras aceptación de Hacienda y envío del correo, se enviará el enlace al teléfono de arriba.
+                      {!((telefonoWatch || '').trim()) && ' Indica un teléfono para activar esta opción.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
 
           {/* Botón Guardar Cliente */}

@@ -49,23 +49,42 @@
         <input type="text" id="numero_documento" name="numero_documento" class="form-control" value="{{ cliente_dict.numero_documento if cliente_dict else '' }}" placeholder="Según tipo: NIT 0614-161386-001-4, DUI 00000000-0">
     </div>
     <div class="mb-3">
-        <label class="form-label small fw-bold">Actividad Económica (código)</label>
-        <input type="text" list="actividades_cliente" name="codigo_actividad_economica" class="form-control" value="{{ (cliente_dict.get('codigo_actividad_economica') or '') if cliente_dict else '' }}" placeholder="Busque código (ej: 47111)...">
-        {% if actividades %}
-        <datalist id="actividades_cliente">
-            {% for a in actividades %}
-            <option value="{{ a[0] }}">{{ a[0] }} — {{ (a[1] or '')[:70] }}</option>
-            {% endfor %}
-        </datalist>
-        {% endif %}
+        <label class="form-label small fw-bold">NRC</label>
+        <input type="text" id="nrc_cliente" name="nrc" class="form-control" value="{{ cliente_dict.nrc if cliente_dict else '' }}" placeholder="123456-7" maxlength="8" inputmode="numeric" title="6-7 dígitos (registro de contribuyente)">
+        <small class="text-muted">Registro de contribuyente (distinto del tipo de documento NRC).</small>
     </div>
+    {% set _cod_act = (cliente_dict.get('codigo_actividad_economica') or '') if cliente_dict else '' %}
+    {% with field_name='codigo_actividad_economica', label='Actividad Económica (código)', codigo_value=_cod_act, descripcion_value='', hint='Obligatorio si el cliente es contribuyente (crédito fiscal). Catálogo AgilDTE.' %}
+    {% include '_campo_actividad_economica.html' %}
+    {% endwith %}
     <div class="mb-3">
         <label class="form-label small fw-bold">Correo Electrónico</label>
         <input type="email" name="correo" class="form-control" value="{{ cliente_dict.correo if cliente_dict else '' }}">
     </div>
+    <div class="row g-2 mb-3">
+        <div class="col-md-6">
+            <label class="form-label small fw-bold">Departamento</label>
+            <select name="departamento" id="sel_departamento_cliente" class="form-select">
+                {% for cod, nom in (departamentos or []) %}
+                <option value="{{ cod }}" {{ 'selected' if cliente_dict and cliente_dict.departamento == cod else ('selected' if not cliente_dict and cod == '06' else '') }}>{{ nom }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label small fw-bold">Municipio</label>
+            <select name="municipio" id="sel_municipio_cliente" class="form-select" data-inicial="{{ cliente_dict.municipio if cliente_dict else '14' }}">
+                {% if departamentos is defined and municipios_por_departamento is defined %}
+                {% set depto_ini = cliente_dict.departamento if cliente_dict else '06' %}
+                {% for cod_m, nom_m in municipios_por_departamento.get(depto_ini, []) %}
+                <option value="{{ cod_m }}" {{ 'selected' if cliente_dict and cliente_dict.municipio == cod_m else ('selected' if not cliente_dict and cod_m == '14' else '') }}>{{ nom_m }}</option>
+                {% endfor %}
+                {% endif %}
+            </select>
+        </div>
+    </div>
     <div class="mb-3">
-        <label class="form-label small fw-bold">Dirección</label>
-        <textarea name="direccion" class="form-control" rows="2">{{ cliente_dict.direccion if cliente_dict else '' }}</textarea>
+        <label class="form-label small fw-bold">Dirección (complemento)</label>
+        <textarea name="direccion" class="form-control" rows="2" placeholder="Calle, colonia, número…">{{ cliente_dict.direccion if cliente_dict else '' }}</textarea>
     </div>
     <div class="mb-3">
         <label class="form-label small fw-bold">Teléfono</label>
@@ -93,6 +112,44 @@
         {% endif %}
     {% endif %}
 </form>
+{% if municipios_por_departamento is defined %}
+<script>
+(function() {
+    var MUNIS = {{ municipios_por_departamento | tojson }};
+    var selDepto = document.getElementById('sel_departamento_cliente');
+    var selMuni = document.getElementById('sel_municipio_cliente');
+    if (!selDepto || !selMuni) return;
+    function llenarMunicipios(depto, seleccionado) {
+        var lista = MUNIS[depto] || [];
+        selMuni.innerHTML = '';
+        lista.forEach(function(par) {
+            var opt = document.createElement('option');
+            opt.value = par[0];
+            opt.textContent = par[1];
+            if (seleccionado && par[0] === seleccionado) opt.selected = true;
+            selMuni.appendChild(opt);
+        });
+        if (!selMuni.value && lista.length) selMuni.value = lista[0][0];
+    }
+    selDepto.addEventListener('change', function() {
+        llenarMunicipios(selDepto.value, null);
+    });
+    var nrc = document.getElementById('nrc_cliente');
+    if (nrc) {
+        function fmtNrc() {
+            var v = nrc.value.replace(/\D/g, '').slice(0, 7);
+            nrc.value = v.length > 6 ? v.slice(0, 6) + '-' + v.slice(6) : v;
+        }
+        nrc.addEventListener('input', fmtNrc);
+        nrc.addEventListener('paste', function(e) {
+            e.preventDefault();
+            var txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 7);
+            nrc.value = txt.length > 6 ? txt.slice(0, 6) + '-' + txt.slice(6) : txt;
+        });
+    }
+})();
+</script>
+{% endif %}
 {% if embed_mode|default(false) and cliente_dict and cliente_dict.id %}
 <form action="{{ url_for('admin.eliminar_cliente', cliente_id=cliente_dict.id) }}" method="POST" class="mt-2" onsubmit="return confirm('¿Eliminar este cliente?');">
     <input type="hidden" name="embed" value="1">

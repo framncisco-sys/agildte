@@ -27,7 +27,7 @@ def item_dte_desde_linea(
     cant = cantidad_para_dte(cantidad_base)
     precio = round(float(precio_unitario), 8)
     item: dict[str, Any] = {
-        "descripcion": (descripcion or "")[:200],
+        "descripcion": (descripcion or "")[:1000],
         "cantidad": cant,
         "precioUnitario": precio,
         "uniMedida": int(cod) if cod.isdigit() else 59,

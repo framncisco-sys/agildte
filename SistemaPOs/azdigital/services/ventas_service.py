@@ -26,6 +26,8 @@ class LineaVenta:
     subtotal: float
     texto_cantidad: str | None = None
     presentacion_id: int | None = None
+    # Nombre en inventario POS (se envía a AgilDTE como descripcion_libre si el producto remoto no existe).
+    descripcion: str | None = None
 
 
 def _calcular_subtotal_con_promo(
@@ -244,6 +246,7 @@ def crear_venta_desde_carrito(
         prod = productos_repo.get_precio_y_stock_for_update(cur, producto_id)
         if not prod:
             raise ValueError(f"Producto no existe: {producto_id}")
+        nombre_producto = productos_repo.get_nombre_producto(cur, producto_id) or "Producto"
         precio_unitario = float(prod[0])
         stock_actual = float(prod[1] if prod[1] is not None else 0)
         promo_tipo = (prod[2] or "").strip() if len(prod) > 2 else None
@@ -313,7 +316,10 @@ def crear_venta_desde_carrito(
             cant_regalo = grupos_regalo * promo_cant_regalo
             prod_regalo = productos_repo.get_precio_y_stock_for_update(cur, promo_regalo_id)
             if prod_regalo and float(prod_regalo[1] or 0) >= cant_regalo:
-                lineas.append(LineaVenta(promo_regalo_id, cant_regalo, 0.0, 0.0, None, None))
+                nom_reg = productos_repo.get_nombre_producto(cur, promo_regalo_id) or "Regalo"
+                lineas.append(
+                    LineaVenta(promo_regalo_id, cant_regalo, 0.0, 0.0, None, None, nom_reg)
+                )
 
         if modo == "MONTO":
             ms = float(item["monto_solicitado"] or 0)
@@ -321,7 +327,11 @@ def crear_venta_desde_carrito(
             # Ajuste por redondeo DTE: el total cobrado es exactamente el monto; el precio unitario deriva de subtotal/cantidad UMB.
             precio_efectivo = round(subtotal / cantidad, 8) if cantidad else precio_unitario
             total += subtotal
-            lineas.append(LineaVenta(producto_id, cantidad, precio_efectivo, subtotal, texto_cant, None))
+            lineas.append(
+                LineaVenta(
+                    producto_id, cantidad, precio_efectivo, subtotal, texto_cant, None, nombre_producto
+                )
+            )
             continue
 
         calc_tipo = None if promo_tipo == "REGALO" else promo_tipo
@@ -331,7 +341,9 @@ def crear_venta_desde_carrito(
         )
         total += subtotal
         lineas.append(
-            LineaVenta(producto_id, cantidad, precio_efectivo, subtotal, texto_cant, pres_lin)
+            LineaVenta(
+                producto_id, cantidad, precio_efectivo, subtotal, texto_cant, pres_lin, nombre_producto
+            )
         )
 
     return total, lineas

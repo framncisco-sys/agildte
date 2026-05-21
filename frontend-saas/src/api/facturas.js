@@ -105,6 +105,11 @@ function mapearPayloadFrontendADjango(payload) {
   if (documentoRelacionadoId) {
     body.documento_relacionado_id = documentoRelacionadoId
   }
+  if (payload.enviarWhatsApp) {
+    body.enviar_whatsapp = true
+    const tel = (cliente?.telefono || '').trim()
+    if (tel) body.whatsapp_telefono = tel
+  }
   return body
 }
 
@@ -277,5 +282,17 @@ export async function reenviarVenta(id) {
  */
 export async function invalidarVenta(id, datos) {
   const { data } = await apiClient.post(`ventas/${id}/invalidar/`, datos)
+  return data
+}
+
+/**
+ * Envía la factura al cliente por WhatsApp Cloud API (Meta).
+ * POST /api/facturas/enviar-whatsapp/
+ */
+export async function enviarFacturaWhatsApp(facturaId, telefono) {
+  const { data } = await apiClient.post('/facturas/enviar-whatsapp/', {
+    factura_id: facturaId,
+    telefono: String(telefono || '').trim(),
+  })
   return data
 }

@@ -336,12 +336,25 @@ def receptor_anidado_a_campos_serializer(receptor: dict[str, Any] | None) -> dic
     nombre = (receptor.get("nombre") or "").strip()
     if nombre:
         out["nombre_receptor"] = nombre
-    tipo_doc = (receptor.get("tipo_documento") or "").strip().upper() or "NIT"
-    out["tipo_doc_receptor"] = tipo_doc
+    tipo_doc = (receptor.get("tipo_documento") or "").strip().upper()
     num = (receptor.get("numero_documento") or "").strip()
+    if tipo_doc:
+        out["tipo_doc_receptor"] = tipo_doc
     if num:
         out["documento_receptor"] = num
-        out["nit_receptor"] = num
+        if tipo_doc == "DUI":
+            # CASO B del serializer usa nit_receptor como «documento de identidad» (NIT o DUI)
+            out["nit_receptor"] = num
+        elif tipo_doc == "NIT":
+            out["nit_receptor"] = num
+        else:
+            digitos = "".join(c for c in num if c.isdigit())
+            if len(digitos) in (8, 9, 10) and len(digitos) != 14:
+                out["tipo_doc_receptor"] = "DUI"
+                out["nit_receptor"] = num
+            elif digitos:
+                out["tipo_doc_receptor"] = out.get("tipo_doc_receptor") or "NIT"
+                out["nit_receptor"] = num
     nrc = (receptor.get("nrc") or "").strip()
     if nrc:
         out["nrc_receptor"] = nrc
@@ -354,6 +367,15 @@ def receptor_anidado_a_campos_serializer(receptor: dict[str, Any] | None) -> dic
     telefono = (receptor.get("telefono") or "").strip()
     if telefono:
         out["receptor_telefono"] = telefono
+    depto = (receptor.get("departamento") or receptor.get("receptor_departamento") or "").strip()
+    if depto:
+        out["receptor_departamento"] = depto[:2]
+    muni = (receptor.get("municipio") or receptor.get("receptor_municipio") or "").strip()
+    if muni:
+        out["receptor_municipio"] = muni[:2]
+    cod_act = (receptor.get("codigo_actividad_economica") or receptor.get("cod_actividad") or "").strip()
+    if cod_act:
+        out["cod_actividad_receptor"] = cod_act
     return out
 
 
@@ -740,26 +762,39 @@ def build_crear_venta_con_detalles_payload(
     tipo_venta = map_tipo_comprobante_pos_a_tipo_venta(tipo_comprobante_pos)
     detalles: list[dict[str, Any]] = []
     for ln in lineas:
+        desc_libre: str | None = None
         if hasattr(ln, "producto_id"):
             pid = int(ln.producto_id)
             cant = float(ln.cantidad)
             pu = float(ln.precio_unitario)
             st = float(ln.subtotal)
+            desc_libre = (
+                getattr(ln, "descripcion_libre", None)
+                or getattr(ln, "descripcion", None)
+                or getattr(ln, "nombre", None)
+            )
         elif isinstance(ln, dict):
             pid = int(ln.get("producto_id") or ln.get("producto") or ln.get("id"))
             cant = float(ln.get("cantidad", 0))
             pu = float(ln.get("precio_unitario", 0))
             st = float(ln.get("subtotal", cant * pu))
+            desc_libre = ln.get("descripcion_libre") or ln.get("nombre") or ln.get("descripcion")
         else:
             continue
-        detalles.append(
-            {
-                "producto_id": pid,
-                "cantidad": cant,
-                "precio_unitario": round(pu, 8),
-                "subtotal": round(st, 2),
-            }
-        )
+        if cant <= 0:
+            continue
+        # POS puede enviar subtotal correcto con precio_unitario 0 (p. ej. venta por monto / redondeo).
+        if pu <= 0 and st > 0:
+            pu = round(st / cant, 8)
+        row: dict[str, Any] = {
+            "producto_id": pid,
+            "cantidad": cant,
+            "precio_unitario": round(pu, 8),
+            "subtotal": round(st if st > 0 else cant * pu, 2),
+        }
+        if desc_libre and str(desc_libre).strip():
+            row["descripcion_libre"] = str(desc_libre).strip()[:1000]
+        detalles.append(row)
 
     # Ticket en POS = Factura Consumidor Final (DTE 01) en AgilDTE; sin cliente de catálogo = receptor genérico
     # sin documento (el serializer Django aplica CASO CF sin cliente_id).
@@ -787,12 +822,21 @@ def build_crear_venta_con_detalles_payload(
         "periodo_aplicado": periodo,
         "hora_emision": hora_sv,
     }
-    if cliente_id is not None:
-        body["cliente"] = int(cliente_id)
-        body["cliente_id"] = int(cliente_id)
-    # Receptor anidado solo con cliente de catálogo; para CF anónimo no enviar NIT/DUI vacíos.
+    # Receptor / CCF: el POS envía datos del comprador; no usar cliente_id local (IDs distintos a AgilDTE).
     if receptor:
         body.update(receptor_anidado_a_campos_serializer(receptor))
+        nrc_rec = (receptor.get("nrc") or "").strip()
+        if tipo_venta == "CCF" and nrc_rec:
+            body["cliente"] = nrc_rec
+        cod_act = (receptor.get("codigo_actividad_economica") or receptor.get("cod_actividad") or "").strip()
+        if cod_act:
+            body["cod_actividad_receptor"] = cod_act
+    elif cliente_id is not None:
+        body["cliente"] = int(cliente_id)
+        body["cliente_id"] = int(cliente_id)
+    # Nunca enviar PK de PosAgil como cliente_id a AgilDTE
+    if tipo_venta == "CCF" or tc_pos == "CREDITO_FISCAL":
+        body.pop("cliente_id", None)
     if venta_local_id is not None:
         body["referencia_externa"] = f"pos-local-{venta_local_id}"
     return body

@@ -16,7 +16,10 @@ const schema = z.object({
   items: z.array(
     z.object({
       cantidad: z.coerce.number().min(0.01, 'Cantidad requerida'),
-      descripcion: z.string().min(1, 'Descripción requerida'),
+      descripcion: z
+        .string()
+        .min(1, 'Descripción requerida')
+        .max(1000, 'La descripción no puede superar 1000 caracteres'),
       precioUnitario: z.coerce.number().min(0, 'Precio requerido'),
     })
   ).min(1, 'Debe agregar al menos un ítem'),

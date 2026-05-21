@@ -66,17 +66,10 @@
                         <!-- Datos fiscales -->
                         <div class="mb-4 pb-3 border-bottom">
                             <p class="small text-uppercase fw-bold text-muted mb-2"><i class="bi bi-file-earmark-text me-1"></i> Datos fiscales</p>
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold">Giro o Actividad Económica (MH)</label>
-                                <input type="text" list="actividades_proveedor" name="giro_actividad" class="form-control" value="{{ proveedor.giro_actividad if proveedor else '' }}" placeholder="Busque código o descripción">
-                                {% if actividades %}
-                                <datalist id="actividades_proveedor">
-                                    {% for a in actividades %}
-                                    <option value="{{ a[0] }}">{{ a[0] }} — {{ (a[1] or '')[:70] }}</option>
-                                    {% endfor %}
-                                </datalist>
-                                {% endif %}
-                            </div>
+                            {% set _giro = proveedor.giro_actividad if proveedor else '' %}
+                            {% with field_name='giro_actividad', label='Giro o Actividad Económica (MH)', codigo_value=_giro, descripcion_value='', hint='Código de actividad según catálogo AgilDTE.' %}
+                            {% include '_campo_actividad_economica.html' %}
+                            {% endwith %}
                             <div class="row g-2">
                                 <div class="col-12 col-sm-6">
                                     <label class="form-label small fw-bold">Clasificación</label>

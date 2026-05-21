@@ -62,8 +62,31 @@ def _sucursal_id_session() -> int | None:
         return None
 
 
+def _cliente_template_ctx() -> dict:
+    from azdigital.data.departamentos_municipios import DEPARTAMENTOS, MUNICIPIOS_POR_DEPARTAMENTO
+    return {"departamentos": DEPARTAMENTOS, "municipios_por_departamento": MUNICIPIOS_POR_DEPARTAMENTO}
+
+
 def _cliente_dict_desde_fila(cl) -> dict:
     """Convierte fila ``get_cliente`` en dict para plantillas de edición (unificado con ``editar_cliente``)."""
+    if len(cl) >= 15:
+        return {
+            "id": cl[0],
+            "empresa_id": cl[1],
+            "sucursal_id": cl[2],
+            "nombre": cl[3],
+            "tipo_documento": cl[4],
+            "numero_documento": cl[5],
+            "correo": cl[6],
+            "es_contribuyente": cl[7],
+            "es_gran_contribuyente": cl[8],
+            "direccion": cl[9],
+            "telefono": cl[10],
+            "codigo_actividad_economica": cl[11] or "",
+            "nrc": cl[12] or "",
+            "departamento": cl[13] or "06",
+            "municipio": cl[14] or "14",
+        }
     if len(cl) >= 11:
         return {
             "id": cl[0],
@@ -78,6 +101,9 @@ def _cliente_dict_desde_fila(cl) -> dict:
             "direccion": cl[9],
             "telefono": cl[10],
             "codigo_actividad_economica": cl[11] if len(cl) > 11 else "",
+            "nrc": "",
+            "departamento": "06",
+            "municipio": "14",
         }
     if len(cl) >= 10:
         return {
@@ -93,6 +119,9 @@ def _cliente_dict_desde_fila(cl) -> dict:
             "direccion": cl[8],
             "telefono": cl[9],
             "codigo_actividad_economica": cl[10] if len(cl) > 10 else "",
+            "nrc": "",
+            "departamento": "06",
+            "municipio": "14",
         }
     return {
         "id": cl[0],
@@ -107,6 +136,9 @@ def _cliente_dict_desde_fila(cl) -> dict:
         "direccion": cl[7],
         "telefono": cl[8],
         "codigo_actividad_economica": "",
+        "nrc": "",
+        "departamento": "06",
+        "municipio": "14",
     }
 
 
@@ -5241,7 +5273,18 @@ def clientes():
             actividades = cur.fetchall() or []
         except Exception:
             pass
-        return render_template("clientes.html", clientes=clientes_lista, cliente=None, cliente_dict=None, empresas=empresas, sucursales_todas=sucursales_todas, empresas_map=empresas_map, es_superadmin=es_super, actividades=actividades)
+        return render_template(
+            "clientes.html",
+            clientes=clientes_lista,
+            cliente=None,
+            cliente_dict=None,
+            empresas=empresas,
+            sucursales_todas=sucursales_todas,
+            empresas_map=empresas_map,
+            es_superadmin=es_super,
+            actividades=actividades,
+            **_cliente_template_ctx(),
+        )
     finally:
         cur.close()
         conn.close()
@@ -5295,7 +5338,18 @@ def editar_cliente(id):
             actividades = cur.fetchall() or []
         except Exception:
             pass
-        return render_template("clientes.html", clientes=clientes_lista, cliente=cliente_edit, cliente_dict=cliente_dict, empresas=empresas, sucursales_todas=sucursales_todas, empresas_map=empresas_map, es_superadmin=es_super, actividades=actividades)
+        return render_template(
+            "clientes.html",
+            clientes=clientes_lista,
+            cliente=cliente_edit,
+            cliente_dict=cliente_dict,
+            empresas=empresas,
+            sucursales_todas=sucursales_todas,
+            empresas_map=empresas_map,
+            es_superadmin=es_super,
+            actividades=actividades,
+            **_cliente_template_ctx(),
+        )
     finally:
         cur.close()
         conn.close()
@@ -5316,13 +5370,29 @@ def guardar_cliente():
     direccion = (form.get("direccion") or "").strip()
     telefono = (form.get("telefono") or "").strip()
     codigo_actividad = (form.get("codigo_actividad_economica") or "").strip()
+    nrc = (form.get("nrc") or "").strip()
+    departamento = (form.get("departamento") or "").strip()
+    municipio = (form.get("municipio") or "").strip()
 
     if not nombre_cliente:
         if embed:
             if cliente_id and str(cliente_id).isdigit():
                 return redirect(url_for("pos.ventas_pos_clientes_embed", cid=int(cliente_id)))
             return redirect(url_for("pos.ventas_pos_clientes_embed"))
-        return redirect(url_for("admin.clientes"))
+            return redirect(url_for("admin.clientes"))
+
+    if nrc:
+        from azdigital.utils.validar_documentos import validar_nrc
+        ok_nrc_campo, msg_nrc = validar_nrc(nrc)
+        if not ok_nrc_campo:
+            flash(msg_nrc, "danger")
+            if cliente_id and str(cliente_id).isdigit():
+                if embed:
+                    return redirect(url_for("pos.ventas_pos_clientes_embed", cid=int(cliente_id)))
+                return redirect(url_for("admin.editar_cliente", id=cliente_id))
+            if embed:
+                return redirect(url_for("pos.ventas_pos_clientes_embed"))
+            return redirect(url_for("admin.clientes"))
 
     tipo_doc = (tipo_documento or "").strip().upper()
     if tipo_doc == "NIT" and numero_documento:
@@ -5379,6 +5449,9 @@ def guardar_cliente():
                     actualizar_sucursal=es_super,
                     codigo_actividad_economica=codigo_actividad,
                     es_gran_contribuyente=es_gran_contribuyente,
+                    nrc=nrc,
+                    departamento=departamento,
+                    municipio=municipio,
                 )
             except Exception:
                 conn.rollback()
@@ -5397,6 +5470,9 @@ def guardar_cliente():
                     actualizar_sucursal=False,
                     codigo_actividad_economica=codigo_actividad,
                     es_gran_contribuyente=es_gran_contribuyente,
+                    nrc=nrc,
+                    departamento=departamento,
+                    municipio=municipio,
                 )
         else:
             nuevo_id = clientes_repo.crear_cliente(
@@ -5412,6 +5488,9 @@ def guardar_cliente():
                 sucursal_id=sucursal_id if es_super else None,
                 codigo_actividad_economica=codigo_actividad,
                 es_gran_contribuyente=es_gran_contribuyente,
+                nrc=nrc,
+                departamento=departamento,
+                municipio=municipio,
             )
         registrar_accion(cur, historial_usuarios_repo.EVENTO_CLIENTE_EDITADO if (cliente_id and cliente_id.isdigit()) else historial_usuarios_repo.EVENTO_CLIENTE_CREADO, f"Cliente {nombre_cliente} guardado")
         conn.commit()

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { searchItems } from '../../../api/items'
+import { DTE_LINEA_DESCRIPCION_MAX } from '../../../constants/dte'
 
 /**
  * Combobox/autocomplete para buscar ítems del catálogo y seleccionar uno.
@@ -86,14 +87,15 @@ export function ItemDescripcionCombobox({
 
   return (
     <div ref={wrapperRef} className={`relative ${className}`}>
-      <input
-        type="text"
+      <textarea
+        rows={2}
         value={value}
+        maxLength={DTE_LINEA_DESCRIPCION_MAX}
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => value && value.length >= 2 && suggestions.length > 0 && setOpen(true)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className={`w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${inputClassName}`}
+        className={`w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[2.5rem] ${inputClassName}`}
         autoComplete="off"
         aria-autocomplete="list"
         aria-expanded={open}

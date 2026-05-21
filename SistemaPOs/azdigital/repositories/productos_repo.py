@@ -242,6 +242,19 @@ def listar_catalogo_pos_modal(
         return [tuple(list(r) + [False, None, 12, "59", 0.0]) for r in rows]
 
 
+def get_nombre_producto(cur, producto_id: int) -> str | None:
+    """Nombre comercial del producto en inventario POS (para descripción en DTE AgilDTE)."""
+    try:
+        cur.execute(
+            "SELECT COALESCE(NULLIF(TRIM(nombre), ''), NULL) FROM productos WHERE id = %s",
+            (producto_id,),
+        )
+        row = cur.fetchone()
+        return (row[0] or "").strip() if row and row[0] else None
+    except Exception:
+        return None
+
+
 def get_precio_y_stock_for_update(cur, producto_id: int):
     try:
         cur.execute(

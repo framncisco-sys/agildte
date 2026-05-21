@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import psycopg2
-from flask import Blueprint, current_app, jsonify, redirect, render_template, session, url_for
+from flask import Blueprint, current_app, jsonify, redirect, render_template, request, session, url_for
 
 from azdigital.decorators import login_required, _rol_desde_bd
 from azdigital.repositories import empresas_repo, productos_repo
@@ -259,6 +259,29 @@ def dashboard():
     if rol in ("ADMIN", "SUPERADMIN") and not session.get("empresa_id"):
         return redirect(url_for("core.index"))
     return _render_dashboard()
+
+
+@bp.route("/api/actividades")
+@login_required
+def api_actividades_agildte():
+    """
+    Catálogo MH de actividades económicas (proxy a AgilDTE GET /api/actividades/).
+    PosAgil y configuración usan la misma fuente que el portal AgilDTE.
+    """
+    search = (request.args.get("search") or "").strip() or None
+    try:
+        limit = int(request.args.get("limit") or 50)
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        offset = int(request.args.get("offset") or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    from azdigital.integration.agildte_actividades import listar_actividades_agildte
+
+    payload = listar_actividades_agildte(search=search, limit=limit, offset=offset)
+    status = 200 if payload.get("ok") else 503
+    return jsonify(payload), status
 
 
 @bp.route("/posagil/agildte_status")

@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { shouldRedirectFromAgildteToPos } from '../../constants/roles'
+import { RUTA_INICIO_APP } from '../../constants/routes'
 import { openPosAgilSso } from '../../utils/posAgilUrl'
 
 /**
@@ -19,7 +20,7 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const from = location.state?.from?.pathname || '/dashboard'
+  const from = location.state?.from?.pathname || RUTA_INICIO_APP
 
   /** Tras login con contraseña: vendedor PosAgil puede ir al POS por SSO (una sola vez). */
   function redirectPosAgilHard() {

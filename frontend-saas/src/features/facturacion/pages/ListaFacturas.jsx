@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, FileText, Braces, Eye, Loader2, CircleX, FileDown, FolderDown, Send, BarChart3 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getVentas, downloadPDF, downloadJSON, downloadFacturasFiltradasZip, reenviarVenta, getInformeCfDiario } from '../../../api/facturas'
+import { getEmpresa } from '../../../api/empresa'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 import { DetalleRechazoModal } from '../components/DetalleRechazoModal'
 import { InvalidacionModal } from '../components/InvalidacionModal'
+import { WhatsAppFacturaButton } from '../../../components/WhatsAppFacturaButton'
 
 const ESTADO_BADGES = {
   PROCESADO: { label: 'PROCESADO', color: 'bg-emerald-100 text-emerald-800', icon: '🟢' },
@@ -114,6 +116,25 @@ function Paginacion({ page, totalPages, totalCount, pageSize, onPageChange, carg
 
 export function ListaFacturas() {
   const empresaId = useEmpresaStore((s) => s.empresaId)
+  const [whatsappPremiumEmpresa, setWhatsappPremiumEmpresa] = useState(false)
+
+  useEffect(() => {
+    if (!empresaId) {
+      setWhatsappPremiumEmpresa(false)
+      return
+    }
+    let cancelado = false
+    getEmpresa(empresaId)
+      .then((emp) => {
+        if (!cancelado) setWhatsappPremiumEmpresa(!!emp?.whatsapp_premium_enabled)
+      })
+      .catch(() => {
+        if (!cancelado) setWhatsappPremiumEmpresa(false)
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [empresaId])
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false)
   const [ventas, setVentas] = useState([])
   const [paginacion, setPaginacion] = useState({ count: 0, total_pages: 1, page: 1, has_next: false, has_previous: false })
@@ -295,7 +316,24 @@ export function ListaFacturas() {
 
   return (
     <div className="max-w-6xl mx-auto px-2 sm:px-0">
-      <h1 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4 sm:mb-6">Historial de Documentos</h1>
+      <h1 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">Historial de Documentos</h1>
+      <p className="text-sm text-gray-500 mb-4">
+        El envío por WhatsApp está en la columna <strong>Acciones</strong> (ícono de mensaje), solo en facturas{' '}
+        <strong>PROCESADAS</strong>.
+      </p>
+      {whatsappPremiumEmpresa ? (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          WhatsApp premium <strong>activo</strong> para esta empresa. Configura token y Phone ID en{' '}
+          <a href="/framncisco/" target="_blank" rel="noreferrer" className="underline font-medium">
+            Django Admin → Empresas
+          </a>
+          .
+        </div>
+      ) : (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          WhatsApp premium <strong>inactivo</strong>. Actívalo en Django Admin → Empresas → «Whatsapp premium enabled».
+        </div>
+      )}
 
       {/* Filtros Acordeón */}
       <div className="mb-6 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
@@ -454,7 +492,15 @@ export function ListaFacturas() {
                         Reenviar
                       </button>
                     )}
-                    <div className="flex gap-2 pt-2">
+                    <div className="flex gap-2 pt-2 flex-wrap items-center">
+                      <WhatsAppFacturaButton
+                        ventaId={v.id}
+                        telefono={v.cliente_telefono}
+                        premiumEnabled={!!v.whatsapp_premium_enabled || whatsappPremiumEmpresa}
+                        facturaProcesada={esProcesado}
+                        showLabel
+                        className="border border-gray-200"
+                      />
                       {esProcesado && (
                         <>
                           <button onClick={() => handleDownloadPDF(v)} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100" title="PDF"><FileText className="w-4 h-4" /></button>
@@ -526,7 +572,15 @@ export function ListaFacturas() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-center gap-2 flex-wrap">
+                          <WhatsAppFacturaButton
+                            ventaId={v.id}
+                            telefono={v.cliente_telefono}
+                            premiumEnabled={!!v.whatsapp_premium_enabled || whatsappPremiumEmpresa}
+                            facturaProcesada={esProcesado}
+                            showLabel
+                            className="border border-gray-200"
+                          />
                           {esProcesado && (
                             <>
                               <button

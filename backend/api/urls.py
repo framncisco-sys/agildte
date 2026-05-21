@@ -12,6 +12,7 @@ router.register(r'actividades', ActividadEconomicaViewSet, basename='actividadec
 
 urlpatterns = [
     # ZIP masivo (Historial): mismo filtro que ventas/listar/. Debe ir antes del router.
+    path('facturas/enviar-whatsapp/', views.enviar_factura_whatsapp_api),
     path('facturas/descarga-zip/', views.descargar_lote_ventas_api),
     path('descarga-zip/', views.descargar_lote_ventas_api),  # alias /api/descarga-zip/
     # Retrocompat: front antiguo / builds en caché llamaban ventas/descargar-lote/ (el router

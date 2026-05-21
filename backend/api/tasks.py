@@ -1,12 +1,15 @@
 """
 Tareas de facturación en segundo plano.
 Procesa ventas: firma DTE, envío a MH, envío de correo.
-Compatible con Celery o ejecución vía management command (procesar_tareas_facturacion).
+Compatible con Celery, worker Docker (procesar_tareas_facturacion --loop)
+o disparo en hilo tras encolar (encolar_y_disparar_facturacion).
 """
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Optional
 
+from django.db import close_old_connections, transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -50,6 +53,16 @@ def procesar_factura_venta(venta_id: int) -> dict:
                 enviar_factura_email(venta)
             except Exception as e:
                 logger.warning(f"No se pudo enviar correo para venta {venta_id}: {e}")
+
+            tarea = getattr(venta, 'tarea_facturacion', None)
+            if tarea and tarea.enviar_whatsapp_despues:
+                from .services.whatsapp_post_factura import enviar_whatsapp_tras_correo_si_aplica
+                tel = (tarea.whatsapp_telefono_destino or '').strip()
+                wa_err = enviar_whatsapp_tras_correo_si_aplica(
+                    venta, enviar=True, telefono=tel,
+                )
+                if wa_err:
+                    logger.warning('WhatsApp venta %s: %s', venta_id, wa_err)
 
         return {
             'exito': resultado.get('exito', False),
@@ -119,6 +132,78 @@ def ejecutar_tarea(tarea_id: int) -> bool:
             tarea.proximo_reintento = None
             tarea.save(update_fields=['estado', 'intentos', 'error_mensaje', 'proximo_reintento', 'actualizada_at'])
             return True
+
+
+def _ejecutar_tarea_en_hilo(tarea_id: int) -> None:
+    """Ejecuta una tarea fuera del ciclo HTTP (cierra conexiones Django al terminar)."""
+    close_old_connections()
+    try:
+        ejecutar_tarea(tarea_id)
+    except Exception:
+        logger.exception('Error en hilo de facturación tarea_id=%s', tarea_id)
+    finally:
+        close_old_connections()
+
+
+def _disparar_en_hilo(callback) -> None:
+    threading.Thread(target=callback, daemon=True).start()
+
+
+def encolar_y_disparar_facturacion(
+    venta_id: int,
+    *,
+    enviar_whatsapp: bool = False,
+    whatsapp_telefono: str = '',
+) -> int:
+    """
+    Encola TareaFacturacion y, tras commit, procesa en segundo plano.
+    Evita que la factura quede PENDIENTE si no hay cron/worker externo.
+    """
+    from .models import TareaFacturacion
+
+    tarea, _ = TareaFacturacion.objects.get_or_create(
+        venta_id=venta_id,
+        defaults={'estado': 'Pendiente'},
+    )
+    if tarea.estado == 'Completada':
+        return tarea.id
+    if tarea.estado not in ('Pendiente', 'Error'):
+        tarea.estado = 'Pendiente'
+    tarea.enviar_whatsapp_despues = bool(enviar_whatsapp)
+    tarea.whatsapp_telefono_destino = (whatsapp_telefono or '')[:32]
+    tarea.save(
+        update_fields=[
+            'estado',
+            'actualizada_at',
+            'enviar_whatsapp_despues',
+            'whatsapp_telefono_destino',
+        ]
+    )
+
+    tarea_id = tarea.id
+
+    def _schedule():
+        _disparar_en_hilo(lambda: _ejecutar_tarea_en_hilo(tarea_id))
+
+    transaction.on_commit(_schedule)
+    return tarea_id
+
+
+def disparar_procesamiento_cola(limite: int = 20) -> None:
+    """Procesa la cola en hilo (p. ej. al desactivar contingencia)."""
+    def _schedule():
+        def _run():
+            close_old_connections()
+            try:
+                procesar_tareas_pendientes(limite=limite)
+            except Exception:
+                logger.exception('Error procesando cola de facturación')
+            finally:
+                close_old_connections()
+
+        _disparar_en_hilo(_run)
+
+    transaction.on_commit(_schedule)
 
 
 def procesar_tareas_pendientes(limite: int = 20) -> int:

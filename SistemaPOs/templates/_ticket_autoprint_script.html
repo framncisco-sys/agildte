@@ -1,0 +1,63 @@
+{# Autoprint + autoclose para ventana emergente del POS (no deja pestañas abiertas). #}
+<script>
+(function () {
+    var q = window.location.search || '';
+    var autoPrint = /[?&]autoprint=1(?:&|$)/.test(q) || /[?&]autoprint=true(?:&|$)/i.test(q);
+    var autoClose = /[?&]autoclose=1(?:&|$)/.test(q) || autoPrint;
+    if (!autoPrint && !autoClose) return;
+
+    var closeScheduled = false;
+    function tryCloseWindow() {
+        if (!autoClose || closeScheduled) return;
+        closeScheduled = true;
+        setTimeout(function () {
+            try { window.close(); } catch (e) {}
+        }, 250);
+    }
+
+    function bindCloseAfterPrint() {
+        if (!autoClose) return;
+        window.addEventListener('afterprint', tryCloseWindow);
+        if (window.matchMedia) {
+            var mq = window.matchMedia('print');
+            var onChange = function (ev) {
+                if (!ev.matches) tryCloseWindow();
+            };
+            if (mq.addEventListener) mq.addEventListener('change', onChange);
+            else if (mq.addListener) mq.addListener(onChange);
+        }
+        setTimeout(tryCloseWindow, 15000);
+    }
+
+    function runPrint() {
+        bindCloseAfterPrint();
+        setTimeout(function () { window.print(); }, 200);
+    }
+
+    window.addEventListener('load', function () {
+        if (!autoPrint) {
+            bindCloseAfterPrint();
+            return;
+        }
+        var imgs = document.images;
+        var pending = 0;
+        for (var i = 0; i < imgs.length; i++) {
+            if (!imgs[i].complete) pending++;
+        }
+        if (pending === 0) {
+            runPrint();
+            return;
+        }
+        function done() {
+            pending--;
+            if (pending <= 0) runPrint();
+        }
+        for (var j = 0; j < imgs.length; j++) {
+            if (!imgs[j].complete) {
+                imgs[j].addEventListener('load', done);
+                imgs[j].addEventListener('error', done);
+            }
+        }
+    });
+})();
+</script>

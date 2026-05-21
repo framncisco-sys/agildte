@@ -426,6 +426,10 @@ class FacturacionService:
                 else:
                     mensaje = datos.get("descripcionMsg", "Sin mensaje")
                     observaciones = datos.get("observaciones", "Sin observaciones")
+                    from api.utils.mh_documento import mensaje_ayuda_receptor_nrc_mh
+                    ayuda = mensaje_ayuda_receptor_nrc_mh(datos.get("codigoMsg"), mensaje)
+                    if ayuda:
+                        mensaje = f"{mensaje} — {ayuda}"
                     logger.warning(
                         "⚠️ MH RECHAZÓ DTE: estado=%s | descripcionMsg=%s | observaciones=%s | body=%s",
                         estado, mensaje, observaciones, json.dumps(datos, ensure_ascii=False)
@@ -439,17 +443,29 @@ class FacturacionService:
                     }
             else:
                 error_msg = f"Error HTTP {resp.status_code}: {resp.text}"
+                body_parsed = None
                 try:
                     body_parsed = resp.json()
                     logger.error(
                         "❌ MH rechazó envío: status=%s | body=%s",
                         resp.status_code, json.dumps(body_parsed, ensure_ascii=False)
                     )
+                    desc = (body_parsed.get("descripcionMsg") or "").strip()
+                    cod = body_parsed.get("codigoMsg")
+                    if desc:
+                        error_msg = desc
+                    from api.utils.mh_documento import mensaje_ayuda_receptor_nrc_mh
+                    ayuda = mensaje_ayuda_receptor_nrc_mh(cod, desc or resp.text)
+                    if ayuda:
+                        error_msg = f"{error_msg} — {ayuda}"
                 except Exception:
                     logger.error("❌ MH Error envío: status=%s | body=%s", resp.status_code, resp.text[:500])
                 if resp.status_code >= 500:
                     raise EnvioMHTransitorioError(error_msg) from None
-                raise EnvioMHError(error_msg)
+                err = EnvioMHError(error_msg)
+                if body_parsed:
+                    err.datos_mh = body_parsed
+                raise err
                 
         except requests.exceptions.RequestException as e:
             error_msg = f"Error de conexión enviando a MH: {str(e)}"
@@ -612,7 +628,15 @@ class FacturacionService:
             resultado["errores"].append(error_msg)
             resultado["mensaje"] = error_msg
             venta.estado_dte = 'RechazadoMH'
-            venta.observaciones_mh = error_msg
+            datos_mh = getattr(e, 'datos_mh', None)
+            if isinstance(datos_mh, dict):
+                venta.observaciones_mh = json.dumps({
+                    'codigo': datos_mh.get('codigoMsg'),
+                    'descripcion': datos_mh.get('descripcionMsg') or str(e),
+                    'observaciones': datos_mh.get('observaciones') or [],
+                })
+            else:
+                venta.observaciones_mh = error_msg
             venta.save()
             err = FacturacionServiceError(error_msg)
             try:

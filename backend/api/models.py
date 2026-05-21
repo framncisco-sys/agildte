@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from decimal import Decimal
 
+from .constants import DTE_LINEA_DESCRIPCION_MAX_LENGTH
 from .utils.fields import EncryptedCharField, EncryptedTextField
 
 # 1. MODELO EMPRESA (Tus 12 Clientes VIP)
@@ -173,9 +174,42 @@ class Empresa(models.Model):
         help_text="Plantilla HTML del cuerpo. Variables: {{cliente}}, {{numero_control}}, {{codigo_generacion}}, {{nombre_empresa}}, {{fecha}}, {{total}}"
     )
 
+    # --- WhatsApp Cloud API (Meta) — función premium por empresa ---
+    whatsapp_premium_enabled = models.BooleanField(
+        default=False,
+        help_text="Si está activo, la empresa puede enviar facturas por WhatsApp Cloud API (Meta).",
+    )
+    whatsapp_phone_number_id = models.CharField(
+        max_length=32,
+        blank=True,
+        null=True,
+        help_text="ID del número de teléfono en Meta Business (WhatsApp Cloud API).",
+    )
+    whatsapp_access_token = EncryptedCharField(
+        max_length=2000,
+        blank=True,
+        null=True,
+        help_text="Token de acceso permanente de la app Meta (cifrado en BD).",
+    )
+    whatsapp_business_account_id = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        help_text="Opcional: WABA ID en Meta (referencia administrativa).",
+    )
+
     def save(self, *args, **kwargs):
         # Limpiar espacios al inicio/final en credenciales (evitar rechazo MH "CREDENCIALES INVÁLIDAS")
-        for field in ('user_api_mh', 'clave_api_mh', 'clave_certificado', 'smtp_user', 'smtp_password', 'clave_correo'):
+        for field in (
+            'user_api_mh',
+            'clave_api_mh',
+            'clave_certificado',
+            'smtp_user',
+            'smtp_password',
+            'clave_correo',
+            'whatsapp_access_token',
+            'whatsapp_phone_number_id',
+        ):
             val = getattr(self, field, None)
             if val is not None and isinstance(val, str):
                 cleaned = val.strip()
@@ -553,7 +587,7 @@ class Venta(models.Model):
 class Producto(models.Model):
     empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='productos', null=True)
     codigo = models.CharField(max_length=50, blank=True, default='')
-    descripcion = models.CharField(max_length=200)
+    descripcion = models.CharField(max_length=DTE_LINEA_DESCRIPCION_MAX_LENGTH)
     precio_unitario = models.DecimalField(max_digits=14, decimal_places=8, default=0.00)
     TIPO_ITEM_CHOICES = [(1, 'Bien'), (2, 'Servicio')]
     tipo_item = models.IntegerField(choices=TIPO_ITEM_CHOICES, default=1)
@@ -585,7 +619,9 @@ class DetalleVenta(models.Model):
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, null=True, blank=True)
     
     # Si no hay producto, permitir item libre
-    descripcion_libre = models.CharField(max_length=200, blank=True, null=True)
+    descripcion_libre = models.CharField(
+        max_length=DTE_LINEA_DESCRIPCION_MAX_LENGTH, blank=True, null=True
+    )
     codigo_libre = models.CharField(max_length=50, blank=True, null=True)
     
     cantidad = models.DecimalField(max_digits=10, decimal_places=2, default=1.00)
@@ -693,7 +729,9 @@ class PlantillaItem(models.Model):
         blank=True,
         help_text='Producto asociado (opcional). Si no se indica, se usa descripcion_libre.',
     )
-    descripcion_libre = models.CharField(max_length=200, blank=True, null=True)
+    descripcion_libre = models.CharField(
+        max_length=DTE_LINEA_DESCRIPCION_MAX_LENGTH, blank=True, null=True
+    )
     codigo_libre = models.CharField(max_length=50, blank=True, null=True)
     cantidad = models.DecimalField(max_digits=10, decimal_places=2, default=1.00)
     precio_unitario = models.DecimalField(max_digits=14, decimal_places=8, default=0.00)
@@ -905,6 +943,11 @@ class TareaFacturacion(models.Model):
     intentos = models.IntegerField(default=0, help_text="Número de intentos de procesamiento")
     proximo_reintento = models.DateTimeField(null=True, blank=True, help_text="Cuándo reintentar (exponential backoff)")
     error_mensaje = models.TextField(blank=True, null=True)
+    enviar_whatsapp_despues = models.BooleanField(
+        default=False,
+        help_text='Tras aceptación MH y correo, enviar mensaje WhatsApp al teléfono indicado.',
+    )
+    whatsapp_telefono_destino = models.CharField(max_length=32, blank=True, default='')
     creada_at = models.DateTimeField(auto_now_add=True)
     actualizada_at = models.DateTimeField(auto_now=True)
 

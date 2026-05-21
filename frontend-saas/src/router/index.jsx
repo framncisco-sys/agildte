@@ -2,6 +2,7 @@ import { Outlet, Navigate } from 'react-router-dom'
 import { RequireAuth } from './RequireAuth'
 import { RequireFacturacionNativa } from './RequireFacturacionNativa'
 import { ROLES_CONFIG_ADMIN, ROLES_LIBROS_IVA } from '../constants/roles'
+import { RUTA_INICIO_APP } from '../constants/routes'
 import { MainLayout } from '../layouts/MainLayout'
 import { AuthLayout } from '../layouts/AuthLayout'
 import { LoginPage } from '../features/auth/LoginPage'
@@ -14,6 +15,7 @@ import { CargaMasiva } from '../features/facturacion/pages/CargaMasiva'
 import Clientes from '../features/clientes/pages/Clientes'
 import LibrosIva from '../features/contabilidad/pages/LibrosIva'
 import ConfiguracionPage from '../features/configuracion/pages/ConfiguracionPage'
+import ActividadesCatalogoPage from '../features/configuracion/pages/ActividadesCatalogoPage'
 import ItemsPage from '../features/items/pages/ItemsPage'
 
 export const router = {
@@ -26,7 +28,7 @@ export const router = {
         </RequireAuth>
       ),
       children: [
-        { index: true, element: <Navigate to="/dashboard" replace /> },
+        { index: true, element: <Navigate to={RUTA_INICIO_APP} replace /> },
         { path: 'dashboard', element: <DashboardPage /> },
         { path: 'facturacion', element: <Navigate to="/facturacion/nueva" replace /> },
         {
@@ -71,6 +73,14 @@ export const router = {
             </RequireAuth>
           ),
         },
+        {
+          path: 'configuracion/catalogo-actividades',
+          element: (
+            <RequireAuth allowedRoles={ROLES_CONFIG_ADMIN}>
+              <ActividadesCatalogoPage />
+            </RequireAuth>
+          ),
+        },
         { path: 'items', element: <ItemsPage /> },
         {
           path: 'contabilidad/libros-iva',
@@ -98,7 +108,7 @@ export const router = {
           <div className="text-center p-8 bg-white rounded-xl shadow-lg max-w-md">
             <h1 className="text-xl font-semibold text-slate-800 mb-2">Sin permiso</h1>
             <p className="text-slate-600 mb-4">No tiene permisos para acceder a esta sección.</p>
-            <a href="/dashboard" className="text-slate-800 underline font-medium">Volver al inicio</a>
+            <a href={RUTA_INICIO_APP} className="text-slate-800 underline font-medium">Volver al inicio</a>
           </div>
         </div>
       ),

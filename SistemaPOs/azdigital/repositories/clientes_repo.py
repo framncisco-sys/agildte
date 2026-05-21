@@ -1,6 +1,44 @@
 # Programador: Oscar Amaya Romero
 from __future__ import annotations
 
+from azdigital.data.departamentos_municipios import DEPTO_DEFAULT, MUNI_DEFAULT
+
+
+def _norm_depto_muni(departamento: str | None, municipio: str | None) -> tuple[str, str]:
+    d = (departamento or "").strip()[:2] or DEPTO_DEFAULT
+    m = (municipio or "").strip()[:2] or MUNI_DEFAULT
+    return d, m
+
+
+def _row_a_tuple(row) -> tuple:
+    """
+    Fila SELECT extendida → tuple estándar:
+    id, empresa_id, sucursal_id, nombre, tipo_doc, num_doc, correo, contrib, gran,
+    direccion, telefono, cod_act, nrc, departamento, municipio
+    """
+    if not row:
+        return None
+    n = len(row)
+    if n >= 15:
+        return (
+            row[0], row[1], row[2], row[3], row[4], row[5], row[6], bool(row[7]), bool(row[8]),
+            row[9], row[10], row[11] or "", row[12] or "", row[13] or DEPTO_DEFAULT, row[14] or MUNI_DEFAULT,
+        )
+    if n >= 12:
+        return (
+            row[0], row[1], None, row[2], row[3], row[4], row[5], row[6], bool(row[7]), bool(row[8]),
+            row[9], row[10], row[11] or "", "", DEPTO_DEFAULT, MUNI_DEFAULT,
+        )
+    if n >= 10:
+        return (
+            row[0], row[1], None, row[2], row[3], row[4], row[5], row[6], bool(row[7]), False,
+            row[8], row[9], row[10] if n > 10 else "", "", DEPTO_DEFAULT, MUNI_DEFAULT,
+        )
+    return (
+        row[0], row[1], None, row[2], row[3], row[4], row[5], row[6], False, False,
+        row[7] if n > 7 else "", row[8] if n > 8 else "", "", "", DEPTO_DEFAULT, MUNI_DEFAULT,
+    )
+
 
 def texto_snapshot_cliente_venta(
     nombre: str | None, numero_documento: str | None, tipo_documento: str | None
@@ -100,52 +138,92 @@ def listar_clientes(cur, empresa_id: int = 1):
 
 
 def get_cliente(cur, cliente_id: int):
-    """Retorna (id, empresa_id, sucursal_id, nombre_cliente, tipo_documento, numero_documento, correo, es_contribuyente, es_gran_contribuyente, direccion, telefono, codigo_actividad_economica)."""
+    """Retorna tuple estándar de 15 elementos (ver _row_a_tuple)."""
     try:
         cur.execute(
             """
-            SELECT id, empresa_id, nombre_cliente, tipo_documento, numero_documento, correo, es_contribuyente, COALESCE(es_gran_contribuyente, FALSE), direccion, telefono, COALESCE(codigo_actividad_economica, '')
+            SELECT id, empresa_id, sucursal_id, nombre_cliente, tipo_documento, numero_documento, correo,
+                   es_contribuyente, COALESCE(es_gran_contribuyente, FALSE), direccion, telefono,
+                   COALESCE(codigo_actividad_economica, ''), COALESCE(nrc, ''), COALESCE(departamento, '06'), COALESCE(municipio, '14')
             FROM clientes
             WHERE id = %s
             """,
             (cliente_id,),
         )
-        row = cur.fetchone()
-        if not row:
-            return None
-        return (row[0], row[1], None, row[2], row[3], row[4], row[5], row[6], bool(row[7]), row[8], row[9], row[10])
+        return _row_a_tuple(cur.fetchone())
     except Exception:
         cur.connection.rollback()
-        try:
-            cur.execute(
-                """
-                SELECT id, empresa_id, nombre_cliente, tipo_documento, numero_documento, correo, es_contribuyente, direccion, telefono, COALESCE(codigo_actividad_economica, '')
-                FROM clientes
-                WHERE id = %s
-                """,
-                (cliente_id,),
-            )
-            row = cur.fetchone()
-            if not row:
-                return None
-            return (row[0], row[1], None, row[2], row[3], row[4], row[5], row[6], False, row[7], row[8], row[9] if len(row) > 9 else "")
-        except Exception:
-            cur.connection.rollback()
-            cur.execute(
-                """
-                SELECT id, empresa_id, nombre_cliente, tipo_documento, numero_documento, correo, es_contribuyente, direccion, telefono
-                FROM clientes
-                WHERE id = %s
-                """,
-                (cliente_id,),
-            )
-            row = cur.fetchone()
-            if not row:
-                return None
-            return (row[0], row[1], None, row[2], row[3], row[4], row[5], row[6], False, row[7], row[8], "")
+    try:
+        cur.execute(
+            """
+            SELECT id, empresa_id, nombre_cliente, tipo_documento, numero_documento, correo, es_contribuyente,
+                   COALESCE(es_gran_contribuyente, FALSE), direccion, telefono, COALESCE(codigo_actividad_economica, '')
+            FROM clientes
+            WHERE id = %s
+            """,
+            (cliente_id,),
+        )
+        return _row_a_tuple(cur.fetchone())
+    except Exception:
+        cur.connection.rollback()
+        cur.execute(
+            """
+            SELECT id, empresa_id, nombre_cliente, tipo_documento, numero_documento, correo, es_contribuyente, direccion, telefono
+            FROM clientes
+            WHERE id = %s
+            """,
+            (cliente_id,),
+        )
+        return _row_a_tuple(cur.fetchone())
 
 
 def crear_cliente(
+    cur,
+    empresa_id: int,
+    nombre_cliente: str,
+    tipo_documento: str,
+    numero_documento: str,
+    correo: str,
+    es_contribuyente: bool,
+    direccion: str = "",
+    telefono: str = "",
+    sucursal_id: int | None = None,
+    codigo_actividad_economica: str = "",
+    es_gran_contribuyente: bool = False,
+    nrc: str = "",
+    departamento: str = "",
+    municipio: str = "",
+) -> int:
+    cod_act = (codigo_actividad_economica or "").strip() or None
+    nrc_val = (nrc or "").strip() or None
+    depto, muni = _norm_depto_muni(departamento, municipio)
+    try:
+        cur.execute(
+            """
+            INSERT INTO clientes (
+                empresa_id, sucursal_id, nombre_cliente, tipo_documento, numero_documento, correo,
+                es_contribuyente, es_gran_contribuyente, direccion, telefono, codigo_actividad_economica,
+                nrc, departamento, municipio
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                empresa_id, sucursal_id, nombre_cliente, tipo_documento or None, numero_documento or None,
+                correo or None, es_contribuyente, es_gran_contribuyente, direccion or None, telefono or None,
+                cod_act, nrc_val, depto, muni,
+            ),
+        )
+        return int(cur.fetchone()[0])
+    except Exception:
+        cur.connection.rollback()
+    return _crear_cliente_legacy(
+        cur, empresa_id, nombre_cliente, tipo_documento, numero_documento, correo, es_contribuyente,
+        direccion, telefono, sucursal_id, codigo_actividad_economica, es_gran_contribuyente,
+    )
+
+
+def _crear_cliente_legacy(
     cur,
     empresa_id: int,
     nombre_cliente: str,
@@ -208,9 +286,63 @@ def actualizar_cliente(
     actualizar_sucursal: bool = False,
     codigo_actividad_economica: str = "",
     es_gran_contribuyente: bool = False,
+    nrc: str = "",
+    departamento: str = "",
+    municipio: str = "",
 ) -> None:
-    set_extra = ["codigo_actividad_economica = %s", "es_gran_contribuyente = %s"]
     cod_act = (codigo_actividad_economica or "").strip() or None
+    nrc_val = (nrc or "").strip() or None
+    depto, muni = _norm_depto_muni(departamento, municipio)
+    set_extra = ["codigo_actividad_economica = %s", "es_gran_contribuyente = %s", "nrc = %s", "departamento = %s", "municipio = %s"]
+    vals = [
+        nombre_cliente, tipo_documento or None, numero_documento or None, correo or None, es_contribuyente,
+        direccion or None, telefono or None, cod_act, es_gran_contribuyente, nrc_val, depto, muni,
+    ]
+    if empresa_id is not None:
+        set_extra.append("empresa_id = %s")
+        vals.append(empresa_id)
+    if actualizar_sucursal:
+        set_extra.append("sucursal_id = %s")
+        vals.append(sucursal_id)
+    vals.append(cliente_id)
+    sep = ", " + ", ".join(set_extra)
+    try:
+        cur.execute(
+            f"""
+            UPDATE clientes
+            SET nombre_cliente = %s, tipo_documento = %s, numero_documento = %s, correo = %s, es_contribuyente = %s,
+                direccion = %s, telefono = %s{sep}
+            WHERE id = %s
+            """,
+            tuple(vals),
+        )
+        return
+    except Exception:
+        cur.connection.rollback()
+    _actualizar_cliente_legacy(
+        cur, cliente_id, nombre_cliente, tipo_documento, numero_documento, correo, es_contribuyente,
+        direccion, telefono, empresa_id, sucursal_id, actualizar_sucursal, codigo_actividad_economica, es_gran_contribuyente,
+    )
+
+
+def _actualizar_cliente_legacy(
+    cur,
+    cliente_id: int,
+    nombre_cliente: str,
+    tipo_documento: str,
+    numero_documento: str,
+    correo: str,
+    es_contribuyente: bool,
+    direccion: str = "",
+    telefono: str = "",
+    empresa_id: int | None = None,
+    sucursal_id: int | None = None,
+    actualizar_sucursal: bool = False,
+    codigo_actividad_economica: str = "",
+    es_gran_contribuyente: bool = False,
+) -> None:
+    cod_act = (codigo_actividad_economica or "").strip() or None
+    set_extra = ["codigo_actividad_economica = %s", "es_gran_contribuyente = %s"]
     vals = [nombre_cliente, tipo_documento or None, numero_documento or None, correo or None, es_contribuyente, direccion or None, telefono or None, cod_act, es_gran_contribuyente]
     if empresa_id is not None:
         set_extra.append("empresa_id = %s")
@@ -219,8 +351,7 @@ def actualizar_cliente(
         set_extra.append("sucursal_id = %s")
         vals.append(sucursal_id)
     vals.append(cliente_id)
-    extra_sql = ", ".join(set_extra)
-    sep = ", " + extra_sql if extra_sql else ""
+    sep = ", " + ", ".join(set_extra)
     try:
         cur.execute(
             f"""
@@ -232,47 +363,25 @@ def actualizar_cliente(
         )
     except Exception:
         cur.connection.rollback()
-        try:
-            set_extra = ["codigo_actividad_economica = %s"]
-            vals = [nombre_cliente, tipo_documento or None, numero_documento or None, correo or None, es_contribuyente, direccion or None, telefono or None, cod_act]
-            if empresa_id is not None:
-                set_extra.append("empresa_id = %s")
-                vals.append(empresa_id)
-            if actualizar_sucursal:
-                set_extra.append("sucursal_id = %s")
-                vals.append(sucursal_id)
-            vals.append(cliente_id)
-            extra_sql = ", ".join(set_extra)
-            sep = ", " + extra_sql if extra_sql else ""
-            cur.execute(
-                f"""
-                UPDATE clientes
-                SET nombre_cliente = %s, tipo_documento = %s, numero_documento = %s, correo = %s, es_contribuyente = %s, direccion = %s, telefono = %s{sep}
-                WHERE id = %s
-                """,
-                tuple(vals),
-            )
-        except Exception:
-            cur.connection.rollback()
-            set_extra = []
-            vals = [nombre_cliente, tipo_documento or None, numero_documento or None, correo or None, es_contribuyente, direccion or None, telefono or None]
-            if empresa_id is not None:
-                set_extra.append("empresa_id = %s")
-                vals.append(empresa_id)
-            if actualizar_sucursal:
-                set_extra.append("sucursal_id = %s")
-                vals.append(sucursal_id)
-            vals.append(cliente_id)
-            extra_sql = ", ".join(set_extra) if set_extra else ""
-            sep = ", " + extra_sql if extra_sql else ""
-            cur.execute(
-                f"""
-                UPDATE clientes
-                SET nombre_cliente = %s, tipo_documento = %s, numero_documento = %s, correo = %s, es_contribuyente = %s, direccion = %s, telefono = %s{sep}
-                WHERE id = %s
-                """,
-                tuple(vals),
-            )
+        set_extra = []
+        vals = [nombre_cliente, tipo_documento or None, numero_documento or None, correo or None, es_contribuyente, direccion or None, telefono or None]
+        if empresa_id is not None:
+            set_extra.append("empresa_id = %s")
+            vals.append(empresa_id)
+        if actualizar_sucursal:
+            set_extra.append("sucursal_id = %s")
+            vals.append(sucursal_id)
+        vals.append(cliente_id)
+        extra_sql = ", ".join(set_extra) if set_extra else ""
+        sep = ", " + extra_sql if extra_sql else ""
+        cur.execute(
+            f"""
+            UPDATE clientes
+            SET nombre_cliente = %s, tipo_documento = %s, numero_documento = %s, correo = %s, es_contribuyente = %s, direccion = %s, telefono = %s{sep}
+            WHERE id = %s
+            """,
+            tuple(vals),
+        )
 
 
 def eliminar_cliente(cur, cliente_id: int) -> bool:

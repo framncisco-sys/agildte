@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createItem, updateItem } from '../../../api/items'
+import { DTE_LINEA_DESCRIPCION_MAX } from '../../../constants/dte'
 
 const TIPO_IMPUESTO_OPTIONS = [
   { value: '20', label: 'Gravado 13% (IVA)' },
@@ -57,6 +58,12 @@ export function ItemFormModal({ isOpen, onClose, onSaved, itemEdit = null, empre
     const desc = (form.descripcion || '').trim()
     if (!desc) {
       setErrors({ descripcion: 'La descripción es requerida' })
+      return
+    }
+    if (desc.length > DTE_LINEA_DESCRIPCION_MAX) {
+      setErrors({
+        descripcion: `La descripción no puede superar ${DTE_LINEA_DESCRIPCION_MAX} caracteres`,
+      })
       return
     }
     const precio = parseFloat(form.precio_unitario)
@@ -121,11 +128,12 @@ export function ItemFormModal({ isOpen, onClose, onSaved, itemEdit = null, empre
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Descripción / Nombre *</label>
-            <input
-              type="text"
+            <textarea
+              rows={3}
               value={form.descripcion}
+              maxLength={DTE_LINEA_DESCRIPCION_MAX}
               onChange={(e) => handleChange('descripcion', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
               placeholder="Ej: Servicio de consultoría"
             />
             {errors.descripcion && (

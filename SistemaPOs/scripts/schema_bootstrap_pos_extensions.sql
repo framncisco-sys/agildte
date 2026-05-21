@@ -24,7 +24,10 @@ CREATE TABLE IF NOT EXISTS clientes (
     es_gran_contribuyente BOOLEAN DEFAULT FALSE,
     direccion TEXT,
     telefono VARCHAR(120),
-    codigo_actividad_economica VARCHAR(80)
+    codigo_actividad_economica VARCHAR(80),
+    nrc VARCHAR(20),
+    departamento VARCHAR(2) DEFAULT '06',
+    municipio VARCHAR(2) DEFAULT '14'
 );
 
 CREATE INDEX IF NOT EXISTS idx_clientes_empresa ON clientes(empresa_id);
