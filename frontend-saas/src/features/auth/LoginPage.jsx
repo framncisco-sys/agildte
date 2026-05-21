@@ -21,14 +21,12 @@ export function LoginPage() {
   const [error, setError] = useState('')
 
   const from = location.state?.from?.pathname || RUTA_INICIO_APP
+  const portalLogout = new URLSearchParams(location.search).get('logout') === '1'
 
-  // Cierre de sesión desde PosAgil (?logout=1): limpiar JWT AgilDTE y quedarse en login.
   useEffect(() => {
-    const params = new URLSearchParams(location.search)
-    if (params.get('logout') !== '1') return
+    if (!portalLogout) return
     useAuthStore.getState().logout()
-    navigate('/login', { replace: true })
-  }, [location.search, navigate])
+  }, [portalLogout])
 
   /** Tras login con contraseña: vendedor PosAgil puede ir al POS por SSO (una sola vez). */
   function redirectPosAgilHard() {
@@ -36,12 +34,13 @@ export function LoginPage() {
     openPosAgilSso(t)
   }
 
-  // Si ya hay sesión y se abre /login, volver al área privada (incluye personal PosAgil: el POS se abre con el botón).
+  // Si ya hay sesión y se abre /login, volver al área privada (no si venimos de logout PosAgil).
   useEffect(() => {
+    if (portalLogout) return
     if (!isAuthenticated || !user?.role) return
     if (location.pathname !== '/login') return
     navigate(from, { replace: true })
-  }, [isAuthenticated, user?.role, location.pathname, from, navigate])
+  }, [portalLogout, isAuthenticated, user?.role, location.pathname, from, navigate])
 
   const handleSubmit = async (e) => {
     e.preventDefault()

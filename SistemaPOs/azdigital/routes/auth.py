@@ -44,11 +44,16 @@ def _password_login_permitted() -> bool:
 
 def _portal_logout_url() -> str:
     """URL del portal AgilDTE con flag para cerrar JWT en el navegador."""
-    p = _portal_login_url()
+    p = _portal_login_url().strip()
     if not p:
         return ""
-    sep = "&" if "?" in p else "?"
-    return f"{p}{sep}logout=1"
+    base = p.split("?", 1)[0].rstrip("/")
+    if not base.endswith("/login"):
+        base = f"{base}/login"
+    if "?" in p:
+        base = f"{base}?{p.split('?', 1)[1]}"
+    sep = "&" if "?" in base else "?"
+    return f"{base}{sep}logout=1"
 
 
 def _redirect_after_logout():
