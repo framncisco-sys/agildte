@@ -27,6 +27,7 @@ from azdigital.services.whatsapp_notificacion_service import preparar_envio_what
 from azdigital.integration.agildte_client import public_sync_result
 from azdigital.integration.agildte_sync import intentar_sync_venta_si_habilitado
 from azdigital.services.ventas_service import aplicar_descuento, crear_venta_desde_carrito, persistir_venta
+from azdigital.utils.env_config import get_application_url_prefix
 from azdigital.utils.historial_helper import registrar_accion
 from azdigital.utils.mh_cat003_unidades import normalizar_codigo_mh
 from azdigital.utils.numero_letras import numero_a_letras_dolares
@@ -141,6 +142,8 @@ def ventas_pos():
     except (TypeError, ValueError):
         sucursal_id_pos = None
     _sr = (request.script_root or "").strip().rstrip("/")
+    if not _sr:
+        _sr = get_application_url_prefix() or ""
     html = render_template(
         "ventas.html",
         es_superadmin=es_super,
@@ -168,7 +171,7 @@ def ventas_pos():
 
 @bp.route("/ventas_pos/clientes/embed")
 @bp.route("/ventas_pos/clientes/embed/<int:cid>")
-@rol_requerido("GERENTE", "CAJERO")
+@rol_requerido(*_ROLES_POS)
 def ventas_pos_clientes_embed(cid: int | None = None):
     """
     Formulario de cliente para iframe en el POS (misma ficha que /clientes).

@@ -508,24 +508,25 @@
     }
     /** Montaje WSGI real (SCRIPT_NAME). Vacío en desarrollo típico; evita 404 al no duplicar /pos con el env. */
     const POS_SCRIPT_ROOT = {{ (pos_script_root | default('')) | tojson }};
-    /** Prefijo público (env). Solo se antepone si la página cargada está bajo ese path (p. ej. portal /pos). */
+    /** Prefijo público (env). Si falta, se infiere de la URL (/pos/ventas_pos). */
     const POS_URL_PREFIX = {{ (POS_URL_PREFIX or '') | tojson }};
-    function posUrl(rel) {
-        const r = (rel || '').startsWith('/') ? (rel || '') : '/' + (rel || '');
+    function posBasePrefix() {
         const sr = (POS_SCRIPT_ROOT || '').replace(/\/$/, '');
-        if (sr) {
-            if (r === sr || r.startsWith(sr + '/')) return r;
-            return sr + r;
-        }
+        if (sr) return sr;
         const p = (POS_URL_PREFIX || '').replace(/\/$/, '');
-        if (!p) return r;
-        if (r === p || r.startsWith(p + '/')) return r;
+        if (p) return p;
         try {
             const path = (window.location && window.location.pathname) ? window.location.pathname : '';
-            const under = path === p || path.startsWith(p + '/');
-            if (!under) return r;
+            if (path.indexOf('/pos/') === 0 || path === '/pos') return '/pos';
         } catch (e) { /* */ }
-        return p + r;
+        return '';
+    }
+    function posUrl(rel) {
+        const r = (rel || '').startsWith('/') ? (rel || '') : '/' + (rel || '');
+        const base = posBasePrefix();
+        if (!base) return r;
+        if (r === base || r.startsWith(base + '/')) return r;
+        return base + r;
     }
     let carrito = [];
     const CACHE_KEY = 'pos_productos_cache_v2';
@@ -758,9 +759,18 @@
         if (navigator.onLine) {
             if (load) load.classList.remove('d-none');
             try {
-                const resp = await fetch(posUrl('/pos/catalogo_productos'));
-                const data = await resp.json();
-                catalogoProductosModalCache = Array.isArray(data.productos) ? data.productos : [];
+                const resp = await fetch(posUrl('/pos/catalogo_productos'), { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+                let data = {};
+                try { data = await resp.json(); } catch (e) { data = {}; }
+                if (!resp.ok) {
+                    catalogoProductosModalCache = [];
+                    if (err) {
+                        err.textContent = (data.mensaje || data.error || ('No se pudo cargar el catálogo (HTTP ' + resp.status + ').'));
+                        err.classList.remove('d-none');
+                    }
+                } else {
+                    catalogoProductosModalCache = Array.isArray(data.productos) ? data.productos : [];
+                }
             } catch (e) {
                 catalogoProductosModalCache = [];
                 if (err) { err.textContent = 'No se pudo cargar el catálogo.'; err.classList.remove('d-none'); }
