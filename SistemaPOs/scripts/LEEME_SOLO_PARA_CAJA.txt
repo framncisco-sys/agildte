@@ -1,21 +1,26 @@
 SOLO PARA LA PC DE CAJA
 =======================
 
-Lleve UN archivo al escritorio de la caja:
+Opcion A — Acceso directo con logo AgilDTE (recomendado)
+  1. Copie al escritorio la carpeta scripts\ (o estos archivos):
+       crear_acceso_directo_caja.bat
+       crear_acceso_directo_caja.ps1
+       iniciar_chrome_pos_impresion_silenciosa.bat
+       agildte_pos_logo.png   (o agildte_pos.ico si ya existe)
+  2. Doble clic en: crear_acceso_directo_caja.bat
+  3. En el Escritorio aparece: "AgilDTE - Punto de venta" con el icono del logo.
+  4. Use SIEMPRE ese acceso directo (no el .bat suelto).
 
-  AgilDTE_Abrir_Caja.bat   (o iniciar_chrome_pos_impresion_silenciosa.bat, es lo mismo)
+Opcion B — Solo el .bat (sin icono personalizado)
+  AgilDTE_Abrir_Caja.bat
 
 NO necesita copiar el proyecto, Python ni Docker.
-El sistema oficial ya esta en: https://agildte.com
+El POS esta en: https://agildte.com/pos/ventas_pos
 
-En la caja debe tener:
-  - Windows con Google Chrome instalado
+En la caja:
+  - Google Chrome instalado
   - Internet
-  - Impresora EPSON TM-T20II como PREDETERMINADA
+  - Impresora EPSON como PREDETERMINADA en Windows
 
-Uso diario:
-  1. Doble clic en el .bat (no abrir Chrome normal)
-  2. Iniciar sesion en agildte.com si pide login
-  3. Vender e imprimir
-
+Uso diario: doble clic en el acceso directo "AgilDTE - Punto de venta"
 Cerrar: Alt+F4

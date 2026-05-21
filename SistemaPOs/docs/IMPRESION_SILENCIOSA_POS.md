@@ -14,13 +14,15 @@ En la **PC de la caja**, abra el POS con el script incluido:
 SistemaPOs/scripts/iniciar_chrome_pos_impresion_silenciosa.bat
 ```
 
-(O cree un acceso directo en el escritorio que apunte a ese `.bat`.)
+### Acceso directo con icono AgilDTE (recomendado en caja)
 
-En la carpeta del script van **tres archivos** (para ver el logo al iniciar):
+Ejecute **una vez** en la PC de caja:
 
-- `iniciar_chrome_pos_impresion_silenciosa.bat`
-- `agildte_pos_logo.png`
-- `pos_splash.ps1`
+```text
+SistemaPOs/scripts/crear_acceso_directo_caja.bat
+```
+
+Crea en el Escritorio el acceso directo **«AgilDTE - Punto de venta»** con el icono del logo (`.ico`). Use ese acceso directo cada día, no el `.bat` suelto.
 
 ### Antes de usarlo
 
