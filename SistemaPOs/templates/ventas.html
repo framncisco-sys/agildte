@@ -1270,6 +1270,9 @@
         var btnEditar = document.getElementById('btnPosEditarCliente');
         function urlClienteEmbed(cid) {
             var base = posUrl('/ventas_pos/clientes/embed');
+            if (base.indexOf('http') !== 0) {
+                base = (window.location.origin || '') + base;
+            }
             if (cid != null && /^[0-9]+$/.test(String(cid))) {
                 return base.replace(/\/?$/, '') + '/' + encodeURIComponent(cid) + '?_=' + Date.now();
             }

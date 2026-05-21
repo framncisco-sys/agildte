@@ -5,13 +5,21 @@ import os
 from functools import wraps
 from typing import Callable, TypeVar, cast
 
-from flask import redirect, session, url_for
+from flask import redirect, request, session, url_for
 
 F = TypeVar("F", bound=Callable[..., object])
 
 
+def _es_ruta_embed_pos() -> bool:
+    """Iframe de clientes en ventas.html: no redirigir al SPA (bloquea frames)."""
+    path = (request.path or "").lower()
+    return "clientes/embed" in path or (request.args.get("embed") or "").strip() == "1"
+
+
 def redirect_to_login_page():
     """Sin sesión PosAgil: enviar al login local o al portal AgilDTE si está configurado."""
+    if _es_ruta_embed_pos():
+        return redirect(url_for("auth.login", next=request.full_path or request.path))
     portal = (os.environ.get("AGILDTE_PORTAL_LOGIN_URL") or os.environ.get("AZ_AGILDTE_PORTAL_LOGIN_URL") or "").strip()
     if portal:
         return redirect(portal)
