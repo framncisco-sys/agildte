@@ -22,6 +22,14 @@ export function LoginPage() {
 
   const from = location.state?.from?.pathname || RUTA_INICIO_APP
 
+  // Cierre de sesión desde PosAgil (?logout=1): limpiar JWT AgilDTE y quedarse en login.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get('logout') !== '1') return
+    useAuthStore.getState().logout()
+    navigate('/login', { replace: true })
+  }, [location.search, navigate])
+
   /** Tras login con contraseña: vendedor PosAgil puede ir al POS por SSO (una sola vez). */
   function redirectPosAgilHard() {
     const t = token || useAuthStore.getState().token

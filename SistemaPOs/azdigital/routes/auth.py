@@ -42,11 +42,20 @@ def _password_login_permitted() -> bool:
     return _allow_local_login() or not _portal_login_configured()
 
 
+def _portal_logout_url() -> str:
+    """URL del portal AgilDTE con flag para cerrar JWT en el navegador."""
+    p = _portal_login_url()
+    if not p:
+        return ""
+    sep = "&" if "?" in p else "?"
+    return f"{p}{sep}logout=1"
+
+
 def _redirect_after_logout():
-    if not _allow_local_login():
-        p = _portal_login_url()
-        if p:
-            return redirect(p)
+    # Siempre volver al login del portal cuando está configurado (no localhost por defecto en prod).
+    target = _portal_logout_url()
+    if target:
+        return redirect(target)
     return redirect(url_for("auth.login"))
 
 

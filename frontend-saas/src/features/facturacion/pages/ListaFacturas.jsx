@@ -321,17 +321,13 @@ export function ListaFacturas() {
         El envío por WhatsApp está en la columna <strong>Acciones</strong> (ícono de mensaje), solo en facturas{' '}
         <strong>PROCESADAS</strong>.
       </p>
-      {whatsappPremiumEmpresa ? (
+      {whatsappPremiumEmpresa && (
         <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           WhatsApp premium <strong>activo</strong> para esta empresa. Configura token y Phone ID en{' '}
           <a href="/framncisco/" target="_blank" rel="noreferrer" className="underline font-medium">
             Django Admin → Empresas
           </a>
           .
-        </div>
-      ) : (
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          WhatsApp premium <strong>inactivo</strong>. Actívalo en Django Admin → Empresas → «Whatsapp premium enabled».
         </div>
       )}
 
