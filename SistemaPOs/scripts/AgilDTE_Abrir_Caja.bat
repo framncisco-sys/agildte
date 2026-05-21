@@ -6,6 +6,7 @@ REM Requisitos en la caja: Google Chrome + internet + impresora EPSON predetermi
 
 set "POS_URL=https://agildte.com/pos/ventas_pos"
 set "CHROME="
+set "POS_PROFILE=%LocalAppData%\AzDigital_POS_Chrome"
 
 for %%P in (
   "%ProgramFiles%\Google\Chrome\Application\chrome.exe"
@@ -19,5 +20,5 @@ if not defined CHROME (
   exit /b 1
 )
 
-start "" "%CHROME%" --kiosk-printing --app="%POS_URL%"
+start "" "%CHROME%" --user-data-dir="%POS_PROFILE%" --kiosk-printing --disable-print-preview --no-first-run --no-default-browser-check --app="%POS_URL%"
 exit /b 0

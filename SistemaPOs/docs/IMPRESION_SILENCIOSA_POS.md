@@ -20,7 +20,8 @@ SistemaPOs/scripts/iniciar_chrome_pos_impresion_silenciosa.bat
 
 1. En **Windows → Configuración → Impresoras**, ponga la **EPSON TM-T20II** como impresora **predeterminada**.
 2. Imprima **una vez** un ticket de prueba desde el diálogo normal y confirme que la Epson queda bien (tamaño 80 mm, sin márgenes excesivos). Chrome recordará esas opciones para el modo silencioso.
-3. Cierre otras ventanas de Chrome del POS y abra **solo** con el `.bat`.
+3. Abra el POS **solo** con el `.bat` (no abra Chrome normal y luego el POS).
+4. El script usa un perfil dedicado (`%LocalAppData%\AzDigital_POS_Chrome`) para que `--kiosk-printing` no se pierda si ya tenía Chrome abierto.
 
 ### URL del POS
 
@@ -59,6 +60,14 @@ La impresión silenciosa funciona igual en agildte.com y en localhost: depende d
 | **QZ Tray** + impresora RAW | Control total ESC/POS; requiere instalar QZ y adaptar el POS. |
 | **App de escritorio** (Electron) | Impresión nativa sin diálogo. |
 | **Servicio Windows** que imprima PDF/HTML | El servidor genera el ticket y lo manda al spooler. |
+
+## Si sigue apareciendo el cuadro «Imprimir»
+
+1. Cierre **todas** las ventanas del POS (Alt+F4), no solo la pestaña del ticket.
+2. Vuelva a abrir **solo** con el `.bat` del escritorio (no desde un icono de Chrome genérico).
+3. Compruebe en `chrome://version` (en esa ventana del POS) que la línea **«Línea de comandos»** incluya `--kiosk-printing` y `--user-data-dir=...\AzDigital_POS_Chrome`.
+4. Impresora **predeterminada** = EPSON TM-T20II en Windows.
+5. En Chrome reciente, imprima **una vez** con el diálogo y pulse Imprimir; a veces guarda el destino para los siguientes tickets en ese perfil.
 
 ## Atajo mientras usa el diálogo normal
 
