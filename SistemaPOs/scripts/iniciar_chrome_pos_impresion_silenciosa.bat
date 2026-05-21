@@ -1,24 +1,17 @@
 @echo off
 chcp 65001 >nul
+title AgilDTE - Punto de venta
+color 0B
 REM ---------------------------------------------------------------------------
-REM POS AzDigital: Chrome con impresion silenciosa (sin dialogo "Imprimir").
-REM
-REM IMPORTANTE: use SIEMPRE este acceso directo en la caja. Si abre Chrome normal
-REM y luego este .bat, Windows puede reutilizar Chrome SIN --kiosk-printing.
-REM Este script usa un perfil propio (--user-data-dir) para evitar eso.
-REM
-REM Requisitos:
-REM   1) Google Chrome instalado
-REM   2) EPSON TM-T20II (u otra) como impresora PREDETERMINADA en Windows
-REM   3) Una vez: imprimir ticket de prueba y guardar preferencias 80mm
-REM
-REM URL por defecto: produccion. Desarrollo:
-REM   iniciar_chrome_pos_impresion_silenciosa.bat local
-REM   iniciar_chrome_pos_impresion_silenciosa.bat "http://localhost:8080/pos/ventas_pos"
+REM POS AgilDTE: Chrome con impresion silenciosa + pantalla de inicio con logo.
+REM Mantenga en la misma carpeta: agildte_pos_logo.png y pos_splash.ps1
 REM ---------------------------------------------------------------------------
+set "SCRIPT_DIR=%~dp0"
 set "POS_URL=https://agildte.com/pos/ventas_pos"
 set "CHROME="
 set "POS_PROFILE=%LocalAppData%\AzDigital_POS_Chrome"
+set "LOGO=%SCRIPT_DIR%agildte_pos_logo.png"
+set "SPLASH=%SCRIPT_DIR%pos_splash.ps1"
 
 if /I "%~1"=="local" (
   set "POS_URL=http://localhost/pos/ventas_pos"
@@ -37,25 +30,32 @@ for %%P in (
 )
 
 if not defined CHROME (
-  echo [ERROR] No se encontro chrome.exe. Instale Google Chrome.
+  echo.
+  echo   [ERROR] No se encontro Google Chrome.
+  echo.
   pause
   exit /b 1
 )
 
+cls
 echo.
-echo  POS - impresion silenciosa
-echo  URL: %POS_URL%
-echo  Perfil Chrome: %POS_PROFILE%
-echo  Impresora: predeterminada de Windows
+echo   ========================================
+echo        AgilDTE - Punto de venta
+echo   Facturacion electronica simple y rapida
+echo   ========================================
 echo.
-echo  Si aun sale el cuadro "Imprimir":
-echo    - Cierre TODAS las ventanas de este POS (Alt+F4) y vuelva a abrir SOLO con este .bat
-echo    - No abra agildte.com desde otro acceso directo de Chrome
-echo    - Confirme impresora predeterminada en Configuracion de Windows
+echo   URL: %POS_URL%
+echo   Impresion silenciosa: activada
 echo.
 
-REM Perfil aislado: garantiza que --kiosk-printing se aplique (no mezcla con Chrome personal).
-REM --disable-print-preview: en muchas versiones evita la vista previa antes de imprimir.
+if exist "%LOGO%" if exist "%SPLASH%" (
+  start "" powershell -NoProfile -ExecutionPolicy Bypass -File "%SPLASH%" -LogoPath "%LOGO%" -Seconds 2
+) else (
+  echo   [Aviso] Coloque agildte_pos_logo.png junto a este .bat para ver el logo.
+  echo.
+  timeout /t 2 /nobreak >nul
+)
+
 start "" "%CHROME%" ^
   --user-data-dir="%POS_PROFILE%" ^
   --kiosk-printing ^

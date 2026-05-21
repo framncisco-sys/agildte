@@ -16,6 +16,12 @@ SistemaPOs/scripts/iniciar_chrome_pos_impresion_silenciosa.bat
 
 (O cree un acceso directo en el escritorio que apunte a ese `.bat`.)
 
+En la carpeta del script van **tres archivos** (para ver el logo al iniciar):
+
+- `iniciar_chrome_pos_impresion_silenciosa.bat`
+- `agildte_pos_logo.png`
+- `pos_splash.ps1`
+
 ### Antes de usarlo
 
 1. En **Windows → Configuración → Impresoras**, ponga la **EPSON TM-T20II** como impresora **predeterminada**.
