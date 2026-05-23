@@ -13,7 +13,7 @@ import { ModalCatalogoItems } from './ModalCatalogoItems'
 import { ModalBuscadorActividad } from './ModalBuscadorActividad'
 import { DEPARTAMENTOS, MUNICIPIOS_POR_DEPARTAMENTO } from '../../../data/departamentos-municipios'
 import { crearVenta } from '../../../api/facturas'
-import { createCliente } from '../../../api/clientes'
+import { createCliente, getClienteById } from '../../../api/clientes'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 import { fechaHoyElSalvadorISO } from '../../../utils/format'
 import { formatApiErrorMessage } from '../../../utils/apiErrors'
@@ -174,12 +174,12 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
 
   const onClienteSeleccionado = (cliente) => {
     setClienteIdSeleccionado(cliente?.id ?? null)
-    const tieneNit = !!cliente.nit
-    const tieneDui = !!cliente.dui
-    const tipoDoc = tieneNit ? 'NIT' : tieneDui ? 'DUI' : 'NIT'
-    const numeroDoc = tipoDoc === 'NIT' ? (cliente.nit ?? cliente.documento_identidad ?? '') : (cliente.dui ?? cliente.documento_identidad ?? '')
+    const nitCliente = (cliente.nit || cliente.documento_identidad || '').trim()
+    const duiCliente = (cliente.dui || '').trim()
+    const tipoDoc = duiCliente && !nitCliente ? 'DUI' : 'NIT'
+    const numeroDoc = tipoDoc === 'NIT' ? nitCliente : duiCliente
     setValue('nombreCompleto', cliente.nombre ?? '')
-    setValue('nombreComercial', cliente.giro ?? '')
+    setValue('nombreComercial', cliente.nombre_comercial ?? cliente.giro ?? '')
     setValue('tipoDocCliente', tipoDoc)
     setValue('numeroDocumento', numeroDoc)
     setValue('nrc', cliente.nrc ?? '')
@@ -202,6 +202,10 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
     const cliente = plantillaSeleccionada.cliente
     if (cliente && typeof cliente === 'object') {
       onClienteSeleccionado(cliente)
+    } else if (plantillaSeleccionada.cliente_id && empresaId) {
+      getClienteById(plantillaSeleccionada.cliente_id)
+        .then((c) => c && onClienteSeleccionado(c))
+        .catch(() => {})
     }
 
     const plantillaItems = plantillaSeleccionada.items || []
@@ -320,6 +324,13 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
       const docLimpio = (data.numeroDocumento || '').replace(/\D/g, '')
       if (docLimpio.length !== 9 && docLimpio.length !== 14) {
         toast.error('Para Sujeto Excluido ingresa el DUI (9 dígitos) o NIT (14 dígitos) del proveedor')
+        return
+      }
+    }
+    if (esCreditoFiscal) {
+      const docLimpio = (data.numeroDocumento || '').replace(/\D/g, '')
+      if (docLimpio.length !== 9 && docLimpio.length !== 14) {
+        toast.error('Para Crédito Fiscal ingresa el NIT (14 dígitos) o DUI (9 dígitos) del receptor. Verifica que no sea el teléfono.')
         return
       }
     }

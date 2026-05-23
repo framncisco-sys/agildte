@@ -840,12 +840,56 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             validated_data['tipo_doc_receptor'] = str(tipo_doc_receptor).strip() if tipo_doc_receptor else None
             validated_data['direccion_receptor'] = str(receptor_direccion).strip() if receptor_direccion else None
             validated_data['correo_receptor'] = str(receptor_correo).strip() if receptor_correo else None
+        elif cliente_id:
+            # CASO A: Cliente existente por ID (portal AgilDTE) — prioridad sobre NRC suelto
+            try:
+                cliente_obj = Cliente.objects.get(pk=cliente_id)
+                nit_val = dui_val = tipo_doc = doc_dig = None
+                doc_raw = (str(documento_receptor or '').strip() or str(nit_receptor or '').strip() or None)
+                if doc_raw:
+                    from .utils.mh_documento import documento_receptor_desde_payload
+                    tipo_doc, nit_val, dui_val, doc_dig = documento_receptor_desde_payload(
+                        tipo_doc_receptor, doc_raw
+                    )
+                nom_com = (nombre_comercial_receptor or '').strip() or None
+                dept = (receptor_departamento or '').strip() or None
+                muni = (receptor_municipio or '').strip() or None
+                tel = (receptor_telefono or '').strip() or None
+                if tel:
+                    from .utils.mh_documento import normalizar_telefono_mh
+                    tel = normalizar_telefono_mh(tel)
+                self._actualizar_cliente_si_cambia(
+                    cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
+                    nit=nit_val, dui=dui_val, tipo_documento=tipo_doc, documento_identidad=doc_dig,
+                    nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
+                    desc_actividad=desc_act_receptor, departamento=dept, municipio=muni, telefono=tel
+                )
+            except Cliente.DoesNotExist:
+                raise serializers.ValidationError({'cliente_id': 'Cliente no encontrado.'})
+            validated_data['cliente'] = cliente_obj
+            nrc_cli = normalizar_nrc_mh(cliente_obj.nrc) or (cliente_obj.nrc or '').strip() or None
+            if nrc_cli:
+                validated_data['nrc_receptor'] = nrc_cli
         elif cliente_input_limpio:
-            # CASO B: Cliente por NRC (get_or_create) — antes que cliente_id (PosAgil envía NRC en «cliente», no el PK de Django)
-            # CCF requiere NIT o DUI. PosAgil envía DUI en documento_receptor; carga masiva en nit_receptor.
+            # CASO B: Cliente por NRC (get_or_create) — PosAgil envía NRC en «cliente», no el PK de Django
+            # CCF requiere NIT o DUI. PosAgil envía DUI en documento_receptor; portal AgilDTE en nit_receptor.
             nit_def = (nit_receptor or '').strip() or None
             if not nit_def and documento_receptor:
                 nit_def = str(documento_receptor).strip()
+            if not nit_def:
+                # Fallback: cliente ya registrado por NRC (p. ej. portal sin nit_receptor en el payload)
+                _emp = validated_data.get('empresa')
+                _q = Cliente.objects.filter(nrc=cliente_input_limpio)
+                if _emp:
+                    _q = _q.filter(empresa=_emp)
+                _cli_previo = _q.first()
+                if _cli_previo:
+                    nit_def = (
+                        (_cli_previo.nit or '').strip()
+                        or (_cli_previo.documento_identidad or '').strip()
+                        or (_cli_previo.dui or '').strip()
+                        or None
+                    )
             if not nit_def:
                 raise serializers.ValidationError({
                     'nit_receptor': 'Para Crédito Fiscal (CCF) se requiere NIT (14 dígitos) o DUI (9 dígitos).'
@@ -900,36 +944,6 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             )
             validated_data['cliente'] = cliente_obj
             validated_data['nrc_receptor'] = cliente_input_limpio
-        elif cliente_id:
-            # CASO A: Cliente existente por ID (portal AgilDTE)
-            try:
-                cliente_obj = Cliente.objects.get(pk=cliente_id)
-                nit_val = dui_val = tipo_doc = doc_dig = None
-                doc_raw = (str(documento_receptor or '').strip() or str(nit_receptor or '').strip() or None)
-                if doc_raw:
-                    from .utils.mh_documento import documento_receptor_desde_payload
-                    tipo_doc, nit_val, dui_val, doc_dig = documento_receptor_desde_payload(
-                        tipo_doc_receptor, doc_raw
-                    )
-                nom_com = (nombre_comercial_receptor or '').strip() or None
-                dept = (receptor_departamento or '').strip() or None
-                muni = (receptor_municipio or '').strip() or None
-                tel = (receptor_telefono or '').strip() or None
-                if tel:
-                    from .utils.mh_documento import normalizar_telefono_mh
-                    tel = normalizar_telefono_mh(tel)
-                self._actualizar_cliente_si_cambia(
-                    cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
-                    nit=nit_val, dui=dui_val, tipo_documento=tipo_doc, documento_identidad=doc_dig,
-                    nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
-                    desc_actividad=desc_act_receptor, departamento=dept, municipio=muni, telefono=tel
-                )
-            except Cliente.DoesNotExist:
-                raise serializers.ValidationError({'cliente_id': 'Cliente no encontrado.'})
-            validated_data['cliente'] = cliente_obj
-            nrc_cli = normalizar_nrc_mh(cliente_obj.nrc) or (cliente_obj.nrc or '').strip() or None
-            if nrc_cli:
-                validated_data['nrc_receptor'] = nrc_cli
         else:
             raise serializers.ValidationError({
                 'cliente': 'Para CCF debes proporcionar cliente (NRC) o cliente_id válido en AgilDTE.'

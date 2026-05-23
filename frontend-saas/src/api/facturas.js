@@ -24,7 +24,7 @@ function mapearPayloadFrontendADjango(payload) {
   const nrcReceptor = (tipoVenta === 'CF' || esFSE) ? null : (cliente?.numeroDocumento ?? '')
   const documentoReceptor = (tipoVenta === 'CF' || esFSE)
     ? (cliente?.numeroDocumento?.trim() || null)
-    : null
+    : (['CCF', 'NC', 'ND'].includes(tipoVenta) ? (cliente?.numeroDocumento?.trim() || null) : null)
   const tipoDocReceptor = cliente?.tipoDocCliente ?? 'NIT'
 
   // Consumidor Final (01): el precio ingresado ya incluye IVA. Desglose: Monto Gravado = Total/1.13
@@ -71,7 +71,11 @@ function mapearPayloadFrontendADjango(payload) {
   })
 
   // Para CCF: priorizar NRC del formulario (nrc del cliente en form > nrcReceptor derivado del NIT)
-  const nrcFinal = tipoVenta === 'CCF' ? (cliente?.nrc?.trim() || nrcReceptor || null) : null
+  const nrcFinal = ['CCF', 'NC', 'ND'].includes(tipoVenta)
+    ? (cliente?.nrc?.trim() || null)
+    : null
+
+  const nitReceptor = (cliente?.numeroDocumento || '').trim() || null
 
   const body = {
     empresa: empresaId,
@@ -80,8 +84,13 @@ function mapearPayloadFrontendADjango(payload) {
     nombre_receptor: nombreReceptor,
     documento_receptor: documentoReceptor,
     tipo_doc_receptor: tipoDocReceptor,
+    nit_receptor: ['CCF', 'NC', 'ND'].includes(tipoVenta) ? nitReceptor : null,
+    nombre_comercial_receptor: cliente?.nombreComercial?.trim() || null,
     receptor_direccion: cliente?.direccion?.trim() || null,
     receptor_correo: cliente?.correo?.trim() || null,
+    receptor_departamento: cliente?.departamento?.trim() || null,
+    receptor_municipio: cliente?.municipio?.trim() || null,
+    receptor_telefono: cliente?.telefono?.trim() || null,
     fecha_emision: fechaEmisionFinal,
     periodo_aplicado: periodo,
     tipo_venta: tipoVenta,
