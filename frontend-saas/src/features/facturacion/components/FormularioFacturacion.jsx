@@ -172,7 +172,25 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
     }
   }, [totalGravadas, permiteRetencion])
 
-  const onClienteSeleccionado = (cliente) => {
+  const aplicarActividadDisplay = (codAct, descAct) => {
+    const cod = (codAct || '').trim()
+    const desc = (descAct || '').trim()
+    setValue('codActividad', cod)
+    setValue('descActividad', desc)
+    setActividadDisplay(cod && desc ? `${cod} - ${desc}` : cod)
+  }
+
+  /** Snapshot del DTE original (venta) + datos del cliente en BD. */
+  const aplicarReceptorDesdeVenta = (venta) => {
+    if (!venta) return
+    const nrc = (venta.nrc_receptor || venta.nrcReceptor || '').trim()
+    const codAct = (venta.cod_actividad_receptor || venta.codActividadReceptor || '').trim()
+    const descAct = (venta.desc_actividad_receptor || venta.descActividadReceptor || '').trim()
+    if (nrc) setValue('nrc', nrc)
+    if (codAct || descAct) aplicarActividadDisplay(codAct, descAct)
+  }
+
+  const onClienteSeleccionado = (cliente, ventaOrigen = null) => {
     setClienteIdSeleccionado(cliente?.id ?? null)
     const nitCliente = (cliente.nit || cliente.documento_identidad || '').trim()
     const duiCliente = (cliente.dui || '').trim()
@@ -183,16 +201,16 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
     setValue('tipoDocCliente', tipoDoc)
     setValue('numeroDocumento', numeroDoc)
     setValue('nrc', cliente.nrc ?? '')
-    setValue('codActividad', cliente.cod_actividad ?? cliente.actividad_economica ?? '')
-    setValue('descActividad', cliente.desc_actividad ?? '')
-    const codAct = cliente.cod_actividad ?? cliente.actividad_economica ?? ''
-    const descAct = cliente.desc_actividad ?? ''
-    setActividadDisplay(codAct && descAct ? `${codAct} - ${descAct}` : codAct)
+    aplicarActividadDisplay(
+      cliente.cod_actividad ?? cliente.actividad_economica,
+      cliente.desc_actividad
+    )
     setValue('correo', cliente.email_contacto ?? cliente.correo ?? '')
     setValue('telefono', cliente.telefono ?? '')
     setValue('departamento', cliente.departamento ?? '06')
     setValue('municipio', cliente.municipio ?? '20')
     setValue('direccion', cliente.direccion ?? '')
+    if (ventaOrigen) aplicarReceptorDesdeVenta(ventaOrigen)
   }
 
   // Prefill desde una plantilla rápida (cliente + ítems)
@@ -233,24 +251,45 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
       nombreReceptor: venta.nombre_receptor || venta.nombreReceptor || venta.cliente?.nombre,
     })
 
-    const cliente = venta.cliente
-    if (cliente && typeof cliente === 'object') {
-      onClienteSeleccionado(cliente)
-    } else {
-      const clienteId = venta.cliente_id ?? (typeof venta.cliente === 'object' ? venta.cliente?.id : null)
+    const clienteDetalle = venta.cliente_detalle
+    const clienteObj =
+      clienteDetalle && typeof clienteDetalle === 'object'
+        ? clienteDetalle
+        : venta.cliente && typeof venta.cliente === 'object'
+          ? venta.cliente
+          : null
+    const clienteId = venta.cliente_id ?? clienteObj?.id ?? null
+
+    const completarDesdeVentaSinCliente = () => {
       setClienteIdSeleccionado(clienteId ?? null)
       setValue('nombreCompleto', venta.nombre_receptor || venta.nombreReceptor || '')
-      setValue('nombreComercial', venta.nombre_receptor || '')
-      const nit = venta.nit_receptor
-      const nrc = venta.nrc_receptor
-      const tieneNit = !!nit || !!nrc
-      setValue('tipoDocCliente', tieneNit ? 'NIT' : 'DUI')
-      setValue('numeroDocumento', tieneNit ? (nit || nrc || '') : (venta.documento_receptor || ''))
+      setValue('nombreComercial', venta.nombre_comercial_receptor || venta.nombre_receptor || '')
+      const nit = (venta.nit_receptor || '').trim()
+      const doc = (venta.documento_receptor || venta.documentoReceptor || '').trim()
+      const docDig = doc.replace(/\D/g, '')
+      const nitDig = (nit || '').replace(/\D/g, '')
+      const esNit = nitDig.length === 14 || (nitDig.length >= 10 && !docDig)
+      setValue('tipoDocCliente', esNit ? 'NIT' : 'DUI')
+      setValue('numeroDocumento', esNit ? (nit || doc) : (doc || nit))
       setValue('correo', venta.correo_receptor || venta.correoReceptor || '')
       setValue('telefono', venta.telefono_receptor || venta.telefonoReceptor || '')
-      setValue('departamento', venta.departamento_receptor || venta.cliente?.departamento || '06')
-      setValue('municipio', venta.municipio_receptor || venta.cliente?.municipio || '14')
+      setValue('departamento', venta.departamento_receptor || '06')
+      setValue('municipio', venta.municipio_receptor || '14')
       setValue('direccion', venta.direccion_receptor || venta.direccionReceptor || '')
+      aplicarReceptorDesdeVenta(venta)
+    }
+
+    if (clienteObj) {
+      onClienteSeleccionado(clienteObj, venta)
+    } else if (clienteId && empresaId) {
+      getClienteById(clienteId)
+        .then((c) => {
+          if (c) onClienteSeleccionado(c, venta)
+          else completarDesdeVentaSinCliente()
+        })
+        .catch(() => completarDesdeVentaSinCliente())
+    } else {
+      completarDesdeVentaSinCliente()
     }
 
     const detalles = venta.detalles || []

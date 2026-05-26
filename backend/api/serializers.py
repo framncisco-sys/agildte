@@ -525,25 +525,52 @@ class VentaSerializer(serializers.ModelSerializer):
         """
         Sobrescribe la representación para incluir nrc_receptor, nit_receptor, nombre_receptor,
         telefono_receptor, correo_receptor y direccion_receptor desde venta o cliente.
+        Prioriza el snapshot guardado en la venta (nrc/cod/desc actividad) al emitir el DTE original.
         """
         representation = super().to_representation(instance)
+        nrc_venta = (instance.nrc_receptor or '').strip() or None
+        cod_act_venta = (instance.cod_actividad_receptor or '').strip() or None
+        desc_act_venta = (instance.desc_actividad_receptor or '').strip() or None
+        doc_rep = (instance.documento_receptor or '').strip() or None
+
         if instance.cliente:
-            representation['nrc_receptor'] = instance.cliente.nrc
-            representation['nit_receptor'] = getattr(instance.cliente, 'nit', None)
-            representation['nombre_receptor'] = instance.cliente.nombre
-            representation['cliente_id'] = instance.cliente.id
-            representation['cliente'] = instance.cliente.nrc
-            representation['telefono_receptor'] = representation.get('telefono_receptor') or getattr(instance.cliente, 'telefono', None)
-            representation['correo_receptor'] = representation.get('correo_receptor') or getattr(instance.cliente, 'email_contacto', None)
-            representation['direccion_receptor'] = representation.get('direccion_receptor') or getattr(instance.cliente, 'direccion', None)
-            representation['departamento_receptor'] = getattr(instance.cliente, 'departamento', None)
-            representation['municipio_receptor'] = getattr(instance.cliente, 'municipio', None)
+            cli = instance.cliente
+            representation['cliente_id'] = cli.id
+            representation['cliente_detalle'] = ClienteSerializer(cli).data
+            representation['cliente'] = cli.nrc
+            representation['nrc_receptor'] = nrc_venta or cli.nrc
+            representation['nit_receptor'] = (
+                getattr(cli, 'nit', None) or getattr(cli, 'dui', None) or doc_rep
+            )
+            representation['nombre_receptor'] = (
+                (instance.nombre_receptor or '').strip() or cli.nombre
+            )
+            representation['cod_actividad_receptor'] = (
+                cod_act_venta or cli.cod_actividad
+            )
+            representation['desc_actividad_receptor'] = (
+                desc_act_venta or cli.desc_actividad or cli.giro
+            )
+            representation['telefono_receptor'] = (
+                representation.get('telefono_receptor') or getattr(cli, 'telefono', None)
+            )
+            representation['correo_receptor'] = (
+                representation.get('correo_receptor') or getattr(cli, 'email_contacto', None)
+            )
+            representation['direccion_receptor'] = (
+                representation.get('direccion_receptor') or getattr(cli, 'direccion', None)
+            )
+            representation['departamento_receptor'] = getattr(cli, 'departamento', None)
+            representation['municipio_receptor'] = getattr(cli, 'municipio', None)
         else:
-            representation['nrc_receptor'] = None
-            representation['nit_receptor'] = None
-            representation['nombre_receptor'] = representation.get('nombre_receptor')
+            representation['cliente_id'] = None
+            representation['cliente_detalle'] = None
             representation['cliente'] = None
-            representation['telefono_receptor'] = representation.get('telefono_receptor')
+            representation['nrc_receptor'] = nrc_venta
+            representation['nit_receptor'] = doc_rep
+            representation['nombre_receptor'] = representation.get('nombre_receptor')
+            representation['cod_actividad_receptor'] = cod_act_venta
+            representation['desc_actividad_receptor'] = desc_act_venta
         return representation
 
     @transaction.atomic
