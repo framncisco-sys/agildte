@@ -534,7 +534,7 @@
         return base + r;
     }
     let carrito = [];
-    const CACHE_KEY = 'pos_productos_cache_v2';
+    const CACHE_KEY = 'pos_productos_cache_v3';
     const CACHE_EMPRESA_KEY = 'pos_productos_empresa_id';
     try {
         localStorage.removeItem('pos_productos_cache');
@@ -1448,6 +1448,69 @@
         }
         return (parseFloat(item.cantidad) || 0) * factorUnidadVenta(item);
     }
+  /** True si la presentación tiene precio_regla y la cantidad (en unidad de venta) cae en [desde, hasta]. */
+    function presentacionReglaAplicaEnCantidad(pr, q) {
+        if (!pr) return false;
+        var precioRegla = parseFloat(pr.precio_regla);
+        if (isNaN(precioRegla) || precioRegla < 0) return false;
+        var tieneDesde = pr.cantidad_desde != null && String(pr.cantidad_desde).trim() !== '';
+        var tieneHasta = pr.cantidad_hasta != null && String(pr.cantidad_hasta).trim() !== '';
+        if (!tieneDesde && !tieneHasta) return false;
+        var desde = tieneDesde ? parseFloat(pr.cantidad_desde) : null;
+        var hasta = tieneHasta ? parseFloat(pr.cantidad_hasta) : null;
+        if (desde != null && !isNaN(desde) && q < desde) return false;
+        if (hasta != null && !isNaN(hasta) && q > hasta) return false;
+        return true;
+    }
+    /** Elige la presentación cuya regla de rango aplica (evita confundir UMB y «Tira» con factor 1). */
+    function resolverPresentacionReglaPrecio(item) {
+        if (!item || !Array.isArray(item.presentaciones) || !item.presentaciones.length) return null;
+        var q = parseFloat(item.cantidad);
+        if (!isFinite(q) || q <= 0) return null;
+        var candidatos = item.presentaciones.filter(function(pr) {
+            return presentacionReglaAplicaEnCantidad(pr, q);
+        });
+        if (!candidatos.length) return null;
+        if (item.presentacion_id != null && item.presentacion_id !== '') {
+            var pid = parseInt(item.presentacion_id, 10);
+            if (!isNaN(pid)) {
+                var sel = candidatos.find(function(pr) {
+                    return pr && pr.id != null && parseInt(pr.id, 10) === pid;
+                });
+                if (sel) return sel;
+            }
+        }
+        var extras = candidatos.filter(function(pr) { return !pr.es_umb; });
+        return (extras.length ? extras : candidatos)[0];
+    }
+    function sincronizarPresentacionPorReglaCantidad(item) {
+        if (!item || !item.presentaciones || !item.presentaciones.length) return;
+        var pr = resolverPresentacionReglaPrecio(item);
+        if (!pr) return;
+        item.factor_umb = parseFloat(pr.factor) || 1;
+        if (pr.id != null && pr.id !== '') {
+            item.presentacion_id = parseInt(pr.id, 10);
+            item._mergeKey = 'id' + item.presentacion_id;
+        } else {
+            item.presentacion_id = null;
+            item._mergeKey = 'fac' + item.factor_umb;
+        }
+    }
+    function reglaPrecioPresentacionActiva(item) {
+        var pr = resolverPresentacionReglaPrecio(item);
+        if (!pr) return null;
+        var p = parseFloat(pr.precio_regla);
+        return (isNaN(p) || p < 0) ? null : p;
+    }
+    function aplicarPrecioReglaPresentacion(item) {
+        if (!item) return;
+        if (item.precio_base == null || isNaN(parseFloat(item.precio_base))) {
+            item.precio_base = parseFloat(item.precioFinal) || 0;
+        }
+        sincronizarPresentacionPorReglaCantidad(item);
+        var regla = reglaPrecioPresentacionActiva(item);
+        item.precioFinal = (regla != null) ? regla : (parseFloat(item.precio_base) || 0);
+    }
     function agregarAlCarrito(id, nombre, precio, codigo, promo, meta) {
         promo = promo || {};
         meta = meta || {};
@@ -1491,6 +1554,7 @@
         }
         carrito.push({
                 id: pid, nombre, precioFinal: precioN, cantidad: 1, codigo,
+                precio_base: precioN,
                 promocion_tipo: (promo.tipo || '').toUpperCase(),
                 promocion_valor: parseFloat(promo.valor) || 0,
                 promocion_valor_comprar: parseFloat(promo.valor_comprar) || 2,
@@ -1560,6 +1624,7 @@
         tabla.innerHTML = '';
         let totalBruto = 0;
         carrito.forEach((p, i) => {
+            aplicarPrecioReglaPresentacion(p);
             const pt = (p.promocion_tipo || '').toUpperCase();
             const pv = parseFloat(p.promocion_valor) || 0;
             const vc = p.promocion_valor_comprar, vp = p.promocion_valor_pagar, dm = p.promocion_descuento_monto;
@@ -1645,7 +1710,7 @@
                 <tr>
                     <td class="ps-4"><b>${p.nombre}</b>${promoBadge}<br><small class="text-muted">${p.codigo}</small>
                         ${selUnidad}${chkMonto}${hintBase}</td>
-                    <td>$${p.precioFinal.toFixed(2)} <span class="small text-muted">/ ${umbLabel}</span></td>
+                    <td>$${p.precioFinal.toFixed(2)} <span class="small text-muted">/ ${umbLabel}</span>${reglaPrecioPresentacionActiva(p) != null ? ' <span class="badge bg-info-subtle text-info" title="Precio por regla de cantidad">regla</span>' : ''}</td>
                     <td class="text-center">${ctrlCant}${rapidosHtml}</td>
                     <td class="text-end pe-4 fw-bold">$${subtotal.toFixed(2)}</td>
                     <td class="text-center">
@@ -1679,6 +1744,7 @@
             if ((p.modo || 'CANTIDAD') === 'MONTO') {
                 tb += Math.round((parseFloat(p.monto_solicitado) || 0) * 100) / 100;
             } else {
+                aplicarPrecioReglaPresentacion(p);
                 tb += calcSubtotalConPromo(p.precioFinal, qBase, pt, pv, vc, vp, dm);
             }
         });
@@ -1695,11 +1761,13 @@
             if (pr) {
                 it.presentacion_id = pr.id;
                 it.factor_umb = parseFloat(pr.factor);
+                it._mergeKey = 'id' + pr.id;
             }
         } else if (p[0] === 'fac') {
             const fac = parseFloat(p[1]);
             it.presentacion_id = null;
             it.factor_umb = fac;
+            it._mergeKey = 'fac' + fac;
         }
         renderizar();
     };

@@ -60,6 +60,12 @@
             <p class="text-muted small">En cada producto: primero la <strong>unidad de bodega</strong> (cómo contás stock), después <strong>cómo se vende en caja</strong> (caja, docena, etc.). <strong>Conteo físico</strong> y <strong>Kardex</strong> usan siempre la unidad pequeña.</p>
         </div>
         <div class="d-flex gap-2">
+            <a href="{{ url_for('admin.inventario_exportar_excel') }}" class="btn btn-outline-primary rounded-pill px-3 fw-bold shadow-sm" title="Descargar inventario en Excel">
+                <i class="bi bi-file-earmark-excel me-2"></i> EXCEL
+            </a>
+            <a href="{{ url_for('admin.inventario_exportar_pdf') }}" class="btn btn-outline-danger rounded-pill px-3 fw-bold shadow-sm" title="Descargar inventario en PDF">
+                <i class="bi bi-file-earmark-pdf me-2"></i> PDF
+            </a>
             <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalProducto" id="btnNuevoProducto">
                 <i class="bi bi-plus-lg me-2"></i> NUEVO PRODUCTO
             </button>
@@ -305,7 +311,7 @@
                             </div>
 
                             <label class="form-label fw-bold">Otras formas de vender</label>
-                            <p class="small text-muted mb-2">Ej. «Tira», «Six pack». Nombre, factor en UMB y opcionalmente código de barras de esa presentación.</p>
+                            <p class="small text-muted mb-2">Ej. «Tira», «Six pack». Nombre, factor en UMB, código de barras opcional y regla de precio por rango (desde/hasta cantidad).</p>
                             <div id="pres_extra_rows" class="small"></div>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_pres_extra_add"><i class="bi bi-plus-lg"></i> Agregar presentación</button>
                             <input type="hidden" name="presentaciones_extra_json" id="presentaciones_extra_json" value="[]">
@@ -597,11 +603,20 @@ document.addEventListener('DOMContentLoaded', function() {
             var n = row.querySelector('.pres-extra-nombre');
             var f = row.querySelector('.pres-extra-factor');
             var c = row.querySelector('.pres-extra-codigo');
+            var d = row.querySelector('.pres-extra-desde');
+            var h = row.querySelector('.pres-extra-hasta');
+            var p = row.querySelector('.pres-extra-precio');
             if (n && f && n.value.trim()) {
                 var fac = parseFloat(f.value);
                 if (fac > 0) {
                     var o = { nombre: n.value.trim(), factor: fac };
                     if (c && c.value.trim()) o.codigo_barra = c.value.trim().slice(0, 64);
+                    var dVal = d && String(d.value || '').trim() !== '' ? parseFloat(d.value) : NaN;
+                    var hVal = h && String(h.value || '').trim() !== '' ? parseFloat(h.value) : NaN;
+                    var pVal = p && String(p.value || '').trim() !== '' ? parseFloat(String(p.value).replace(',', '.')) : NaN;
+                    if (!isNaN(dVal) && dVal >= 0) o.cantidad_desde = dVal;
+                    if (!isNaN(hVal) && hVal >= 0) o.cantidad_hasta = hVal;
+                    if (!isNaN(pVal) && pVal >= 0) o.precio_regla = pVal;
                     arr.push(o);
                 }
             }
@@ -610,7 +625,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (hid) hid.value = JSON.stringify(arr);
     }
 
-    function addPresExtraRow(nombre, factor, codigo) {
+    function addPresExtraRow(nombre, factor, codigo, cantidadDesde, cantidadHasta, precioRegla) {
         var wrap = document.getElementById('pres_extra_rows');
         if (!wrap) return;
         var div = document.createElement('div');
@@ -618,9 +633,15 @@ document.addEventListener('DOMContentLoaded', function() {
         var nv = (nombre || '').replace(/"/g, '&quot;');
         var fv = factor != null && factor !== '' ? String(factor) : '';
         var cv = (codigo != null && codigo !== undefined && String(codigo).trim() !== '') ? String(codigo).replace(/"/g, '&quot;') : '';
-        div.innerHTML = '<div class="col-12 col-md-3"><input type="text" class="form-control form-control-sm pres-extra-nombre" placeholder="Ej. Tira" value="' + nv + '"></div>' +
-            '<div class="col-6 col-md-auto" style="min-width:6.5rem"><input type="number" min="0.0001" step="any" class="form-control form-control-sm pres-extra-factor" placeholder="Factor" value="' + fv + '"></div>' +
-            '<div class="col-12 col-md"><input type="text" class="form-control form-control-sm pres-extra-codigo" maxlength="64" placeholder="Código barras (opcional)" value="' + cv + '" autocomplete="off"></div>' +
+        var dv = (cantidadDesde != null && cantidadDesde !== '' && !isNaN(parseFloat(cantidadDesde))) ? String(cantidadDesde) : '';
+        var hv = (cantidadHasta != null && cantidadHasta !== '' && !isNaN(parseFloat(cantidadHasta))) ? String(cantidadHasta) : '';
+        var pv = (precioRegla != null && precioRegla !== '' && !isNaN(parseFloat(precioRegla))) ? String(precioRegla) : '';
+        div.innerHTML = '<div class="col-12 col-md-2"><input type="text" class="form-control form-control-sm pres-extra-nombre" placeholder="Ej. Tira" value="' + nv + '"></div>' +
+            '<div class="col-6 col-md-1"><input type="number" min="0.0001" step="any" class="form-control form-control-sm pres-extra-factor" placeholder="Factor" value="' + fv + '"></div>' +
+            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-desde" placeholder="Desde" value="' + dv + '"></div>' +
+            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-hasta" placeholder="Hasta" value="' + hv + '"></div>' +
+            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-precio" placeholder="Precio $" value="' + pv + '"></div>' +
+            '<div class="col-12 col-md-2"><input type="text" class="form-control form-control-sm pres-extra-codigo" maxlength="64" placeholder="Código barras" value="' + cv + '" autocomplete="off"></div>' +
             '<div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger pres-extra-remove" title="Quitar">&times;</button></div>';
         div.querySelector('.pres-extra-remove').addEventListener('click', function() { div.remove(); syncPresExtraJson(); });
         wrap.appendChild(div);
@@ -632,7 +653,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     var btnPresAdd = document.getElementById('btn_pres_extra_add');
-    if (btnPresAdd) btnPresAdd.addEventListener('click', function() { addPresExtraRow('', '', ''); });
+    if (btnPresAdd) btnPresAdd.addEventListener('click', function() { addPresExtraRow('', '', '', '', '', ''); });
 
     var btnNuevo = document.getElementById('btnNuevoProducto');
     if (btnNuevo) btnNuevo.addEventListener('click', function() {
@@ -775,7 +796,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 var ccb = document.getElementById('caja_codigo_barra');
                 if (ccb) ccb.value = (d && d.caja_codigo_barra) ? String(d.caja_codigo_barra) : '';
                 if (d && d.extras && d.extras.length) {
-                    d.extras.forEach(function(ex) { addPresExtraRow(ex.nombre, ex.factor, ex.codigo_barra || ''); });
+                    d.extras.forEach(function(ex) {
+                        addPresExtraRow(
+                            ex.nombre,
+                            ex.factor,
+                            ex.codigo_barra || '',
+                            ex.cantidad_desde,
+                            ex.cantidad_hasta,
+                            ex.precio_regla
+                        );
+                    });
                 }
                 syncPresExtraJson();
                 if (typeof actualizarAvisoRecuperacionUmb === 'function') actualizarAvisoRecuperacionUmb();

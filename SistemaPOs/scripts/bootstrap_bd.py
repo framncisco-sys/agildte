@@ -58,6 +58,7 @@ SQL_SCRIPTS = (
     "schema_bootstrap_pos_extensions.sql",
     "schema_bootstrap_compras_proveedores.sql",
     "schema_bootstrap_kardex_promos_contingencia.sql",
+    "sql/schema_producto_presentacion.sql",
 )
 
 

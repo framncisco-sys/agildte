@@ -55,7 +55,11 @@ def main() -> None:
                 nombre VARCHAR(80) NOT NULL,
                 factor_umb NUMERIC(18,6) NOT NULL CHECK (factor_umb > 0),
                 es_umb BOOLEAN NOT NULL DEFAULT FALSE,
-                orden SMALLINT DEFAULT 0
+                orden SMALLINT DEFAULT 0,
+                codigo_barra VARCHAR(64) NULL,
+                cantidad_desde NUMERIC(18,6) NULL,
+                cantidad_hasta NUMERIC(18,6) NULL,
+                precio_regla NUMERIC(18,6) NULL
             )
             """
         )

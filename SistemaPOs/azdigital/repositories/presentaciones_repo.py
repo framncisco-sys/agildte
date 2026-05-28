@@ -57,13 +57,56 @@ def tiene_columna_codigo_barra(cur) -> bool:
     return cur.fetchone() is not None
 
 
+def _tiene_columna(cur, nombre_columna: str) -> bool:
+    if not tabla_existe(cur):
+        return False
+    cur.execute(
+        """
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'producto_presentacion'
+          AND column_name = %s
+        LIMIT 1
+        """,
+        (nombre_columna,),
+    )
+    return cur.fetchone() is not None
+
+
+def tiene_columnas_regla_precio(cur) -> bool:
+    """True cuando existen columnas de rango/precio por presentación."""
+    return (
+        _tiene_columna(cur, "cantidad_desde")
+        and _tiene_columna(cur, "cantidad_hasta")
+        and _tiene_columna(cur, "precio_regla")
+    )
+
+
+def asegurar_columnas_regla_precio(cur) -> None:
+    """Agrega columnas de regla de precio por rango si faltan."""
+    if not tabla_existe(cur):
+        return
+    cur.execute(
+        """
+        ALTER TABLE producto_presentacion
+        ADD COLUMN IF NOT EXISTS cantidad_desde NUMERIC(18,6) NULL,
+        ADD COLUMN IF NOT EXISTS cantidad_hasta NUMERIC(18,6) NULL,
+        ADD COLUMN IF NOT EXISTS precio_regla NUMERIC(18,6) NULL
+        """
+    )
+
+
 def listar_por_producto(cur, producto_id: int) -> list[tuple[Any, ...]]:
-    """Filas: id, nombre, factor_umb, es_umb, orden [, codigo_barra si existe columna]."""
+    """
+    Filas base: id, nombre, factor_umb, es_umb, orden.
+    Opcionales en orden: codigo_barra, cantidad_desde, cantidad_hasta, precio_regla.
+    """
     if not tabla_existe(cur):
         return []
     cols = "id, nombre, factor_umb, es_umb, orden"
     if tiene_columna_codigo_barra(cur):
         cols += ", codigo_barra"
+    if tiene_columnas_regla_precio(cur):
+        cols += ", cantidad_desde, cantidad_hasta, precio_regla"
     cur.execute(
         f"""
         SELECT {cols}
@@ -182,20 +225,80 @@ def _fila_con_codigo_opcional(
     fac: Decimal,
     es_umb: bool,
     codigo_barra: str | None = None,
+    cantidad_desde: Decimal | None = None,
+    cantidad_hasta: Decimal | None = None,
+    precio_regla: Decimal | None = None,
 ) -> tuple[Any, ...]:
-    """Tupla de 3 o 4 elementos; el 4.º solo si hay código no vacío."""
+    """Tupla: nombre, factor, es_umb, codigo, cantidad_desde, cantidad_hasta, precio_regla."""
     n = (nombre or "").strip()[:80]
     c = (codigo_barra or "").strip()[:64] if codigo_barra else ""
-    if c:
-        return (n, fac, es_umb, c)
-    return (n, fac, es_umb)
+    return (n, fac, es_umb, (c or None), cantidad_desde, cantidad_hasta, precio_regla)
 
 
 def _codigo_desde_fila(fila: tuple[Any, ...]) -> str | None:
-    if len(fila) <= 3 or not fila[3]:
+    if len(fila) <= 3 or fila[3] is None:
         return None
     s = str(fila[3]).strip()[:64]
     return s or None
+
+
+def _decimal_desde_fila(fila: tuple[Any, ...], idx: int) -> Decimal | None:
+    if len(fila) <= idx or fila[idx] is None or str(fila[idx]).strip() == "":
+        return None
+    try:
+        return Decimal(str(fila[idx]))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _pos_dict_desde_fila_interna(fila: tuple[Any, ...], id_val: int | None = None) -> dict[str, Any]:
+    """Convierte tupla interna (nombre, factor, es_umb, …) al JSON del POS."""
+    d: dict[str, Any] = {
+        "id": id_val,
+        "nombre": str(fila[0] or "").strip(),
+        "factor": float(fila[1]),
+        "es_umb": bool(fila[2]),
+    }
+    cb = _codigo_desde_fila(fila)
+    if cb:
+        d["codigo_barra"] = cb
+    cdes = _decimal_desde_fila(fila, 4)
+    chas = _decimal_desde_fila(fila, 5)
+    preg = _decimal_desde_fila(fila, 6)
+    if cdes is not None:
+        d["cantidad_desde"] = float(cdes)
+    if chas is not None:
+        d["cantidad_hasta"] = float(chas)
+    if preg is not None:
+        d["precio_regla"] = float(preg)
+    return d
+
+
+def _pos_dict_desde_fila_bd(r: tuple[Any, ...]) -> dict[str, Any]:
+    """Convierte fila de ``listar_por_producto`` al JSON del POS."""
+    d: dict[str, Any] = {
+        "id": int(r[0]),
+        "nombre": str(r[1] or "").strip(),
+        "factor": float(r[2]),
+        "es_umb": bool(r[3]),
+    }
+    rem = list(r[5:]) if len(r) > 5 else []
+    if len(rem) == 1:
+        cb = rem[0]
+        if cb is not None and str(cb).strip():
+            d["codigo_barra"] = str(cb).strip()
+    elif len(rem) == 3:
+        d["cantidad_desde"] = float(rem[0]) if rem[0] is not None else None
+        d["cantidad_hasta"] = float(rem[1]) if rem[1] is not None else None
+        d["precio_regla"] = float(rem[2]) if rem[2] is not None else None
+    elif len(rem) >= 4:
+        cb = rem[0]
+        if cb is not None and str(cb).strip():
+            d["codigo_barra"] = str(cb).strip()
+        d["cantidad_desde"] = float(rem[1]) if rem[1] is not None else None
+        d["cantidad_hasta"] = float(rem[2]) if rem[2] is not None else None
+        d["precio_regla"] = float(rem[3]) if rem[3] is not None else None
+    return d
 
 
 def _snapshot_codigos_presentacion(cur, producto_id: int) -> dict[tuple[Decimal, str], str]:
@@ -242,19 +345,44 @@ def reemplazar_todas(
     _validar_filas(filas)
     cur.execute("DELETE FROM producto_presentacion WHERE producto_id = %s", (producto_id,))
     use_cb = tiene_columna_codigo_barra(cur)
+    use_regla = tiene_columnas_regla_precio(cur)
     for i, fila in enumerate(filas):
         nombre, fac, es_u = fila[0], fila[1], fila[2]
         cb = _codigo_desde_fila(fila)
+        cant_desde = _decimal_desde_fila(fila, 4)
+        cant_hasta = _decimal_desde_fila(fila, 5)
+        precio_regla = _decimal_desde_fila(fila, 6)
         if cb is None and preservar:
             k = (_factor_normalizado(fac), str(nombre or "").strip().lower())
             cb = preservar.get(k)
-        if use_cb:
+        if use_cb and use_regla:
+            cur.execute(
+                """
+                INSERT INTO producto_presentacion (
+                    producto_id, nombre, factor_umb, es_umb, orden, codigo_barra,
+                    cantidad_desde, cantidad_hasta, precio_regla
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (producto_id, str(nombre).strip()[:80], fac, es_u, i, cb, cant_desde, cant_hasta, precio_regla),
+            )
+        elif use_cb:
             cur.execute(
                 """
                 INSERT INTO producto_presentacion (producto_id, nombre, factor_umb, es_umb, orden, codigo_barra)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 (producto_id, str(nombre).strip()[:80], fac, es_u, i, cb),
+            )
+        elif use_regla:
+            cur.execute(
+                """
+                INSERT INTO producto_presentacion (
+                    producto_id, nombre, factor_umb, es_umb, orden, cantidad_desde, cantidad_hasta, precio_regla
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (producto_id, str(nombre).strip()[:80], fac, es_u, i, cant_desde, cant_hasta, precio_regla),
             )
         else:
             cur.execute(
@@ -326,28 +454,16 @@ def lista_para_pos_json(
     )
 
     if not rows:
-        return [
-            {"id": None, "nombre": n, "factor": float(f), "es_umb": es}
-            for n, f, es in filas_legacy
-        ]
+        return [_pos_dict_desde_fila_interna(fila, id_val=None) for fila in filas_legacy]
 
-    out: list[dict[str, Any]] = [
-        {
-            "id": int(r[0]),
-            "nombre": str(r[1] or "").strip(),
-            "factor": float(r[2]),
-            "es_umb": bool(r[3]),
-            **({"codigo_barra": str(r[5] or "").strip()} if len(r) > 5 else {}),
-        }
-        for r in rows
-    ]
+    out: list[dict[str, Any]] = [_pos_dict_desde_fila_bd(r) for r in rows]
     factores_db = {_factor_normalizado(r[2]) for r in rows}
-    for n, f, es in filas_legacy:
-        k = _factor_normalizado(f)
+    for fila in filas_legacy:
+        k = _factor_normalizado(fila[1])
         if k <= 0 or k in factores_db:
             continue
         factores_db.add(k)
-        out.append({"id": None, "nombre": n, "factor": float(f), "es_umb": es})
+        out.append(_pos_dict_desde_fila_interna(fila, id_val=None))
 
     for d in out:
         if d.get("es_umb") and (d.get("nombre") or "").strip().lower() in ("unidad base", "umb", ""):
@@ -359,7 +475,11 @@ def construir_filas_desde_legacy(
     nombre_umb: str,
     unidades_por_docena: int,
     unidades_por_caja: int | None,
-    extras: list[tuple[str, float] | tuple[str, float, str | None]] | None = None,
+    extras: list[
+        tuple[str, float]
+        | tuple[str, float, str | None]
+        | tuple[str, float, str | None, float | None, float | None, float | None]
+    ] | None = None,
     *,
     codigo_barra_umb: str | None = None,
     codigo_barra_docena: str | None = None,
@@ -379,10 +499,12 @@ def construir_filas_desde_legacy(
         )
     if extras:
         for x in extras:
-            if len(x) >= 3:
-                nom, fac, cb = x[0], x[1], x[2]
+            if len(x) >= 6:
+                nom, fac, cb, cdes, chas, preg = x[0], x[1], x[2], x[3], x[4], x[5]
+            elif len(x) >= 3:
+                nom, fac, cb, cdes, chas, preg = x[0], x[1], x[2], None, None, None
             else:
-                nom, fac, cb = x[0], x[1], None
+                nom, fac, cb, cdes, chas, preg = x[0], x[1], None, None, None, None
             n = (str(nom) or "").strip()[:80]
             if not n:
                 continue
@@ -392,5 +514,37 @@ def construir_filas_desde_legacy(
                 continue
             if f <= 0:
                 continue
-            rows.append(_fila_con_codigo_opcional(n, f, False, str(cb) if cb is not None else None))
+            cdes_d: Decimal | None = None
+            chas_d: Decimal | None = None
+            preg_d: Decimal | None = None
+            try:
+                if cdes is not None and str(cdes).strip() != "":
+                    cdes_d = Decimal(str(cdes))
+                if chas is not None and str(chas).strip() != "":
+                    chas_d = Decimal(str(chas))
+                if preg is not None and str(preg).strip() != "":
+                    preg_d = Decimal(str(preg))
+            except (InvalidOperation, ValueError):
+                cdes_d = None
+                chas_d = None
+                preg_d = None
+            if cdes_d is not None and cdes_d < 0:
+                cdes_d = None
+            if chas_d is not None and chas_d < 0:
+                chas_d = None
+            if cdes_d is not None and chas_d is not None and chas_d < cdes_d:
+                chas_d = None
+            if preg_d is not None and preg_d < 0:
+                preg_d = None
+            rows.append(
+                _fila_con_codigo_opcional(
+                    n,
+                    f,
+                    False,
+                    str(cb) if cb is not None else None,
+                    cdes_d,
+                    chas_d,
+                    preg_d,
+                )
+            )
     return rows

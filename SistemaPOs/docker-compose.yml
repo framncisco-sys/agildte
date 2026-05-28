@@ -36,6 +36,7 @@ services:
       - ./scripts/schema_bootstrap_pos_extensions.sql:/docker-entrypoint-initdb.d/02-posagil-pos.sql:ro
       - ./scripts/schema_bootstrap_compras_proveedores.sql:/docker-entrypoint-initdb.d/03-posagil-compras.sql:ro
       - ./scripts/schema_bootstrap_kardex_promos_contingencia.sql:/docker-entrypoint-initdb.d/04-posagil-kardex.sql:ro
+      - ./scripts/sql/schema_producto_presentacion.sql:/docker-entrypoint-initdb.d/05-posagil-presentaciones.sql:ro
     ports:
       - "${POSAGIL_PG_HOST_PORT:-5433}:5432"
     healthcheck:

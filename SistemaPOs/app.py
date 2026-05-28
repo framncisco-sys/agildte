@@ -53,6 +53,28 @@ def _load_dotenv(path: str = ".env") -> None:
         return
 
 
+class _StripApplicationPrefixMiddleware:
+    """
+    En acceso directo (p. ej. :5001) el front usa URLs con prefijo /pos (PUBLIC_BASE_URL),
+    pero las rutas Flask están en /. Nginx ya quita /pos al reenviar; aquí se replica ese rewrite.
+    """
+
+    def __init__(self, wsgi_app, prefix: str):
+        self.wsgi_app = wsgi_app
+        p = (prefix or "").strip().rstrip("/")
+        self.prefix = p if (not p or p.startswith("/")) else f"/{p}"
+
+    def __call__(self, environ, start_response):
+        if not self.prefix:
+            return self.wsgi_app(environ, start_response)
+        path = environ.get("PATH_INFO") or ""
+        if path == self.prefix or path.startswith(self.prefix + "/"):
+            environ["SCRIPT_NAME"] = (environ.get("SCRIPT_NAME") or "") + self.prefix
+            stripped = path[len(self.prefix) :] or "/"
+            environ["PATH_INFO"] = stripped if stripped.startswith("/") else "/" + stripped
+        return self.wsgi_app(environ, start_response)
+
+
 def create_app() -> Flask:
     _load_dotenv()
     app = Flask(__name__)
@@ -303,6 +325,10 @@ def create_app() -> Flask:
             "PUBLIC_BASE_URL": get_public_base_url(),
             "POS_URL_PREFIX": get_application_url_prefix(),
         }
+
+    _prefix = get_application_url_prefix()
+    if _prefix:
+        app.wsgi_app = _StripApplicationPrefixMiddleware(app.wsgi_app, _prefix)
 
     return app
 

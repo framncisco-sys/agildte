@@ -3107,6 +3107,9 @@ def inventario():
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
+        if presentaciones_repo.tabla_existe(cur):
+            presentaciones_repo.asegurar_columnas_regla_precio(cur)
+            conn.commit()
         es_super = _es_superadmin_db(cur)
         if es_super:
             raw = productos_repo.listar_inventario_global(cur, limit=500) or []
@@ -3145,6 +3148,171 @@ def inventario_slash():
     return inventario()
 
 
+def _filas_exportacion_inventario(cur, es_super: bool, emp_id: int) -> tuple[list[tuple[Any, ...]], float, float]:
+    if es_super:
+        raw = productos_repo.listar_inventario_global(cur, limit=5000) or []
+    else:
+        raw = productos_repo.listar_inventario(cur, limit=5000, empresa_id=emp_id) or []
+    en = session.get("empresa_nombre")
+    productos = [_normalizar_producto(p, empresa_nombre=en, empresa_id_default=emp_id) for p in raw]
+    suma_precio = 0.0
+    suma_stock = 0.0
+    filas: list[tuple[Any, ...]] = []
+    for p in productos:
+        precio_u = float(p[3] or 0)
+        stock = float(p[4] or 0)
+        sucursal = p[8] if p[8] != "—" else "Todas"
+        suma_precio += precio_u
+        suma_stock += stock
+        if es_super:
+            filas.append((str(p[1] or ""), str(p[2] or ""), str(p[7] or "—"), str(sucursal), precio_u, stock))
+        else:
+            filas.append((str(p[1] or ""), str(p[2] or ""), str(sucursal), precio_u, stock))
+    return filas, suma_precio, suma_stock
+
+
+@bp.route("/inventario/exportar_excel")
+@rol_requerido("GERENTE", "BODEGUERO")
+def inventario_exportar_excel():
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        emp_id = _empresa_id()
+        es_super = _es_superadmin_db(cur)
+        filas, suma_precio, suma_stock = _filas_exportacion_inventario(cur, es_super=es_super, emp_id=emp_id)
+    finally:
+        cur.close()
+        conn.close()
+    try:
+        from openpyxl import Workbook
+    except ImportError:
+        return "<p>Instala openpyxl: pip install openpyxl</p>", 500
+
+    st = _estilos_excel_elegante()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Inventario"
+    headers = ["Código", "Producto"]
+    if es_super:
+        headers.append("Empresa")
+    headers += ["Sucursal", "Precio / unidad", "Stock general"]
+    num_cols = len(headers)
+    r = 1
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=num_cols)
+    ws.cell(r, 1, "Inventario de Productos").font = st["font_title"]
+    ws.cell(r, 1).alignment = st["align_center"]
+    ws.row_dimensions[r].height = 26
+
+    cab = _datos_cabecera_inventario("Inventario actual", emp_id=emp_id)
+    if es_super:
+        cab["empresa"] = "Todas las empresas"
+        cab["sucursal"] = "Todas las sucursales"
+    for txt in (
+        f"Período: {cab['periodo']}",
+        f"Empresa: {cab['empresa']}",
+        f"Sucursal: {cab['sucursal']}",
+        f"Generado: {cab['generado']}",
+    ):
+        r += 1
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=num_cols)
+        ws.cell(r, 1, txt).font = st["font_meta"]
+
+    r += 2
+    hdr = r
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(hdr, col, h)
+        c.font, c.fill, c.alignment, c.border = st["font_header"], st["fill_header"], st["align_center"], st["border_all"]
+
+    for i, row in enumerate(filas):
+        rr = hdr + 1 + i
+        for col, val in enumerate(row, 1):
+            cell = ws.cell(rr, col, val)
+            cell.border = st["border_all"]
+            if col in (num_cols - 1,):
+                cell.number_format = '"$"#,##0.00'
+                cell.alignment = st["align_right"]
+            elif col == num_cols:
+                cell.number_format = '#,##0.00'
+                cell.alignment = st["align_right"]
+            elif col in (1, 2) or (es_super and col == 3):
+                cell.alignment = st["align_left"]
+            else:
+                cell.alignment = st["align_center"]
+            if i % 2:
+                cell.fill = st["fill_alt"]
+
+    total_row = hdr + 1 + len(filas)
+    for col in range(1, num_cols + 1):
+        c = ws.cell(total_row, col, "")
+        c.border = st["border_all"]
+        c.fill = st["fill_total"]
+    ws.cell(total_row, 1, "TOTAL").font = st["font_total"]
+    ws.cell(total_row, 1).alignment = st["align_left"]
+    ws.cell(total_row, num_cols - 1, float(suma_precio)).number_format = '"$"#,##0.00'
+    ws.cell(total_row, num_cols - 1).font = st["font_total"]
+    ws.cell(total_row, num_cols - 1).alignment = st["align_right"]
+    ws.cell(total_row, num_cols, float(suma_stock)).number_format = '#,##0.00'
+    ws.cell(total_row, num_cols).font = st["font_total"]
+    ws.cell(total_row, num_cols).alignment = st["align_right"]
+
+    widths = [18, 38]
+    if es_super:
+        widths.append(28)
+    widths += [22, 16, 16]
+    for col, w in enumerate(widths, 1):
+        letter = chr(64 + col) if col <= 26 else "A"
+        ws.column_dimensions[letter].width = w
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"inventario_productos_{date.today().strftime('%Y%m%d')}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@bp.route("/inventario/exportar_pdf")
+@rol_requerido("GERENTE", "BODEGUERO")
+def inventario_exportar_pdf():
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        emp_id = _empresa_id()
+        es_super = _es_superadmin_db(cur)
+        filas, suma_precio, suma_stock = _filas_exportacion_inventario(cur, es_super=es_super, emp_id=emp_id)
+    finally:
+        cur.close()
+        conn.close()
+
+    headers = ["Código", "Producto"]
+    if es_super:
+        headers.append("Empresa")
+    headers += ["Sucursal", "Precio/u", "Stock"]
+    filas_pdf = [tuple(list(r[:-2]) + [f"${float(r[-2]):,.2f}", f"{float(r[-1]):,.2f}"]) for r in filas]
+    if es_super:
+        filas_pdf.append(("TOTAL", "", "", "", f"${suma_precio:,.2f}", f"{suma_stock:,.2f}"))
+    else:
+        filas_pdf.append(("TOTAL", "", "", f"${suma_precio:,.2f}", f"{suma_stock:,.2f}"))
+
+    cab = _datos_cabecera_inventario("Inventario actual", emp_id=emp_id)
+    if es_super:
+        cab["empresa"] = "Todas las empresas"
+        cab["sucursal"] = "Todas las sucursales"
+    col_fracs = [0.16, 0.28, 0.18, 0.16, 0.11, 0.11] if es_super else [0.18, 0.34, 0.18, 0.15, 0.15]
+    buf = _exportar_pdf_inventario("Inventario de Productos", "Resumen actual", headers, filas_pdf, cab, col_fracs)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"inventario_productos_{date.today().strftime('%Y%m%d')}.pdf",
+        mimetype="application/pdf",
+    )
+
+
 @bp.route("/inventario/presentaciones/<int:producto_id>")
 @rol_requerido("GERENTE", "BODEGUERO")
 def inventario_presentaciones_producto(producto_id: int):
@@ -3157,6 +3325,9 @@ def inventario_presentaciones_producto(producto_id: int):
         es_super = _es_superadmin_db(cur)
         if not _acceso_producto_inventario(cur, producto_id, emp_id, es_super):
             return jsonify({"error": "No autorizado"}), 403
+        if presentaciones_repo.tabla_existe(cur):
+            presentaciones_repo.asegurar_columnas_regla_precio(cur)
+            conn.commit()
         if not presentaciones_repo.tabla_existe(cur):
             return jsonify(
                 {
@@ -3187,7 +3358,22 @@ def inventario_presentaciones_producto(producto_id: int):
             es_u = bool(r[3]) if len(r) > 3 else False
             nombre = str(r[1] or "").strip()
             fac = float(r[2]) if r[2] is not None else 1.0
-            cb = (str(r[5]).strip() if len(r) > 5 and r[5] is not None else "") or None
+            rem = list(r[5:]) if len(r) > 5 else []
+            cb = None
+            cant_desde = None
+            cant_hasta = None
+            precio_regla = None
+            if len(rem) == 1:
+                cb = (str(rem[0]).strip() if rem[0] is not None else "") or None
+            elif len(rem) == 3:
+                cant_desde = float(rem[0]) if rem[0] is not None else None
+                cant_hasta = float(rem[1]) if rem[1] is not None else None
+                precio_regla = float(rem[2]) if rem[2] is not None else None
+            elif len(rem) >= 4:
+                cb = (str(rem[0]).strip() if rem[0] is not None else "") or None
+                cant_desde = float(rem[1]) if rem[1] is not None else None
+                cant_hasta = float(rem[2]) if rem[2] is not None else None
+                precio_regla = float(rem[3]) if rem[3] is not None else None
             if es_u:
                 umb = nombre or umb
                 umb_cb = cb
@@ -3199,7 +3385,16 @@ def inventario_presentaciones_producto(producto_id: int):
             if low == "caja":
                 caja_cb = cb
                 continue
-            extras.append({"nombre": nombre, "factor": fac, "codigo_barra": cb})
+            extras.append(
+                {
+                    "nombre": nombre,
+                    "factor": fac,
+                    "codigo_barra": cb,
+                    "cantidad_desde": cant_desde,
+                    "cantidad_hasta": cant_hasta,
+                    "precio_regla": precio_regla,
+                }
+            )
         return jsonify(
             {
                 "umb_nombre": umb,
@@ -4073,12 +4268,26 @@ def guardar_producto():
         s = (raw or "").strip()[:64] if raw is not None else ""
         return s or None
 
-    extras: list[tuple[str, float, str | None]] = []
+    extras: list[tuple[str, float, str | None, float | None, float | None, float | None]] = []
     for x in extra_list:
         if isinstance(x, dict) and x.get("nombre") and x.get("factor") is not None:
             try:
                 cbx = _codigo_barra_presentacion_form(x.get("codigo_barra"))
-                extras.append((str(x["nombre"]).strip()[:80], float(x["factor"]), cbx))
+                cdes = x.get("cantidad_desde")
+                chas = x.get("cantidad_hasta")
+                preg = x.get("precio_regla")
+                cdes_f = float(cdes) if cdes is not None and str(cdes).strip() != "" else None
+                chas_f = float(chas) if chas is not None and str(chas).strip() != "" else None
+                preg_f = float(preg) if preg is not None and str(preg).strip() != "" else None
+                if cdes_f is not None and cdes_f < 0:
+                    cdes_f = None
+                if chas_f is not None and chas_f < 0:
+                    chas_f = None
+                if cdes_f is not None and chas_f is not None and chas_f < cdes_f:
+                    chas_f = None
+                if preg_f is not None and preg_f < 0:
+                    preg_f = None
+                extras.append((str(x["nombre"]).strip()[:80], float(x["factor"]), cbx, cdes_f, chas_f, preg_f))
             except (TypeError, ValueError):
                 pass
     umb_cb = _codigo_barra_presentacion_form(form.get("umb_codigo_barra"))
@@ -4232,6 +4441,7 @@ def guardar_producto():
                 else:
                     suc_para_stock = primera
             if presentaciones_repo.tabla_existe(cur):
+                presentaciones_repo.asegurar_columnas_regla_precio(cur)
                 filas = presentaciones_repo.construir_filas_desde_legacy(
                     umb_nombre,
                     unidades_por_docena,
@@ -4284,6 +4494,7 @@ def guardar_producto():
                 else:
                     suc_para_stock = primera
             if presentaciones_repo.tabla_existe(cur):
+                presentaciones_repo.asegurar_columnas_regla_precio(cur)
                 filas = presentaciones_repo.construir_filas_desde_legacy(
                     umb_nombre,
                     unidades_por_docena,
