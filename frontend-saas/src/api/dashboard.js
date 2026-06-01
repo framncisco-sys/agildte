@@ -6,7 +6,8 @@ import apiClient from './axios'
  * @returns {Promise<{ total_ventas_mes: number, cantidad_dtes_mes: number, ventas_hoy: number, ventas_por_dia: Array<{dia: string, total: number}>, ultimas_ventas: Array }>}
  */
 export async function getDashboardStats(empresaId = null) {
-  const params = empresaId ? `?empresa_id=${empresaId}` : ''
-  const { data } = await apiClient.get(`/dashboard-stats/${params}`)
+  const { data } = await apiClient.get('/dashboard-stats/', {
+    params: empresaId != null && empresaId !== '' ? { empresa_id: empresaId } : {},
+  })
   return data
 }

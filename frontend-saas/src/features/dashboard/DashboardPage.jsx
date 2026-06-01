@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { DollarSign, FileText, TrendingUp } from 'lucide-react'
 import {
   AreaChart,
@@ -13,6 +13,7 @@ import { getDashboardStats } from '../../api/dashboard'
 import { getEmpresa } from '../../api/empresa'
 import { useEmpresaStore } from '../../stores/useEmpresaStore'
 import { ComprasDelMesCard } from './components/ComprasDelMesCard'
+import { buildEmptyDashboardStats, normalizeDashboardStats } from './dashboardStatsEmpty'
 
 function SkeletonCard() {
   return (
@@ -32,12 +33,19 @@ function SkeletonChart() {
   )
 }
 
+function isServerUnavailable(err) {
+  const status = err?.response?.status
+  if (status === 502 || status === 503 || status === 504) return true
+  const msg = String(err?.message || '').toLowerCase()
+  return msg.includes('network') || msg.includes('timeout') || msg.includes('502')
+}
+
 export function DashboardPage() {
   const empresaId = useEmpresaStore((s) => s.empresaId)
   const empresaNombre = useEmpresaStore((s) => s.empresaNombre)
-  const [stats, setStats] = useState(null)
+  const [stats, setStats] = useState(() => buildEmptyDashboardStats())
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [apiWarning, setApiWarning] = useState(null)
   const [comprasPremium, setComprasPremium] = useState(false)
 
   useEffect(() => {
@@ -61,23 +69,35 @@ export function DashboardPage() {
   useEffect(() => {
     if (!empresaId) {
       setLoading(false)
-      setStats(null)
-      setError(null)
+      setStats(buildEmptyDashboardStats())
+      setApiWarning(null)
       return
     }
     let cancelled = false
     setLoading(true)
-    setError(null)
-    setStats(null)
+    setApiWarning(null)
     getDashboardStats(empresaId)
       .then((data) => {
         if (!cancelled) {
-          setStats(data)
+          setStats(normalizeDashboardStats(data))
         }
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err.response?.data?.detail ?? err.message ?? 'Error al cargar estadísticas')
+          setStats(buildEmptyDashboardStats())
+          if (isServerUnavailable(err)) {
+            setApiWarning(
+              'No se pudo conectar con el servidor (error 502/503). Se muestran valores en cero. '
+              + 'Si acaba de desplegar, ejecute migraciones y reinicie el backend.'
+            )
+          } else {
+            setApiWarning(
+              err.response?.data?.detail
+              || err.response?.data?.error
+              || err.message
+              || 'No se pudieron cargar las estadísticas; se muestran ceros.'
+            )
+          }
         }
       })
       .finally(() => {
@@ -86,11 +106,14 @@ export function DashboardPage() {
     return () => { cancelled = true }
   }, [empresaId])
 
-  const formatCurrency = (n) =>
-    typeof n === 'number' ? `$ ${n.toLocaleString('es-SV', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$ 0.00'
+  const formatCurrency = (n) => {
+    const x = Number(n)
+    if (!Number.isFinite(x)) return '$ 0.00'
+    return `$ ${x.toLocaleString('es-SV', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
 
-  const chartData = stats?.ventas_por_dia ?? []
-  const hasChartData = chartData.some((d) => Number(d.total) > 0)
+  const chartData = useMemo(() => stats?.ventas_por_dia ?? [], [stats])
+  const sinVentasEnMes = !chartData.some((d) => Number(d.total) > 0)
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
@@ -109,9 +132,9 @@ export function DashboardPage() {
         </div>
       )}
 
-      {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">
-          {error}
+      {apiWarning && (
+        <div className="rounded-xl bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 text-sm">
+          {apiWarning}
         </div>
       )}
 
@@ -169,51 +192,52 @@ export function DashboardPage() {
             <SkeletonChart />
           ) : (
             <div className="bg-agil-bg-white rounded-xl border border-agil-border-subtle shadow-sm p-4 sm:p-5 overflow-hidden h-full">
-              <h2 className="text-base sm:text-lg font-semibold text-agil-text-primary mb-4">
+              <h2 className="text-base sm:text-lg font-semibold text-agil-text-primary mb-1">
                 Comportamiento de Ventas (Este Mes)
               </h2>
-              {chartData.length === 0 ? (
-                <div className="h-48 sm:h-64 flex items-center justify-center text-agil-text-secondary text-sm border border-dashed border-agil-border-subtle rounded-xl bg-agil-bg-main/50">
-                  No hay datos del mes para mostrar
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={260} minHeight={220}>
-                  <AreaChart
-                    data={chartData}
-                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#1A56DB" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#1A56DB" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                    <XAxis
-                      dataKey="dia"
-                      tick={{ fontSize: 11, fill: '#6B7280' }}
-                      axisLine={{ stroke: '#E5E7EB' }}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: '#6B7280' }}
-                      axisLine={false}
-                      tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v))}
-                    />
-                    <Tooltip
-                      formatter={(value) => [formatCurrency(Number(value)), 'Total']}
-                      labelFormatter={(label) => `Día ${label}`}
-                      contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB' }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="total"
-                      stroke="#1A56DB"
-                      strokeWidth={2}
-                      fill="url(#colorTotal)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+              {sinVentasEnMes && (
+                <p className="text-xs text-agil-text-secondary mb-3">
+                  Sin ventas registradas este mes — gráfico en $ 0.00
+                </p>
               )}
+              {!sinVentasEnMes && <div className="mb-4" />}
+              <ResponsiveContainer width="100%" height={260} minHeight={220}>
+                <AreaChart
+                  data={chartData}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#1A56DB" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#1A56DB" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                  <XAxis
+                    dataKey="dia"
+                    tick={{ fontSize: 11, fill: '#6B7280' }}
+                    axisLine={{ stroke: '#E5E7EB' }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#6B7280' }}
+                    axisLine={false}
+                    domain={[0, 'auto']}
+                    tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v))}
+                  />
+                  <Tooltip
+                    formatter={(value) => [formatCurrency(Number(value)), 'Total']}
+                    labelFormatter={(label) => `Día ${label}`}
+                    contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB' }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="total"
+                    stroke="#1A56DB"
+                    strokeWidth={2}
+                    fill="url(#colorTotal)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           )}
         </div>
@@ -237,7 +261,6 @@ export function DashboardPage() {
           </div>
         ) : (
           <>
-            {/* Móvil: cards */}
             {stats?.ultimas_ventas?.length > 0 && (
               <div className="md:hidden divide-y divide-agil-border-subtle">
                 {stats.ultimas_ventas.map((v) => (
@@ -259,53 +282,52 @@ export function DashboardPage() {
                 ))}
               </div>
             )}
-            {/* Escritorio: tabla con scroll horizontal */}
             <div className="overflow-x-auto">
-            {(!stats?.ultimas_ventas || stats.ultimas_ventas.length === 0) ? (
-              <p className="text-agil-text-secondary text-sm px-4 sm:px-5 py-8 text-center">
-                No hay documentos recientes
-              </p>
-            ) : (
-              <table className="w-full text-sm min-w-[400px] hidden md:table">
-                <thead>
-                  <tr className="bg-agil-bg-main border-b border-agil-border-subtle">
-                    <th className="px-5 py-3 text-left font-semibold text-agil-text-secondary">Nº Control</th>
-                    <th className="px-5 py-3 text-left font-semibold text-agil-text-secondary">Cliente</th>
-                    <th className="px-5 py-3 text-right font-semibold text-agil-text-secondary">Total</th>
-                    <th className="px-5 py-3 text-left font-semibold text-agil-text-secondary">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.ultimas_ventas.map((v) => (
-                    <tr
-                      key={v.id}
-                      className="border-b border-agil-border-subtle hover:bg-agil-bg-main/50 transition-colors"
-                    >
-                      <td className="px-5 py-3 text-agil-text-primary font-medium">{v.numero_control}</td>
-                      <td className="px-5 py-3 text-agil-text-secondary truncate max-w-[200px]">{v.cliente}</td>
-                      <td className="px-5 py-3 text-right text-agil-text-primary font-medium">
-                        {formatCurrency(v.total)}
-                      </td>
-                      <td className="px-5 py-3">
-                        <span
-                          className={`inline-flex px-2 py-0.5 rounded-lg text-xs font-medium ${
-                            v.estado === 'AceptadoMH'
-                              ? 'bg-[#D1FAE5] text-agil-success'
-                              : v.estado === 'Enviado'
-                                ? 'bg-[#DBEAFE] text-agil-primary'
-                                : v.estado === 'Borrador'
-                                  ? 'bg-agil-bg-main text-agil-text-secondary'
-                                  : 'bg-agil-orange-light text-agil-orange'
-                          }`}
-                        >
-                          {v.estado}
-                        </span>
-                      </td>
+              {(!stats?.ultimas_ventas || stats.ultimas_ventas.length === 0) ? (
+                <p className="text-agil-text-secondary text-sm px-4 sm:px-5 py-8 text-center">
+                  No hay documentos recientes
+                </p>
+              ) : (
+                <table className="w-full text-sm min-w-[400px] hidden md:table">
+                  <thead>
+                    <tr className="bg-agil-bg-main border-b border-agil-border-subtle">
+                      <th className="px-5 py-3 text-left font-semibold text-agil-text-secondary">Nº Control</th>
+                      <th className="px-5 py-3 text-left font-semibold text-agil-text-secondary">Cliente</th>
+                      <th className="px-5 py-3 text-right font-semibold text-agil-text-secondary">Total</th>
+                      <th className="px-5 py-3 text-left font-semibold text-agil-text-secondary">Estado</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                  </thead>
+                  <tbody>
+                    {stats.ultimas_ventas.map((v) => (
+                      <tr
+                        key={v.id}
+                        className="border-b border-agil-border-subtle hover:bg-agil-bg-main/50 transition-colors"
+                      >
+                        <td className="px-5 py-3 text-agil-text-primary font-medium">{v.numero_control}</td>
+                        <td className="px-5 py-3 text-agil-text-secondary truncate max-w-[200px]">{v.cliente}</td>
+                        <td className="px-5 py-3 text-right text-agil-text-primary font-medium">
+                          {formatCurrency(v.total)}
+                        </td>
+                        <td className="px-5 py-3">
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-lg text-xs font-medium ${
+                              v.estado === 'AceptadoMH'
+                                ? 'bg-[#D1FAE5] text-agil-success'
+                                : v.estado === 'Enviado'
+                                  ? 'bg-[#DBEAFE] text-agil-primary'
+                                  : v.estado === 'Borrador'
+                                    ? 'bg-agil-bg-main text-agil-text-secondary'
+                                    : 'bg-agil-orange-light text-agil-orange'
+                            }`}
+                          >
+                            {v.estado}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </>
         )}

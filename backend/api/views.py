@@ -1170,6 +1170,22 @@ def _total_pagar_venta(venta):
     return round(vg + ve + vn + df - i1 - i2, 2)
 
 
+def _dashboard_stats_vacio():
+    """Respuesta segura cuando no hay datos o falla la consulta."""
+    now = timezone.localdate()
+    _, last_day_num = calendar.monthrange(now.year, now.month)
+    return {
+        "total_ventas_mes": 0.0,
+        "cantidad_dtes_mes": 0,
+        "ventas_hoy": 0.0,
+        "ventas_por_dia": [
+            {"dia": f"{d:02d}", "total": 0.0}
+            for d in range(1, last_day_num + 1)
+        ],
+        "ultimas_ventas": [],
+    }
+
+
 @api_view(['GET'])
 def dashboard_stats_api(request):
     """
@@ -1180,6 +1196,14 @@ def dashboard_stats_api(request):
     if not empresa_ids:
         return Response({"error": "Autenticación requerida"}, status=status.HTTP_401_UNAUTHORIZED)
 
+    try:
+        return _dashboard_stats_api_impl(request, empresa_ids)
+    except Exception as exc:
+        logger.exception("dashboard_stats_api: %s", exc)
+        return Response(_dashboard_stats_vacio())
+
+
+def _dashboard_stats_api_impl(request, empresa_ids):
     empresa_id = request.query_params.get('empresa_id')
     if empresa_id:
         r = require_empresa_allowed(request, int(empresa_id))
