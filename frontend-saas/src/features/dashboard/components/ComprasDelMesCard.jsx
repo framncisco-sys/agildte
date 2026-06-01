@@ -2,12 +2,12 @@
  * Cuadro resumen compras / IVA del mes (premium).
  * Por ahora datos de demostración; luego se conectará al backend.
  */
-const DEMO_COMPRAS_MES = {
-  ventas: 10.0,
-  debito: 1.3,
-  retencion: 0.1,
-  compras: 8.0,
-  credito_fiscal: 1.04,
+const COMPRAS_MES_VACIO = {
+  ventas: 0,
+  debito: 0,
+  retencion: 0,
+  compras: 0,
+  credito_fiscal: 0,
 }
 
 function formatMoney(n) {
@@ -24,7 +24,7 @@ const ROWS = [
   { key: 'credito_fiscal', label: 'Crédito fiscal' },
 ]
 
-export function ComprasDelMesCard({ data = DEMO_COMPRAS_MES }) {
+export function ComprasDelMesCard({ data = COMPRAS_MES_VACIO }) {
   const debito = Number(data.debito) || 0
   const credito = Number(data.credito_fiscal) || 0
   const retencion = Number(data.retencion) || 0
@@ -41,7 +41,7 @@ export function ComprasDelMesCard({ data = DEMO_COMPRAS_MES }) {
         </span>
       </div>
       <p className="text-xs text-agil-text-secondary mb-3">
-        Resumen IVA ventas vs compras (mes en curso). Vista previa con datos de ejemplo.
+        Resumen IVA ventas vs compras (mes en curso). Sin movimientos registrados.
       </p>
       <div className="flex-1 overflow-auto rounded-lg border border-agil-border-subtle">
         <table className="w-full text-sm">
