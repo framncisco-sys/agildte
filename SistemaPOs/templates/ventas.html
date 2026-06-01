@@ -978,7 +978,8 @@
             inputCodigo.value = '';
             return true;
         } catch (err) {
-            alert("⚠️ Sin respuesta del servidor.");
+            console.error('POS buscar/agregar:', err);
+            alert(err && err.message ? ('⚠️ ' + err.message) : '⚠️ Sin respuesta del servidor.');
             if (!opts.fromCamera) inputCodigo.value = '';
             return false;
         }
@@ -1710,6 +1711,9 @@
         let totalBruto = 0;
         carrito.forEach((p, i) => {
             aplicarPrecioReglaPresentacion(p);
+            const pt = (p.promocion_tipo || '').toUpperCase();
+            const pv = parseFloat(p.promocion_valor) || 0;
+            const vc = p.promocion_valor_comprar, vp = p.promocion_valor_pagar, dm = p.promocion_descuento_monto;
             const pvLinea = precioVentaLinea(p);
             const qBase = cantidadBaseLinea(p);
             const subtotal = subtotalLineaItem(p);
