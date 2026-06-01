@@ -1480,6 +1480,23 @@
             return pr && pr.id != null && parseInt(pr.id, 10) === pid;
         }) || null;
     }
+    /** Sin Desde/Hasta: solo se aplica si el cajero la elige en el desplegable (bolsa, caja, etc.). */
+    function presentacionEsSoloManual(pr) {
+        if (!pr || pr.es_umb) return false;
+        if (presentacionTieneRangoCantidad(pr)) return false;
+        return true;
+    }
+    function presentacionBloqueada(item) {
+        return !!(item && item.presentacion_bloqueada);
+    }
+    function actualizarBloqueoPresentacion(item, pr) {
+        if (!item) return;
+        if (!pr || pr.es_umb) {
+            item.presentacion_bloqueada = false;
+            return;
+        }
+        item.presentacion_bloqueada = presentacionEsSoloManual(pr);
+    }
     function precioVentaLineaSinOverride(item) {
         var ov = item.precio_override;
         var ovPor = item.precio_override_por_presentacion;
@@ -1507,12 +1524,12 @@
         }
         var q = parseFloat(item.cantidad);
         if (!isFinite(q) || q <= 0) q = 1;
-        var prSel = presentacionSeleccionada(item);
-        if (prSel && presentacionTienePrecioRegla(prSel)) {
-            if (!presentacionTieneRangoCantidad(prSel) || presentacionReglaAplicaEnCantidad(prSel, q)) {
+        if (presentacionBloqueada(item)) {
+            var prFija = presentacionSeleccionada(item);
+            if (prFija && presentacionTienePrecioRegla(prFija)) {
                 return {
-                    precio: parseFloat(prSel.precio_regla),
-                    etiqueta: String(prSel.nombre || 'presentación').replace(/</g, ''),
+                    precio: parseFloat(prFija.precio_regla),
+                    etiqueta: String(prFija.nombre || 'presentación').replace(/</g, ''),
                     porPresentacion: true,
                     origen: 'presentacion'
                 };
@@ -1525,6 +1542,16 @@
                 etiqueta: String(prRango.nombre || 'presentación').replace(/</g, ''),
                 porPresentacion: true,
                 origen: 'regla'
+            };
+        }
+        var prSel = presentacionSeleccionada(item);
+        if (prSel && presentacionTienePrecioRegla(prSel) && presentacionTieneRangoCantidad(prSel)
+            && presentacionReglaAplicaEnCantidad(prSel, q)) {
+            return {
+                precio: parseFloat(prSel.precio_regla),
+                etiqueta: String(prSel.nombre || 'presentación').replace(/</g, ''),
+                porPresentacion: true,
+                origen: 'presentacion'
             };
         }
         var base = parseFloat(item.precio_base);
@@ -1578,6 +1605,7 @@
     }
     function sincronizarPresentacionPorReglaCantidad(item) {
         if (!item || !item.presentaciones || !item.presentaciones.length) return;
+        if (presentacionBloqueada(item)) return;
         var pr = resolverPresentacionReglaPrecio(item);
         if (!pr) return;
         item.factor_umb = parseFloat(pr.factor) || 1;
@@ -1609,8 +1637,8 @@
         let presId = null;
         let factorUmb = 1;
         let mergeKey = 'leg-UNIDAD';
+        let chosen = null;
         if (pres.length) {
-            let chosen = null;
             const esc = meta.presentacion_escaneada_id;
             if (esc != null && esc !== '' && !isNaN(parseInt(esc, 10))) {
                 const eid = parseInt(esc, 10);
@@ -1656,8 +1684,12 @@
                 presentaciones: pres,
                 presentacion_id: presId,
                 factor_umb: factorUmb,
+                presentacion_bloqueada: false,
                 _mergeKey: mergeKey
             });
+        if (chosen) {
+            actualizarBloqueoPresentacion(carrito[carrito.length - 1], chosen);
+        }
         renderizar();
     }
 
@@ -1781,11 +1813,19 @@
                     <button type="button" class="btn btn-outline-primary" title="Una (${tq})" onclick="posCantidadFraccion(${i}, 1)">1</button>
                 </div>`;
             }
+            const etiquetaToque = (presentacionBloqueada(p) || (pvLinea.porPresentacion && pvLinea.origen !== 'base'))
+                ? pvLinea.etiqueta
+                : umbLabel;
+            const hintBloqueada = presentacionBloqueada(p)
+                ? ' Presentación fija: <strong>+/−</strong> suman o quitan 1 «' + escAttr(pvLinea.etiqueta) + '» (no cambia sola al subir cantidad).'
+                : (pvLinea.origen === 'regla'
+                    ? ' Precio por cantidad (regla Desde/Hasta); al subir unidades puede cambiar la presentación automáticamente.'
+                    : '');
             const hintBase = !modoMonto
                 ? `<div class="small text-muted">Sale del inventario: <strong>${fmtCantBase(qBase)} ${umbLabel}</strong>. <span class="text-secondary">${
                     p.fraccionable
                         ? 'Use <strong>¼ · ½ · 1</strong> o el campo numérico. Para cobrar por dinero («$1 de tomate») marque <em>Venta por monto ($)</em> y use <strong>+$1</strong>, etc.'
-                        : 'Los botones +/− suman 1 ' + umbLabel + ' por toque.'
+                        : 'Los botones +/− suman 1 <strong>' + escAttr(etiquetaToque) + '</strong> por toque.' + hintBloqueada
                 }</span></div>`
                 : `<div class="small text-muted">≈ <strong>${fmtCantBase(qBase)} ${umbLabel}</strong> según el monto. Botones verdes <strong>suman</strong> al total en $.</div>`;
             tabla.innerHTML += `
@@ -1796,6 +1836,7 @@
                         <div>$${pvLinea.precio.toFixed(2)} <span class="small text-muted">/ ${pvLinea.etiqueta}</span></div>
                         ${pvLinea.origen === 'manual' ? '<span class="badge bg-warning-subtle text-dark" title="Precio cambiado manualmente">manual</span>' : ''}
                         ${pvLinea.origen === 'presentacion' || pvLinea.origen === 'regla' ? '<span class="badge bg-info-subtle text-info" title="Precio de presentación">presentación</span>' : ''}
+                        ${presentacionBloqueada(p) ? '<span class="badge bg-secondary-subtle text-secondary" title="No cambia sola al subir cantidad">fija</span>' : ''}
                         <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="posCambiarPrecio(${i})" title="Cambiar precio de esta línea"><i class="bi bi-pencil-square me-1"></i>Cambiar precio</button>
                     </td>
                     <td class="text-center">${ctrlCant}${rapidosHtml}</td>
@@ -1854,20 +1895,28 @@
         const it = carrito[i];
         if (!it || !it.presentaciones || !it.presentaciones.length) return;
         const p = String(val).split(':');
+        let prElegida = null;
         if (p[0] === 'id') {
             const idn = parseInt(p[1], 10);
-            const pr = it.presentaciones.find(x => x.id === idn);
+            const pr = it.presentaciones.find(function(x) {
+                return x.id != null && parseInt(x.id, 10) === idn;
+            });
             if (pr) {
+                prElegida = pr;
                 it.presentacion_id = pr.id;
                 it.factor_umb = parseFloat(pr.factor);
                 it._mergeKey = 'id' + pr.id;
             }
         } else if (p[0] === 'fac') {
             const fac = parseFloat(p[1]);
+            prElegida = it.presentaciones.find(function(x) {
+                return Math.abs(parseFloat(x.factor) - fac) < 1e-6;
+            }) || null;
             it.presentacion_id = null;
             it.factor_umb = fac;
             it._mergeKey = 'fac' + fac;
         }
+        actualizarBloqueoPresentacion(it, prElegida);
         it.precio_override = null;
         it.precio_override_por_presentacion = null;
         renderizar();
