@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -40,6 +41,62 @@ def tabla_existe(cur) -> bool:
         ("producto_presentacion",),
     )
     return cur.fetchone() is not None
+
+
+def asegurar_tabla_presentacion(cur) -> bool:
+    """
+    Crea producto_presentacion (y columnas de regla/código) si faltan en BD antigua.
+    Sin esta tabla, guardar_producto guarda el ítem pero omite «Otras formas de vender».
+    """
+    if tabla_existe(cur):
+        asegurar_columnas_regla_precio(cur)
+        _asegurar_columna_codigo_barra(cur)
+        return True
+    sp = "spppt" + uuid.uuid4().hex[:10]
+    cur.execute(f"SAVEPOINT {sp}")
+    try:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS producto_presentacion (
+                id SERIAL PRIMARY KEY,
+                producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+                nombre VARCHAR(80) NOT NULL,
+                factor_umb NUMERIC(18,6) NOT NULL CHECK (factor_umb > 0),
+                es_umb BOOLEAN NOT NULL DEFAULT FALSE,
+                orden SMALLINT DEFAULT 0,
+                codigo_barra VARCHAR(64) NULL,
+                cantidad_desde NUMERIC(18,6) NULL,
+                cantidad_hasta NUMERIC(18,6) NULL,
+                precio_regla NUMERIC(18,6) NULL
+            )
+            """
+        )
+        cur.execute("DROP INDEX IF EXISTS uq_producto_presentacion_umb")
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_producto_presentacion_umb
+            ON producto_presentacion (producto_id)
+            WHERE es_umb
+            """
+        )
+        asegurar_columnas_regla_precio(cur)
+        _asegurar_columna_codigo_barra(cur)
+        cur.execute(f"RELEASE SAVEPOINT {sp}")
+        return tabla_existe(cur)
+    except Exception:
+        cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+        return False
+
+
+def _asegurar_columna_codigo_barra(cur) -> None:
+    if not tabla_existe(cur) or tiene_columna_codigo_barra(cur):
+        return
+    cur.execute(
+        """
+        ALTER TABLE producto_presentacion
+        ADD COLUMN IF NOT EXISTS codigo_barra VARCHAR(64) NULL
+        """
+    )
 
 
 def tiene_columna_codigo_barra(cur) -> bool:

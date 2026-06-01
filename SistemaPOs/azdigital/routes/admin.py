@@ -3325,8 +3325,7 @@ def inventario_presentaciones_producto(producto_id: int):
         es_super = _es_superadmin_db(cur)
         if not _acceso_producto_inventario(cur, producto_id, emp_id, es_super):
             return jsonify({"error": "No autorizado"}), 403
-        if presentaciones_repo.tabla_existe(cur):
-            presentaciones_repo.asegurar_columnas_regla_precio(cur)
+        if presentaciones_repo.asegurar_tabla_presentacion(cur):
             conn.commit()
         if not presentaciones_repo.tabla_existe(cur):
             return jsonify(
@@ -4440,8 +4439,8 @@ def guardar_producto():
                     suc_para_stock = int(r[0]) if r else None
                 else:
                     suc_para_stock = primera
-            if presentaciones_repo.tabla_existe(cur):
-                presentaciones_repo.asegurar_columnas_regla_precio(cur)
+            extras_pedidos = len(extras)
+            if presentaciones_repo.asegurar_tabla_presentacion(cur):
                 filas = presentaciones_repo.construir_filas_desde_legacy(
                     umb_nombre,
                     unidades_por_docena,
@@ -4452,6 +4451,13 @@ def guardar_producto():
                     codigo_barra_caja=caja_cb,
                 )
                 presentaciones_repo.reemplazar_todas(cur, int(producto_id), filas)
+            elif extras_pedidos:
+                flash(
+                    "Producto actualizado, pero no se guardaron las presentaciones extra "
+                    "(falta tabla producto_presentacion). Ejecute: "
+                    "python scripts/alter_producto_presentaciones.py",
+                    "warning",
+                )
             kardex_repo.reemplazar_stock_unificado(cur, int(producto_id), suc_para_stock, stock_f)
             registrar_accion(cur, historial_usuarios_repo.EVENTO_PRODUCTO_EDITADO, f"Producto #{producto_id} actualizado")
             conn.commit()
@@ -4493,8 +4499,8 @@ def guardar_producto():
                     suc_para_stock = int(r[0]) if r else None
                 else:
                     suc_para_stock = primera
-            if presentaciones_repo.tabla_existe(cur):
-                presentaciones_repo.asegurar_columnas_regla_precio(cur)
+            extras_pedidos = len(extras)
+            if presentaciones_repo.asegurar_tabla_presentacion(cur):
                 filas = presentaciones_repo.construir_filas_desde_legacy(
                     umb_nombre,
                     unidades_por_docena,
@@ -4505,6 +4511,13 @@ def guardar_producto():
                     codigo_barra_caja=caja_cb,
                 )
                 presentaciones_repo.reemplazar_todas(cur, int(nid), filas)
+            elif extras_pedidos:
+                flash(
+                    "Producto registrado, pero no se guardaron las presentaciones extra "
+                    "(falta tabla producto_presentacion). Ejecute: "
+                    "python scripts/alter_producto_presentaciones.py",
+                    "warning",
+                )
             kardex_repo.reemplazar_stock_unificado(cur, nid, suc_para_stock, stock_f, registrar_entrada=True)
             registrar_accion(cur, historial_usuarios_repo.EVENTO_PRODUCTO_CREADO, f"Producto #{nid} registrado")
             conn.commit()

@@ -311,7 +311,7 @@
                             </div>
 
                             <label class="form-label fw-bold">Otras formas de vender</label>
-                            <p class="small text-muted mb-2">Ej. «Tira», «Six pack». Nombre, factor en UMB, código de barras opcional y regla de precio por rango (desde/hasta cantidad).</p>
+                            <p class="small text-muted mb-2">Ej. «Tira», «Six pack», «Bolsa». Indique <strong>nombre</strong> y <strong>factor UMB</strong> (cuántas unidades base trae). Código de barras y precio por rango son opcionales.</p>
                             <div id="pres_extra_rows" class="small"></div>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_pres_extra_add"><i class="bi bi-plus-lg"></i> Agregar presentación</button>
                             <input type="hidden" name="presentaciones_extra_json" id="presentaciones_extra_json" value="[]">
@@ -636,10 +636,10 @@ document.addEventListener('DOMContentLoaded', function() {
         var dv = (cantidadDesde != null && cantidadDesde !== '' && !isNaN(parseFloat(cantidadDesde))) ? String(cantidadDesde) : '';
         var hv = (cantidadHasta != null && cantidadHasta !== '' && !isNaN(parseFloat(cantidadHasta))) ? String(cantidadHasta) : '';
         var pv = (precioRegla != null && precioRegla !== '' && !isNaN(parseFloat(precioRegla))) ? String(precioRegla) : '';
-        div.innerHTML = '<div class="col-12 col-md-2"><input type="text" class="form-control form-control-sm pres-extra-nombre" placeholder="Ej. Tira" value="' + nv + '"></div>' +
-            '<div class="col-6 col-md-1"><input type="number" min="0.0001" step="any" class="form-control form-control-sm pres-extra-factor" placeholder="Factor" value="' + fv + '"></div>' +
-            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-desde" placeholder="Desde" value="' + dv + '"></div>' +
-            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-hasta" placeholder="Hasta" value="' + hv + '"></div>' +
+        div.innerHTML = '<div class="col-12 col-md-2"><input type="text" class="form-control form-control-sm pres-extra-nombre" placeholder="Nombre (ej. Bolsa)" value="' + nv + '" required></div>' +
+            '<div class="col-6 col-md-1"><input type="number" min="0.0001" step="any" class="form-control form-control-sm pres-extra-factor" placeholder="Factor UMB" title="Unidades base por presentación" value="' + fv + '" required></div>' +
+            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-desde" placeholder="Desde qty" value="' + dv + '"></div>' +
+            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-hasta" placeholder="Hasta qty" value="' + hv + '"></div>' +
             '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-precio" placeholder="Precio $" value="' + pv + '"></div>' +
             '<div class="col-12 col-md-2"><input type="text" class="form-control form-control-sm pres-extra-codigo" maxlength="64" placeholder="Código barras" value="' + cv + '" autocomplete="off"></div>' +
             '<div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger pres-extra-remove" title="Quitar">&times;</button></div>';
@@ -650,6 +650,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var presExtraHost = document.getElementById('pres_extra_rows');
     if (presExtraHost) {
         presExtraHost.addEventListener('input', function() { syncPresExtraJson(); });
+        presExtraHost.addEventListener('change', function() { syncPresExtraJson(); });
     }
 
     var btnPresAdd = document.getElementById('btn_pres_extra_add');
@@ -889,6 +890,16 @@ document.addEventListener('DOMContentLoaded', function() {
            volvería a sobrescribir el precio UMB justo antes de enviar y el servidor haría lo mismo. */
         syncPrecioUmbMirror();
         syncPresExtraJson();
+        var pjCheck = document.getElementById('presentaciones_extra_json');
+        if (pjCheck && document.querySelectorAll('#pres_extra_rows .pres-extra-row').length > 0) {
+            var parsed = [];
+            try { parsed = JSON.parse(pjCheck.value || '[]'); } catch (err) { parsed = []; }
+            if (!parsed.length) {
+                e.preventDefault();
+                alert('Complete el nombre y el factor UMB de cada presentación (factor mayor a 0).');
+                return;
+            }
+        }
         if (!requiereClaveSupervisor) return;
         var pid = document.getElementById('producto_id').value;
         if (!pid || !pid.trim()) return;
