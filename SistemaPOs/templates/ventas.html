@@ -1454,22 +1454,28 @@
         var p = parseFloat(pr.precio_regla);
         return !isNaN(p) && p >= 0;
     }
+    /** Vacío o 0 en «Hasta» = sin tope superior (∞). */
+    function presentacionHastaEsInfinito(hasta) {
+        if (hasta == null || hasta === '') return true;
+        var h = parseFloat(hasta);
+        return !isFinite(h) || h <= 0;
+    }
     function presentacionTieneRangoCantidad(pr) {
         if (!pr) return false;
         var tieneDesde = pr.cantidad_desde != null && String(pr.cantidad_desde).trim() !== '';
-        var tieneHasta = pr.cantidad_hasta != null && String(pr.cantidad_hasta).trim() !== '';
-        return tieneDesde || tieneHasta;
+        var tieneHastaFinito = !presentacionHastaEsInfinito(pr.cantidad_hasta)
+            && pr.cantidad_hasta != null && String(pr.cantidad_hasta).trim() !== '';
+        return tieneDesde || tieneHastaFinito;
     }
     /** True si precio_regla aplica por cantidad en unidad de presentación (Desde/Hasta en qty de venta). */
     function presentacionReglaAplicaEnCantidad(pr, q) {
         if (!presentacionTienePrecioRegla(pr)) return false;
         if (!presentacionTieneRangoCantidad(pr)) return false;
         var tieneDesde = pr.cantidad_desde != null && String(pr.cantidad_desde).trim() !== '';
-        var tieneHasta = pr.cantidad_hasta != null && String(pr.cantidad_hasta).trim() !== '';
         var desde = tieneDesde ? parseFloat(pr.cantidad_desde) : null;
-        var hasta = tieneHasta ? parseFloat(pr.cantidad_hasta) : null;
+        var hastaMax = presentacionHastaEsInfinito(pr.cantidad_hasta) ? null : parseFloat(pr.cantidad_hasta);
         if (desde != null && !isNaN(desde) && q < desde) return false;
-        if (hasta != null && !isNaN(hasta) && q > hasta) return false;
+        if (hastaMax != null && !isNaN(hastaMax) && q > hastaMax) return false;
         return true;
     }
     function presentacionSeleccionada(item) {

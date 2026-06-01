@@ -311,7 +311,7 @@
                             </div>
 
                             <label class="form-label fw-bold">Otras formas de vender</label>
-                            <p class="small text-muted mb-2">Ej. «Tira», «Six pack», «Bolsa». Indique <strong>nombre</strong> y <strong>factor UMB</strong> (cuántas unidades base trae). En <strong>Precio $</strong> puede poner el precio por esa presentación (ej. $0.04 la bolsa); <strong>Desde/Hasta qty</strong> solo si el precio cambia según cantidad vendida. Código de barras opcional.</p>
+                            <p class="small text-muted mb-2">Ej. «Tira», «Six pack», «Bolsa». <strong>Factor UMB</strong> = unidades base por presentación. <strong>Precio $</strong> por presentación o por rango: <strong>Desde</strong> = cantidad mínima (ej. 2 → de 2 en adelante); <strong>Hasta</strong> vacío o <strong>0</strong> = sin tope (<strong>∞</strong>). Ej. cora: Desde <strong>2</strong>, Hasta <strong>∞</strong>, $0.25. Código de barras opcional.</p>
                             <div id="pres_extra_rows" class="small"></div>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_pres_extra_add"><i class="bi bi-plus-lg"></i> Agregar presentación</button>
                             <input type="hidden" name="presentaciones_extra_json" id="presentaciones_extra_json" value="[]">
@@ -615,7 +615,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     var hVal = h && String(h.value || '').trim() !== '' ? parseFloat(h.value) : NaN;
                     var pVal = p && String(p.value || '').trim() !== '' ? parseFloat(String(p.value).replace(',', '.')) : NaN;
                     if (!isNaN(dVal) && dVal >= 0) o.cantidad_desde = dVal;
-                    if (!isNaN(hVal) && hVal >= 0) o.cantidad_hasta = hVal;
+                    if (!isNaN(hVal) && hVal > 0) o.cantidad_hasta = hVal;
                     if (!isNaN(pVal) && pVal >= 0) o.precio_regla = pVal;
                     arr.push(o);
                 }
@@ -634,12 +634,15 @@ document.addEventListener('DOMContentLoaded', function() {
         var fv = factor != null && factor !== '' ? String(factor) : '';
         var cv = (codigo != null && codigo !== undefined && String(codigo).trim() !== '') ? String(codigo).replace(/"/g, '&quot;') : '';
         var dv = (cantidadDesde != null && cantidadDesde !== '' && !isNaN(parseFloat(cantidadDesde))) ? String(cantidadDesde) : '';
-        var hv = (cantidadHasta != null && cantidadHasta !== '' && !isNaN(parseFloat(cantidadHasta))) ? String(cantidadHasta) : '';
+        var hv = '';
+        if (cantidadHasta != null && cantidadHasta !== '' && !isNaN(parseFloat(cantidadHasta)) && parseFloat(cantidadHasta) > 0) {
+            hv = String(cantidadHasta);
+        }
         var pv = (precioRegla != null && precioRegla !== '' && !isNaN(parseFloat(precioRegla))) ? String(precioRegla) : '';
         div.innerHTML = '<div class="col-12 col-md-2"><input type="text" class="form-control form-control-sm pres-extra-nombre" placeholder="Nombre (ej. Bolsa)" value="' + nv + '" required></div>' +
             '<div class="col-6 col-md-1"><input type="number" min="0.0001" step="any" class="form-control form-control-sm pres-extra-factor" placeholder="Factor UMB" title="Unidades base por presentación" value="' + fv + '" required></div>' +
-            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-desde" placeholder="Desde qty" value="' + dv + '"></div>' +
-            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-hasta" placeholder="Hasta qty" value="' + hv + '"></div>' +
+            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-desde" placeholder="Desde" title="Cantidad mínima para este precio (ej. 2 = de 2 en adelante)" value="' + dv + '"></div>' +
+            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-hasta" placeholder="∞ sin tope" title="Tope máximo inclusive. Vacío o 0 = sin límite (∞)" value="' + hv + '"></div>' +
             '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-precio" placeholder="Precio $" value="' + pv + '"></div>' +
             '<div class="col-12 col-md-2"><input type="text" class="form-control form-control-sm pres-extra-codigo" maxlength="64" placeholder="Código barras" value="' + cv + '" autocomplete="off"></div>' +
             '<div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger pres-extra-remove" title="Quitar">&times;</button></div>';

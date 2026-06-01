@@ -4280,7 +4280,7 @@ def guardar_producto():
                 preg_f = float(preg) if preg is not None and str(preg).strip() != "" else None
                 if cdes_f is not None and cdes_f < 0:
                     cdes_f = None
-                if chas_f is not None and chas_f < 0:
+                if chas_f is not None and chas_f <= 0:
                     chas_f = None
                 if cdes_f is not None and chas_f is not None and chas_f < cdes_f:
                     chas_f = None

@@ -308,6 +308,17 @@ def _decimal_desde_fila(fila: tuple[Any, ...], idx: int) -> Decimal | None:
         return None
 
 
+def _hasta_para_json(val: Decimal | float | None) -> float | None:
+    """Vacío o ≤ 0 en BD = sin tope superior (no se envía al POS)."""
+    if val is None:
+        return None
+    try:
+        n = float(val)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
 def _pos_dict_desde_fila_interna(fila: tuple[Any, ...], id_val: int | None = None) -> dict[str, Any]:
     """Convierte tupla interna (nombre, factor, es_umb, …) al JSON del POS."""
     d: dict[str, Any] = {
@@ -324,8 +335,9 @@ def _pos_dict_desde_fila_interna(fila: tuple[Any, ...], id_val: int | None = Non
     preg = _decimal_desde_fila(fila, 6)
     if cdes is not None:
         d["cantidad_desde"] = float(cdes)
-    if chas is not None:
-        d["cantidad_hasta"] = float(chas)
+    chas_j = _hasta_para_json(chas)
+    if chas_j is not None:
+        d["cantidad_hasta"] = chas_j
     if preg is not None:
         d["precio_regla"] = float(preg)
     return d
@@ -346,14 +358,18 @@ def _pos_dict_desde_fila_bd(r: tuple[Any, ...]) -> dict[str, Any]:
             d["codigo_barra"] = str(cb).strip()
     elif len(rem) == 3:
         d["cantidad_desde"] = float(rem[0]) if rem[0] is not None else None
-        d["cantidad_hasta"] = float(rem[1]) if rem[1] is not None else None
+        chas_j = _hasta_para_json(rem[1])
+        if chas_j is not None:
+            d["cantidad_hasta"] = chas_j
         d["precio_regla"] = float(rem[2]) if rem[2] is not None else None
     elif len(rem) >= 4:
         cb = rem[0]
         if cb is not None and str(cb).strip():
             d["codigo_barra"] = str(cb).strip()
         d["cantidad_desde"] = float(rem[1]) if rem[1] is not None else None
-        d["cantidad_hasta"] = float(rem[2]) if rem[2] is not None else None
+        chas_j = _hasta_para_json(rem[2])
+        if chas_j is not None:
+            d["cantidad_hasta"] = chas_j
         d["precio_regla"] = float(rem[3]) if rem[3] is not None else None
     return d
 
@@ -587,7 +603,7 @@ def construir_filas_desde_legacy(
                 preg_d = None
             if cdes_d is not None and cdes_d < 0:
                 cdes_d = None
-            if chas_d is not None and chas_d < 0:
+            if chas_d is not None and chas_d <= 0:
                 chas_d = None
             if cdes_d is not None and chas_d is not None and chas_d < cdes_d:
                 chas_d = None
