@@ -179,6 +179,10 @@ class Empresa(models.Model):
         default=False,
         help_text="Si está activo, la empresa puede enviar facturas por WhatsApp Cloud API (Meta).",
     )
+    dashboard_compras_premium_enabled = models.BooleanField(
+        default=False,
+        help_text="Si está activo, el dashboard AgilDTE muestra el cuadro «Compras del mes» (IVA débito/crédito).",
+    )
     whatsapp_phone_number_id = models.CharField(
         max_length=32,
         blank=True,

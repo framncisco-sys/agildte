@@ -221,6 +221,10 @@ class EmpresaAdmin(admin.ModelAdmin):
             ),
             'description': 'Envío de facturas por API de Meta. Token cifrado en BD.',
         }),
+        ('Dashboard premium', {
+            'fields': ('dashboard_compras_premium_enabled',),
+            'description': 'Muestra el cuadro «Compras del mes» en el dashboard AgilDTE.',
+        }),
     )
 
 @admin.register(Producto)

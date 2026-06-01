@@ -15,6 +15,7 @@ export function buildEmpresaPayload(form) {
   if (!(payload.archivo_certificado instanceof File)) delete payload.archivo_certificado
 
   payload.whatsapp_premium_enabled = Boolean(payload.whatsapp_premium_enabled)
+  payload.dashboard_compras_premium_enabled = Boolean(payload.dashboard_compras_premium_enabled)
 
   return payload
 }

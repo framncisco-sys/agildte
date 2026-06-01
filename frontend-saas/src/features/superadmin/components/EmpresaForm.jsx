@@ -30,6 +30,7 @@ const EMPTY = {
   clave_api_mh: '',
   clave_certificado: '',
   whatsapp_premium_enabled: false,
+  dashboard_compras_premium_enabled: false,
   whatsapp_phone_number_id: '',
   whatsapp_access_token: '',
   whatsapp_business_account_id: '',

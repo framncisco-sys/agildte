@@ -10,7 +10,9 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { getDashboardStats } from '../../api/dashboard'
+import { getEmpresa } from '../../api/empresa'
 import { useEmpresaStore } from '../../stores/useEmpresaStore'
+import { ComprasDelMesCard } from './components/ComprasDelMesCard'
 
 function SkeletonCard() {
   return (
@@ -36,6 +38,25 @@ export function DashboardPage() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [comprasPremium, setComprasPremium] = useState(false)
+
+  useEffect(() => {
+    if (!empresaId) {
+      setComprasPremium(false)
+      return
+    }
+    let cancelled = false
+    getEmpresa(empresaId)
+      .then((emp) => {
+        if (!cancelled) {
+          setComprasPremium(!!emp?.dashboard_compras_premium_enabled)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setComprasPremium(false)
+      })
+    return () => { cancelled = true }
+  }, [empresaId])
 
   useEffect(() => {
     if (!empresaId) {
@@ -141,57 +162,64 @@ export function DashboardPage() {
         )}
       </div>
 
-      {/* Sección media: Gráfico de tendencia */}
-      <div className="w-full lg:w-2/3 min-w-0">
-        {loading ? (
-          <SkeletonChart />
-        ) : (
-          <div className="bg-agil-bg-white rounded-xl border border-agil-border-subtle shadow-sm p-4 sm:p-5 overflow-hidden">
-            <h2 className="text-base sm:text-lg font-semibold text-agil-text-primary mb-4">
-              Comportamiento de Ventas (Este Mes)
-            </h2>
-            {chartData.length === 0 ? (
-              <div className="h-48 sm:h-64 flex items-center justify-center text-agil-text-secondary text-sm border border-dashed border-agil-border-subtle rounded-xl bg-agil-bg-main/50">
-                No hay datos del mes para mostrar
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={260} minHeight={220}>
-                <AreaChart
-                  data={chartData}
-                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#1A56DB" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#1A56DB" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis
-                    dataKey="dia"
-                    tick={{ fontSize: 11, fill: '#6B7280' }}
-                    axisLine={{ stroke: '#E5E7EB' }}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: '#6B7280' }}
-                    axisLine={false}
-                    tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v))}
-                  />
-                  <Tooltip
-                    formatter={(value) => [formatCurrency(Number(value)), 'Total']}
-                    labelFormatter={(label) => `Día ${label}`}
-                    contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB' }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="total"
-                    stroke="#1A56DB"
-                    strokeWidth={2}
-                    fill="url(#colorTotal)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
+      {/* Gráfico de ventas + Compras del mes (premium) */}
+      <div className={`grid grid-cols-1 gap-4 min-w-0 ${comprasPremium ? 'lg:grid-cols-3' : ''}`}>
+        <div className={comprasPremium ? 'lg:col-span-2 min-w-0' : 'min-w-0'}>
+          {loading ? (
+            <SkeletonChart />
+          ) : (
+            <div className="bg-agil-bg-white rounded-xl border border-agil-border-subtle shadow-sm p-4 sm:p-5 overflow-hidden h-full">
+              <h2 className="text-base sm:text-lg font-semibold text-agil-text-primary mb-4">
+                Comportamiento de Ventas (Este Mes)
+              </h2>
+              {chartData.length === 0 ? (
+                <div className="h-48 sm:h-64 flex items-center justify-center text-agil-text-secondary text-sm border border-dashed border-agil-border-subtle rounded-xl bg-agil-bg-main/50">
+                  No hay datos del mes para mostrar
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={260} minHeight={220}>
+                  <AreaChart
+                    data={chartData}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#1A56DB" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#1A56DB" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                    <XAxis
+                      dataKey="dia"
+                      tick={{ fontSize: 11, fill: '#6B7280' }}
+                      axisLine={{ stroke: '#E5E7EB' }}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: '#6B7280' }}
+                      axisLine={false}
+                      tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v))}
+                    />
+                    <Tooltip
+                      formatter={(value) => [formatCurrency(Number(value)), 'Total']}
+                      labelFormatter={(label) => `Día ${label}`}
+                      contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB' }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="total"
+                      stroke="#1A56DB"
+                      strokeWidth={2}
+                      fill="url(#colorTotal)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          )}
+        </div>
+        {comprasPremium && (
+          <div className="lg:col-span-1 min-w-0">
+            <ComprasDelMesCard />
           </div>
         )}
       </div>
