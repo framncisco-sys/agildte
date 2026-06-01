@@ -198,6 +198,18 @@ class Empresa(models.Model):
         help_text="Opcional: WABA ID en Meta (referencia administrativa).",
     )
 
+    TIPO_SISTEMA_CHOICES = [
+        ('AGILDTE', 'AgilDTE (facturación nativa SaaS)'),
+        ('POSAGIL', 'PosAgil (punto de venta)'),
+        ('MIXTO', 'PosAgil + AgilDTE'),
+    ]
+    tipo_sistema = models.CharField(
+        max_length=20,
+        choices=TIPO_SISTEMA_CHOICES,
+        default='AGILDTE',
+        help_text="Plataforma principal de facturación operativa de la empresa.",
+    )
+
     def save(self, *args, **kwargs):
         # Limpiar espacios al inicio/final en credenciales (evitar rechazo MH "CREDENCIALES INVÁLIDAS")
         for field in (

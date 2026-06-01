@@ -1,12 +1,21 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # override para desarrollo LOCAL: nginx sin SSL (sin certificados Let's Encrypt).
 # Uso: docker compose -f docker-compose.prod.yml -f docker-compose.override.local.yml up -d
+# Portal AgilDTE: http://localhost/  (no http://localhost:3000 salvo que levante Vite aparte)
+# PosAgil: contenedor «posagil» en agildte_net (SistemaPOs/docker-compose.yml). Abrir desde «Abrir Pos Agil» → /pos/
 # ─────────────────────────────────────────────────────────────────────────────
 services:
+  backend:
+    environment:
+      # .env de producción suele tener DEBUG=False y hosts solo agildte.com → 400 en localhost.
+      DJANGO_DEBUG: "1"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
+      CORS_ALLOWED_ORIGINS: "http://localhost,http://127.0.0.1"
+
   nginx:
+    ports:
+      - "80:80"
     volumes:
       - ./nginx/nginx-local.conf:/etc/nginx/nginx.conf:ro
       - static_volume:/static:ro
       - media_volume:/media:ro
-      - certbot_certs:/etc/letsencrypt
-      - certbot_www:/var/www/certbot:ro

@@ -759,9 +759,9 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
     tipo_dte = serializers.CharField(required=False, allow_null=True, write_only=True)
     documento_relacionado_id = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
     documento_receptor = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
-    tipo_doc_receptor = serializers.CharField(required=False, allow_blank=True, default='NIT', write_only=True)
-    receptor_direccion = serializers.CharField(required=False, allow_blank=True, write_only=True)
-    receptor_correo = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    tipo_doc_receptor = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='NIT', write_only=True)
+    receptor_direccion = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
+    receptor_correo = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
     nit_receptor = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
     nombre_comercial_receptor = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
     receptor_departamento = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
@@ -869,6 +869,7 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             validated_data['correo_receptor'] = str(receptor_correo).strip() if receptor_correo else None
         elif cliente_id:
             # CASO A: Cliente existente por ID (portal AgilDTE) — prioridad sobre NRC suelto
+            nrc_norm_form = normalizar_nrc_mh(nrc_form) if nrc_form else None
             try:
                 cliente_obj = Cliente.objects.get(pk=cliente_id)
                 nit_val = dui_val = tipo_doc = doc_dig = None
@@ -878,6 +879,10 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
                     tipo_doc, nit_val, dui_val, doc_dig = documento_receptor_desde_payload(
                         tipo_doc_receptor, doc_raw
                     )
+                    if tipo_doc == 'DUI' and dui_val:
+                        nit_val = ''
+                    elif tipo_doc == 'NIT' and nit_val:
+                        dui_val = ''
                 nom_com = (nombre_comercial_receptor or '').strip() or None
                 dept = (receptor_departamento or '').strip() or None
                 muni = (receptor_municipio or '').strip() or None
@@ -888,13 +893,19 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
                 self._actualizar_cliente_si_cambia(
                     cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
                     nit=nit_val, dui=dui_val, tipo_documento=tipo_doc, documento_identidad=doc_dig,
+                    nrc=nrc_norm_form,
                     nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
                     desc_actividad=desc_act_receptor, departamento=dept, municipio=muni, telefono=tel
                 )
             except Cliente.DoesNotExist:
                 raise serializers.ValidationError({'cliente_id': 'Cliente no encontrado.'})
             validated_data['cliente'] = cliente_obj
-            nrc_cli = normalizar_nrc_mh(cliente_obj.nrc) or (cliente_obj.nrc or '').strip() or None
+            nrc_cli = (
+                nrc_norm_form
+                or normalizar_nrc_mh(cliente_obj.nrc)
+                or (cliente_obj.nrc or '').strip()
+                or None
+            )
             if nrc_cli:
                 validated_data['nrc_receptor'] = nrc_cli
         elif cliente_input_limpio:
@@ -930,10 +941,13 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             elif len(doc_dig) == 10:
                 doc_dig = doc_dig[:9]
             es_dui = len(doc_dig) == 9
-            if es_dui:
-                tipo_doc, nit_val, dui_val = 'DUI', None, doc_dig
+            tipo_payload = (tipo_doc_receptor or '').strip().upper()
+            if es_dui and tipo_payload == 'NIT':
+                tipo_doc, nit_val, dui_val = 'NIT', doc_dig, ''
+            elif es_dui:
+                tipo_doc, nit_val, dui_val = 'DUI', '', doc_dig
             else:
-                tipo_doc, nit_val, dui_val = 'NIT', nit_def, None
+                tipo_doc, nit_val, dui_val = 'NIT', nit_def, ''
             empresa = validated_data.get('empresa')
             defaults = {
                 'nombre': nombre_receptor.strip() or f'Cliente {cliente_input_limpio}',
@@ -998,6 +1012,22 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
         # 2c. Tipo DTE para NC/ND: sobrescribir tipo_venta
         if tipo_dte in ('05', '06'):
             validated_data['tipo_venta'] = 'NC' if tipo_dte == '05' else 'ND'
+
+        # Snapshot receptor en venta (CCF/NC/ND): el builder DTE prioriza estos campos sobre BD legacy.
+        if tipo_dte in ('03', '05', '06') and cliente_obj:
+            doc_snap = (
+                str(documento_receptor or '').strip()
+                or str(nit_receptor or '').strip()
+                or None
+            )
+            if doc_snap:
+                validated_data['documento_receptor'] = doc_snap
+            if tipo_doc_receptor:
+                validated_data['tipo_doc_receptor'] = str(tipo_doc_receptor).strip()
+            if receptor_direccion:
+                validated_data['direccion_receptor'] = str(receptor_direccion).strip()
+            if receptor_correo is not None:
+                validated_data['correo_receptor'] = str(receptor_correo or '').strip()
         
         # 3. Redondear campos monetarios de la venta antes de crear
         campos_monetarios_venta = ['venta_gravada', 'venta_exenta', 'venta_no_sujeta', 'debito_fiscal']

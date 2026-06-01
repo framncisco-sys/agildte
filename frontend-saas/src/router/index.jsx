@@ -1,5 +1,6 @@
 import { Outlet, Navigate } from 'react-router-dom'
 import { RequireAuth } from './RequireAuth'
+import { RequireSuperuser } from './RequireSuperuser'
 import { RequireFacturacionNativa } from './RequireFacturacionNativa'
 import { ROLES_CONFIG_ADMIN, ROLES_LIBROS_IVA } from '../constants/roles'
 import { RUTA_INICIO_APP } from '../constants/routes'
@@ -17,6 +18,12 @@ import LibrosIva from '../features/contabilidad/pages/LibrosIva'
 import ConfiguracionPage from '../features/configuracion/pages/ConfiguracionPage'
 import ActividadesCatalogoPage from '../features/configuracion/pages/ActividadesCatalogoPage'
 import ItemsPage from '../features/items/pages/ItemsPage'
+import { SuperAdminLayout } from '../features/superadmin/layouts/SuperAdminLayout'
+import EmpresasListPage from '../features/superadmin/pages/EmpresasListPage'
+import EmpresaCreatePage from '../features/superadmin/pages/EmpresaCreatePage'
+import EmpresaDetailPage from '../features/superadmin/pages/EmpresaDetailPage'
+import ClientesGlobalPage from '../features/superadmin/pages/ClientesGlobalPage'
+import CatalogosMHPage from '../features/superadmin/pages/CatalogosMHPage'
 
 export const router = {
   routes: [
@@ -89,6 +96,22 @@ export const router = {
               <LibrosIva />
             </RequireAuth>
           ),
+        },
+        {
+          path: 'superadmin',
+          element: (
+            <RequireSuperuser>
+              <SuperAdminLayout />
+            </RequireSuperuser>
+          ),
+          children: [
+            { index: true, element: <Navigate to="empresas" replace /> },
+            { path: 'empresas', element: <EmpresasListPage /> },
+            { path: 'empresas/nueva', element: <EmpresaCreatePage /> },
+            { path: 'empresas/:id', element: <EmpresaDetailPage /> },
+            { path: 'clientes', element: <ClientesGlobalPage /> },
+            { path: 'catalogos', element: <CatalogosMHPage /> },
+          ],
         },
       ],
     },

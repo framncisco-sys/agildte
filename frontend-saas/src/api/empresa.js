@@ -1,4 +1,5 @@
 import apiClient from './axios'
+import { buildEmpresaPayload, needsEmpresaMultipart, empresaPayloadToFormData } from './empresaPayload'
 
 /**
  * Obtiene los datos de una empresa por ID.
@@ -9,24 +10,20 @@ export async function getEmpresa(id) {
 }
 
 /**
- * Actualiza una empresa. Si se pasa `logo` (File), envía multipart/form-data.
+ * Actualiza una empresa. Soporta logo y certificado (.crt) vía multipart.
  */
-export async function updateEmpresa(id, payload) {
-  const logo = payload.logo
-  const isMultipart = logo instanceof File
+export async function updateEmpresa(id, rawPayload) {
+  const payload = buildEmpresaPayload(rawPayload)
 
-  if (isMultipart) {
-    const form = new FormData()
-    const keys = Object.keys(payload).filter((k) => k !== 'logo' && payload[k] !== undefined && payload[k] !== null)
-    keys.forEach((k) => form.append(k, payload[k]))
-    form.append('logo', logo)
+  if (needsEmpresaMultipart(payload)) {
+    const form = empresaPayloadToFormData(payload)
     const { data } = await apiClient.patch(`/empresas/${id}/`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     return data
   }
 
-  const { logo_url, ...rest } = payload
+  const { logo, archivo_certificado, logo_url, certificado_nombre, ...rest } = payload
   const { data } = await apiClient.patch(`/empresas/${id}/`, rest)
   return data
 }

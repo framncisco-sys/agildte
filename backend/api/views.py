@@ -244,9 +244,15 @@ class EmpresaViewSet(viewsets.ModelViewSet):
             'contingencia_motivo',
         ])
 
+        pendientes_previos = Venta.objects.filter(
+            empresa=empresa,
+            estado_dte='PendienteEnvio',
+        ).count()
+
         return Response({
             "mensaje": "Contingencia MH activada para la empresa.",
             "empresa_id": empresa.id,
+            "pendientes_previos": pendientes_previos,
             "contingencia": {
                 "activa": empresa.contingencia_activa,
                 "f_inicio": empresa.contingencia_f_inicio,
@@ -356,6 +362,7 @@ class EmpresaViewSet(viewsets.ModelViewSet):
         """
         1) Genera y ENVÍA a MH el reporte de contingencia (espera respuesta).
         2) Si el reporte es PROCESADO, envía UNA A UNA las ventas PendienteEnvio de la empresa.
+        Body opcional: venta_ids — lista de IDs a incluir (útil en stress test / cierre parcial).
         Devuelve resumen de aceptación/rechazo de cada factura.
         """
         from .services.facturacion_service import FacturacionService, FacturacionServiceError, EnvioMHError, EnvioMHTransitorioError
@@ -371,7 +378,34 @@ class EmpresaViewSet(viewsets.ModelViewSet):
             empresa=empresa,
             estado_dte='PendienteEnvio',
         ).order_by('fecha_emision', 'id')
-        ventas = list(ventas_qs)
+
+        venta_ids_raw = request.data.get('venta_ids')
+        ventas_excluidas = 0
+        if venta_ids_raw is not None:
+            try:
+                venta_ids = [int(x) for x in venta_ids_raw if x is not None and str(x).strip()]
+            except (TypeError, ValueError):
+                return Response(
+                    {'venta_ids': 'Debe ser una lista de IDs numéricos.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not venta_ids:
+                return Response(
+                    {'venta_ids': 'Indique al menos un ID de venta en PendienteEnvio.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            total_pendientes = ventas_qs.count()
+            ventas_qs = ventas_qs.filter(id__in=venta_ids)
+            ventas = list(ventas_qs)
+            ventas_excluidas = max(0, total_pendientes - len(ventas))
+            if not ventas:
+                return Response({
+                    "mensaje": "Ninguna de las ventas indicadas está en PendienteEnvio.",
+                    "venta_ids": venta_ids,
+                    "pendientes_empresa": total_pendientes,
+                }, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            ventas = list(ventas_qs)
 
         if not ventas:
             return Response({
@@ -486,6 +520,8 @@ class EmpresaViewSet(viewsets.ModelViewSet):
         return Response({
             "mensaje": "Proceso de contingencia completado.",
             "empresa_id": empresa.id,
+            "ventas_procesadas": [v.id for v in ventas],
+            "ventas_excluidas": ventas_excluidas,
             "reporte_contingencia": reporte_json,
             "resultado_contingencia": resultado_cont,
             "resumen_envio": resumen,
@@ -1725,6 +1761,9 @@ def _crear_venta_con_detalles_response(request, *, desde_pos=False):
 
     usar_async = getattr(settings, 'USE_ASYNC_FACTURACION', False)
     if desde_pos and getattr(settings, 'POSAGIL_FACTURACION_SINCRONA', True):
+        usar_async = False
+    # Stress test / panel superadmin: esperar MH en la misma petición (sello en respuesta).
+    if request.headers.get('X-Facturacion-Sincrona', '').strip().lower() in ('1', 'true', 'yes'):
         usar_async = False
 
     if usar_async:

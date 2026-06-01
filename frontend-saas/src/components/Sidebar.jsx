@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { ROLES_CONFIG_ADMIN, ROLES_LIBROS_IVA } from '../constants/roles'
+import { RUTA_SUPERADMIN_EMPRESAS } from '../constants/routes'
 import { useEmpresaStore } from '../stores/useEmpresaStore'
 import { listarPlantillas } from '../api/plantillas'
 import { ModalControlarPlantillas } from '../features/facturacion/components/ModalControlarPlantillas'
@@ -15,8 +16,8 @@ const allNavItems = [
   { to: '/facturacion/carga-masiva', label: 'Carga Masiva' },
   { to: '/contabilidad/libros-iva', label: 'Libros de IVA', roles: ROLES_LIBROS_IVA },
   { to: '/configuracion', label: 'Configuración', roles: ROLES_CONFIG_ADMIN },
-  { to: '/configuracion/catalogo-actividades', label: 'Catálogo actividades MH', roles: ROLES_CONFIG_ADMIN },
   { to: '/items', label: 'Administración de ítems' },
+  { to: RUTA_SUPERADMIN_EMPRESAS, label: 'Panel Super Usuario', superuserOnly: true },
 ]
 
 export function Sidebar({ open = false, onClose }) {
@@ -29,6 +30,7 @@ export function Sidebar({ open = false, onClose }) {
   const [modalControlarAbierto, setModalControlarAbierto] = useState(false)
 
   const navItems = allNavItems.filter((item) => {
+    if (item.superuserOnly && !user?.is_superuser) return false
     if (user?.facturacion_solo_pos && item.to.startsWith('/facturacion')) {
       return false
     }

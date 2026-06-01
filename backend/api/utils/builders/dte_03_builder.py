@@ -5,7 +5,13 @@ Esquema fe-ccf-v3 - Contribuyente con NRC, Nombre Comercial, Actividad.
 from .base_builder import BaseDTEBuilder
 from api.constants import DTE_LINEA_DESCRIPCION_MAX_LENGTH
 from api.dte_generator import formatear_decimal, formatear_nrc_emisor
-from api.utils.mh_documento import es_nrc_placeholder_mh, normalizar_nrc_mh, solo_digitos
+from api.utils.mh_documento import (
+    documento_cliente_para_mh,
+    documento_receptor_desde_payload,
+    es_nrc_placeholder_mh,
+    normalizar_nrc_mh,
+    solo_digitos,
+)
 
 
 class DTE03Builder(BaseDTEBuilder):
@@ -41,14 +47,23 @@ class DTE03Builder(BaseDTEBuilder):
                 "Use el NRC registrado en el Ministerio de Hacienda para ese DUI/NIT."
             )
 
+        # Documento: priorizar snapshot del formulario (venta) y tipo_documento del cliente
+        # sobre un NIT obsoleto en BD (causa frecuente de «NRC NO CORRESPONDE A CONTRIBUYENTE»).
+        doc_limpio = ''
+        doc_venta_raw = str(getattr(self.venta, 'documento_receptor', None) or '').strip()
+        tipo_venta_doc = str(getattr(self.venta, 'tipo_doc_receptor', None) or '').strip()
+        if doc_venta_raw:
+            _, nit_v, dui_v, doc_dig = documento_receptor_desde_payload(tipo_venta_doc, doc_venta_raw)
+            doc_limpio = solo_digitos(nit_v or dui_v or doc_dig or doc_venta_raw)
+        if not doc_limpio:
+            _, doc_mh = documento_cliente_para_mh(cliente)
+            doc_limpio = solo_digitos(doc_mh or '')
+        if not doc_limpio:
+            doc_raw = str(
+                cliente.dui or cliente.nit or getattr(cliente, 'documento_identidad', '') or ""
+            ).strip()
+            doc_limpio = solo_digitos(doc_raw)
         # MH requiere NIT/DUI con el cero inicial. Excel elimina ceros al inicio.
-        # Regla de normalización:
-        #   8 dígitos  → DUI incompleto (Excel quitó el 0) → agregar "0" → 9 dígitos
-        #   9 dígitos  → DUI correcto
-        #   13 dígitos → NIT incompleto (Excel quitó el 0) → agregar "0" → 14 dígitos
-        #   14 dígitos → NIT correcto
-        doc_raw = str(cliente.nit or cliente.dui or getattr(cliente, 'documento_identidad', '') or "").strip()
-        doc_limpio = ''.join(c for c in doc_raw.replace('-', '').replace(' ', '') if c.isdigit())
         if len(doc_limpio) == 10:
             doc_limpio = doc_limpio[:9]   # DUI con dígito verificador extra, recortar
         elif len(doc_limpio) == 8:
@@ -68,9 +83,9 @@ class DTE03Builder(BaseDTEBuilder):
             cliente.nombre
         )
         nombre_comercial = (
-            getattr(cliente, 'nombre_comercial', None) or
-            getattr(cliente, 'razon_social', None) or
-            nombre_receptor
+            getattr(cliente, 'nombre_comercial', None)
+            or getattr(cliente, 'razon_social', None)
+            or nombre_receptor
         )
         # Actividad: primero la del formulario, luego la del cliente en BD
         cod_actividad = str(getattr(self.venta, 'cod_actividad_receptor', '') or '').strip() or cliente.cod_actividad or "10005"
@@ -98,11 +113,18 @@ class DTE03Builder(BaseDTEBuilder):
             "direccion": {
                 "departamento": codigo_departamento,
                 "municipio": codigo_municipio,
-                "complemento": cliente.direccion and str(cliente.direccion).strip() or "San Miguel"
+                "complemento": (
+                    str(getattr(self.venta, 'direccion_receptor', None) or '').strip()
+                    or (cliente.direccion and str(cliente.direccion).strip())
+                    or "San Miguel"
+                ),
             },
             "telefono": telefono,
         }
-        if cliente.email_contacto:
+        correo_receptor = str(getattr(self.venta, 'correo_receptor', None) or '').strip()
+        if correo_receptor:
+            receptor["correo"] = correo_receptor
+        elif cliente.email_contacto:
             receptor["correo"] = cliente.email_contacto
         return receptor
 
