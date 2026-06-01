@@ -246,6 +246,22 @@ export function EmpresaForm({ initial = EMPTY, onSubmit, saving = false, submitL
         </section>
 
         <section className="border-t border-slate-200 pt-6">
+          <h3 className="text-sm font-semibold text-slate-800 mb-3">Dashboard AgilDTE</h3>
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              name="dashboard_compras_premium_enabled"
+              checked={Boolean(form.dashboard_compras_premium_enabled)}
+              onChange={handleChange}
+              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            <span className="text-sm text-slate-700">
+              Mostrar cuadro «Compras del mes» en el dashboard (premium)
+            </span>
+          </label>
+        </section>
+
+        <section className="border-t border-slate-200 pt-6">
           <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
             <MessageCircle className="h-4 w-4 text-emerald-600" />
             WhatsApp Cloud API (Meta)
