@@ -5928,12 +5928,28 @@ def eliminar_sucursal(sucursal_id):
 @rol_requerido("GERENTE")
 def gestion_ventas():
     emp_id = _empresa_id()
+    ambiente_empresa = "01"
+    try:
+        from azdigital.integration.agildte_client import obtener_ambiente_emresa_agildte
+
+        ambiente_empresa = obtener_ambiente_emresa_agildte(emp_id)
+    except Exception:
+        pass
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
-        rows = ventas_repo.listar_ventas_recientes(cur, empresa_id=emp_id, limit=150) or []
-        return render_template("gestion_ventas.html", ventas=rows)
+        rows = ventas_repo.listar_ventas_recientes(
+            cur,
+            empresa_id=emp_id,
+            limit=150,
+            ambiente_emision=ambiente_empresa,
+        ) or []
+        return render_template(
+            "gestion_ventas.html",
+            ventas=rows,
+            ambiente_emision=ambiente_empresa,
+        )
     finally:
         cur.close()
         conn.close()

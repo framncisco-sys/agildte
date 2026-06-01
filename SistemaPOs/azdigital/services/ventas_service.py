@@ -450,6 +450,17 @@ def persistir_venta(
         total_bruto=total_bruto if total_bruto is not None else total,
         estado_dte=estado_inicial,
     )
+    try:
+        from azdigital.integration.agildte_client import obtener_ambiente_emresa_agildte
+
+        ventas_repo.actualizar_ambiente_emision(
+            cur,
+            venta_id,
+            obtener_ambiente_emresa_agildte(empresa_id),
+            empresa_id=empresa_id,
+        )
+    except Exception:
+        pass
     # codigo_generacion, numero_control y sello: solo los asigna AgilDTE (sync tras POST /api/pos/procesar-venta/).
     if tc in ("FACTURA", "CREDITO_FISCAL") and emitir_contingencia and causa_contingencia is not None:
         ventas_repo.actualizar_causa_contingencia(cur, venta_id, causa_contingencia, empresa_id=empresa_id)

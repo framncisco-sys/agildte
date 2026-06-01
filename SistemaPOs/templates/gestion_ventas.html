@@ -5,7 +5,14 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="fw-bold text-dark"><i class="bi bi-receipt-cutoff text-primary"></i> Gestión de ventas</h2>
-            <p class="text-muted small mb-0">Gerente y superusuario: editar datos de facturación o anular venta (requiere motivo para auditoría).</p>
+            <p class="text-muted small mb-0">
+                Gerente y superusuario: editar datos de facturación o anular venta (requiere motivo para auditoría).
+                {% if ambiente_emision == '00' %}
+                <span class="d-block mt-1">Solo se listan ventas de <strong>producción</strong>; las de pruebas MH quedan ocultas (igual que AgilDTE).</span>
+                {% elif ambiente_emision == '01' %}
+                <span class="d-block mt-1">Solo se listan ventas del ambiente de <strong>pruebas</strong>.</span>
+                {% endif %}
+            </p>
         </div>
         <a href="{{ url_for('pos.ventas_pos') }}" class="btn btn-outline-primary rounded-pill"><i class="bi bi-shop"></i> Punto de venta</a>
     </div>

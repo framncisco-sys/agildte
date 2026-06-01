@@ -155,6 +155,34 @@ def resolve_agildte_base_url() -> str:
     return ""
 
 
+def obtener_ambiente_emresa_agildte(
+    empresa_id: int,
+    cliente: "AgilDTEClient | None" = None,
+) -> str:
+    """
+    Ambiente de facturación de la empresa en AgilDTE (mismo valor que venta.ambiente_emision):
+    '00' = producción, '01' = pruebas.
+    """
+    env_amb = (os.environ.get("AGILDTE_AMBIENTE") or "").strip()
+    if env_amb in ("00", "01"):
+        return env_amb
+    if not resolve_agildte_base_url():
+        return "01"
+    try:
+        cli = cliente or login_client_from_request_or_env(trust_request_bearer=False)
+        eid = int(empresa_id)
+        if cli.empresa_id is not None:
+            eid = int(cli.empresa_id)
+        data = cli.get_json(f"{API_PREFIX}/empresas/{eid}/")
+        if isinstance(data, dict):
+            amb = (data.get("ambiente") or "").strip()
+            if amb in ("00", "01"):
+                return amb
+    except Exception:
+        pass
+    return "01"
+
+
 def check_agildte_api_reachable(timeout: float = 4.0) -> dict[str, Any]:
     """
     Comprueba si el backend AgilDTE responde (GET sobre varias rutas típicas).

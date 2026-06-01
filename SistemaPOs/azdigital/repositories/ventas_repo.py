@@ -118,6 +118,10 @@ def actualizar_dte_desde_respuesta_agildte(
     if estado:
         sets.append("estado_dte = %s")
         vals.append(estado[:40])
+    amb = str(remota.get("ambiente_emision") or "").strip()
+    if amb in ("00", "01"):
+        sets.append("ambiente_emision = %s")
+        vals.append(amb)
     if not sets:
         return False
     vals.append(venta_id)
@@ -372,8 +376,63 @@ def _sql_etiqueta_cliente_venta() -> str:
     """
 
 
-def listar_ventas_recientes(cur, empresa_id: int, limit: int = 100):
+def actualizar_ambiente_emision(
+    cur,
+    venta_id: int,
+    ambiente_emision: str,
+    empresa_id: int | None = None,
+) -> bool:
+    """Marca ambiente de emisión ('00' prod, '01' pruebas). Ignora si la columna no existe aún."""
+    amb = (ambiente_emision or "").strip()
+    if amb not in ("00", "01"):
+        return False
+    sp = "spamb" + uuid.uuid4().hex[:12]
+    cur.execute(f"SAVEPOINT {sp}")
+    try:
+        if empresa_id is not None:
+            cur.execute(
+                """
+                UPDATE ventas SET ambiente_emision = %s
+                WHERE id = %s AND (empresa_id IS NULL OR empresa_id = %s)
+                """,
+                (amb, venta_id, empresa_id),
+            )
+        else:
+            cur.execute(
+                "UPDATE ventas SET ambiente_emision = %s WHERE id = %s",
+                (amb, venta_id),
+            )
+        ok = cur.rowcount > 0
+        cur.execute(f"RELEASE SAVEPOINT {sp}")
+        return ok
+    except Exception:
+        cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+        return False
+
+
+def listar_ventas_recientes(
+    cur,
+    empresa_id: int,
+    limit: int = 100,
+    ambiente_emision: str | None = None,
+):
+    """
+    Lista ventas activas. Si ambiente_emision ('00'|'01'), filtra como AgilDTE
+    (solo documentos del ambiente actual de la empresa).
+    """
     etiqueta = _sql_etiqueta_cliente_venta()
+    amb = (ambiente_emision or "").strip()
+    filtro_amb = ""
+    params: list = [empresa_id]
+    if amb in ("00", "01"):
+        filtro_amb = """
+          AND (
+            v.ambiente_emision = %s
+            OR (v.ambiente_emision IS NULL AND %s = '01')
+          )
+        """
+        params.extend([amb, amb])
+    params.append(limit)
     cur.execute(
         f"""
         SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
@@ -382,10 +441,11 @@ def listar_ventas_recientes(cur, empresa_id: int, limit: int = 100):
         LEFT JOIN clientes c ON c.id = v.cliente_id
         WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
           AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
+          {filtro_amb}
         ORDER BY v.id DESC
         LIMIT %s
         """,
-        (empresa_id, limit),
+        tuple(params),
     )
     return cur.fetchall()
 
