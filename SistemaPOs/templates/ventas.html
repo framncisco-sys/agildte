@@ -1448,19 +1448,111 @@
         }
         return (parseFloat(item.cantidad) || 0) * factorUnidadVenta(item);
     }
-  /** True si la presentación tiene precio_regla y la cantidad (en unidad de venta) cae en [desde, hasta]. */
-    function presentacionReglaAplicaEnCantidad(pr, q) {
+    function presentacionTienePrecioRegla(pr) {
         if (!pr) return false;
-        var precioRegla = parseFloat(pr.precio_regla);
-        if (isNaN(precioRegla) || precioRegla < 0) return false;
+        var p = parseFloat(pr.precio_regla);
+        return !isNaN(p) && p >= 0;
+    }
+    function presentacionTieneRangoCantidad(pr) {
+        if (!pr) return false;
         var tieneDesde = pr.cantidad_desde != null && String(pr.cantidad_desde).trim() !== '';
         var tieneHasta = pr.cantidad_hasta != null && String(pr.cantidad_hasta).trim() !== '';
-        if (!tieneDesde && !tieneHasta) return false;
+        return tieneDesde || tieneHasta;
+    }
+    /** True si precio_regla aplica por cantidad en unidad de presentación (Desde/Hasta en qty de venta). */
+    function presentacionReglaAplicaEnCantidad(pr, q) {
+        if (!presentacionTienePrecioRegla(pr)) return false;
+        if (!presentacionTieneRangoCantidad(pr)) return false;
+        var tieneDesde = pr.cantidad_desde != null && String(pr.cantidad_desde).trim() !== '';
+        var tieneHasta = pr.cantidad_hasta != null && String(pr.cantidad_hasta).trim() !== '';
         var desde = tieneDesde ? parseFloat(pr.cantidad_desde) : null;
         var hasta = tieneHasta ? parseFloat(pr.cantidad_hasta) : null;
         if (desde != null && !isNaN(desde) && q < desde) return false;
         if (hasta != null && !isNaN(hasta) && q > hasta) return false;
         return true;
+    }
+    function presentacionSeleccionada(item) {
+        if (!item || !Array.isArray(item.presentaciones) || item.presentacion_id == null || item.presentacion_id === '') return null;
+        var pid = parseInt(item.presentacion_id, 10);
+        if (isNaN(pid)) return null;
+        return item.presentaciones.find(function(pr) {
+            return pr && pr.id != null && parseInt(pr.id, 10) === pid;
+        }) || null;
+    }
+    function precioVentaLineaSinOverride(item) {
+        var ov = item.precio_override;
+        var ovPor = item.precio_override_por_presentacion;
+        item.precio_override = null;
+        item.precio_override_por_presentacion = null;
+        var r = precioVentaLinea(item);
+        item.precio_override = ov;
+        item.precio_override_por_presentacion = ovPor;
+        return r;
+    }
+    /** Precio de venta en UI: manual, por presentación (precio_regla) o UMB base. */
+    function precioVentaLinea(item) {
+        if (!item) return { precio: 0, etiqueta: 'UMB', porPresentacion: false, origen: 'base' };
+        if (item.precio_override != null && item.precio_override !== '') {
+            var pm = parseFloat(item.precio_override);
+            if (!isNaN(pm) && pm >= 0) {
+                var prM = presentacionSeleccionada(item);
+                var labM = (prM && prM.nombre) ? String(prM.nombre).replace(/</g, '') : 'unidad';
+                var porPres = item.precio_override_por_presentacion;
+                if (porPres == null) {
+                    porPres = !!(prM && !prM.es_umb && (parseFloat(prM.factor) || 1) > 1.00001);
+                }
+                return { precio: pm, etiqueta: labM, porPresentacion: !!porPres, origen: 'manual' };
+            }
+        }
+        var q = parseFloat(item.cantidad);
+        if (!isFinite(q) || q <= 0) q = 1;
+        var prSel = presentacionSeleccionada(item);
+        if (prSel && presentacionTienePrecioRegla(prSel)) {
+            if (!presentacionTieneRangoCantidad(prSel) || presentacionReglaAplicaEnCantidad(prSel, q)) {
+                return {
+                    precio: parseFloat(prSel.precio_regla),
+                    etiqueta: String(prSel.nombre || 'presentación').replace(/</g, ''),
+                    porPresentacion: true,
+                    origen: 'presentacion'
+                };
+            }
+        }
+        var prRango = resolverPresentacionReglaPrecio(item);
+        if (prRango && presentacionTienePrecioRegla(prRango)) {
+            return {
+                precio: parseFloat(prRango.precio_regla),
+                etiqueta: String(prRango.nombre || 'presentación').replace(/</g, ''),
+                porPresentacion: true,
+                origen: 'regla'
+            };
+        }
+        var base = parseFloat(item.precio_base);
+        if (isNaN(base)) base = parseFloat(item.precioFinal) || 0;
+        var umbLabel = 'UMB';
+        if (item.presentaciones && item.presentaciones.length) {
+            var urow = item.presentaciones.find(function(pr) { return pr.es_umb; }) || item.presentaciones[0];
+            if (urow && urow.nombre) umbLabel = String(urow.nombre).replace(/</g, '');
+        }
+        return { precio: base, etiqueta: umbLabel, porPresentacion: false, origen: 'base' };
+    }
+    function precioEfectivoUMB(item) {
+        var pv = precioVentaLinea(item);
+        if (!pv.porPresentacion) return pv.precio;
+        var fac = factorUnidadVenta(item) || 1;
+        if (fac <= 0) fac = 1;
+        return pv.precio / fac;
+    }
+    function subtotalLineaItem(item) {
+        if (!item) return 0;
+        var pt = (item.promocion_tipo || '').toUpperCase();
+        var pv = parseFloat(item.promocion_valor) || 0;
+        var vc = item.promocion_valor_comprar, vp = item.promocion_valor_pagar, dm = item.promocion_descuento_monto;
+        if ((item.modo || 'CANTIDAD') === 'MONTO') {
+            return Math.round((parseFloat(item.monto_solicitado) || 0) * 100) / 100;
+        }
+        var pvLinea = precioVentaLinea(item);
+        var qCalc = pvLinea.porPresentacion ? (parseFloat(item.cantidad) || 0) : cantidadBaseLinea(item);
+        return calcSubtotalConPromo(pvLinea.precio, qCalc, pt, pv, vc, vp, dm);
     }
     /** Elige la presentación cuya regla de rango aplica (evita confundir UMB y «Tira» con factor 1). */
     function resolverPresentacionReglaPrecio(item) {
@@ -1496,20 +1588,13 @@
             item._mergeKey = 'fac' + item.factor_umb;
         }
     }
-    function reglaPrecioPresentacionActiva(item) {
-        var pr = resolverPresentacionReglaPrecio(item);
-        if (!pr) return null;
-        var p = parseFloat(pr.precio_regla);
-        return (isNaN(p) || p < 0) ? null : p;
-    }
     function aplicarPrecioReglaPresentacion(item) {
         if (!item) return;
         if (item.precio_base == null || isNaN(parseFloat(item.precio_base))) {
             item.precio_base = parseFloat(item.precioFinal) || 0;
         }
         sincronizarPresentacionPorReglaCantidad(item);
-        var regla = reglaPrecioPresentacionActiva(item);
-        item.precioFinal = (regla != null) ? regla : (parseFloat(item.precio_base) || 0);
+        item.precioFinal = precioEfectivoUMB(item);
     }
     function agregarAlCarrito(id, nombre, precio, codigo, promo, meta) {
         promo = promo || {};
@@ -1625,16 +1710,9 @@
         let totalBruto = 0;
         carrito.forEach((p, i) => {
             aplicarPrecioReglaPresentacion(p);
-            const pt = (p.promocion_tipo || '').toUpperCase();
-            const pv = parseFloat(p.promocion_valor) || 0;
-            const vc = p.promocion_valor_comprar, vp = p.promocion_valor_pagar, dm = p.promocion_descuento_monto;
+            const pvLinea = precioVentaLinea(p);
             const qBase = cantidadBaseLinea(p);
-            let subtotal;
-            if ((p.modo || 'CANTIDAD') === 'MONTO') {
-                subtotal = Math.round((parseFloat(p.monto_solicitado) || 0) * 100) / 100;
-            } else {
-                subtotal = calcSubtotalConPromo(p.precioFinal, qBase, pt, pv, vc, vp, dm);
-            }
+            const subtotal = subtotalLineaItem(p);
             totalBruto += subtotal;
             let promoBadge = '';
             if (pt === '2X1') promoBadge = '<span class="badge bg-warning text-dark ms-1">2x1</span>';
@@ -1710,7 +1788,12 @@
                 <tr>
                     <td class="ps-4"><b>${p.nombre}</b>${promoBadge}<br><small class="text-muted">${p.codigo}</small>
                         ${selUnidad}${chkMonto}${hintBase}</td>
-                    <td>$${p.precioFinal.toFixed(2)} <span class="small text-muted">/ ${umbLabel}</span>${reglaPrecioPresentacionActiva(p) != null ? ' <span class="badge bg-info-subtle text-info" title="Precio por regla de cantidad">regla</span>' : ''}</td>
+                    <td>
+                        <div>$${pvLinea.precio.toFixed(2)} <span class="small text-muted">/ ${pvLinea.etiqueta}</span></div>
+                        ${pvLinea.origen === 'manual' ? '<span class="badge bg-warning-subtle text-dark" title="Precio cambiado manualmente">manual</span>' : ''}
+                        ${pvLinea.origen === 'presentacion' || pvLinea.origen === 'regla' ? '<span class="badge bg-info-subtle text-info" title="Precio de presentación">presentación</span>' : ''}
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="posCambiarPrecio(${i})" title="Cambiar precio de esta línea"><i class="bi bi-pencil-square me-1"></i>Cambiar precio</button>
+                    </td>
                     <td class="text-center">${ctrlCant}${rapidosHtml}</td>
                     <td class="text-end pe-4 fw-bold">$${subtotal.toFixed(2)}</td>
                     <td class="text-center">
@@ -1737,19 +1820,31 @@
     function totalBrutoDesdeCarrito() {
         let tb = 0;
         carrito.forEach(p => {
-            const pt = (p.promocion_tipo || '').toUpperCase();
-            const pv = parseFloat(p.promocion_valor) || 0;
-            const vc = p.promocion_valor_comprar, vp = p.promocion_valor_pagar, dm = p.promocion_descuento_monto;
-            const qBase = cantidadBaseLinea(p);
-            if ((p.modo || 'CANTIDAD') === 'MONTO') {
-                tb += Math.round((parseFloat(p.monto_solicitado) || 0) * 100) / 100;
-            } else {
-                aplicarPrecioReglaPresentacion(p);
-                tb += calcSubtotalConPromo(p.precioFinal, qBase, pt, pv, vc, vp, dm);
-            }
+            aplicarPrecioReglaPresentacion(p);
+            tb += subtotalLineaItem(p);
         });
         return tb;
     }
+
+    window.posCambiarPrecio = function(i) {
+        const it = carrito[i];
+        if (!it) return;
+        const pv = precioVentaLineaSinOverride(it);
+        const actual = pv.precio.toFixed(4).replace(/\.?0+$/, '');
+        const hint = pv.porPresentacion
+            ? ('Precio por «' + pv.etiqueta + '» (cantidad en carrito: ' + (parseFloat(it.cantidad) || 1) + ')')
+            : ('Precio por ' + pv.etiqueta + ' (unidad base en inventario)');
+        const v = prompt(hint + '\n\nNuevo precio ($):', actual);
+        if (v === null) return;
+        const n = parseFloat(String(v).replace(',', '.'));
+        if (!Number.isFinite(n) || n < 0) {
+            alert('Precio inválido.');
+            return;
+        }
+        it.precio_override = Math.round(n * 10000) / 10000;
+        it.precio_override_por_presentacion = pv.porPresentacion;
+        renderizar();
+    };
 
     window.posPresentacionLinea = function(i, val) {
         const it = carrito[i];
@@ -1769,6 +1864,8 @@
             it.factor_umb = fac;
             it._mergeKey = 'fac' + fac;
         }
+        it.precio_override = null;
+        it.precio_override_por_presentacion = null;
         renderizar();
     };
     window.posUnidadLinea = function(i, v) {
@@ -2149,10 +2246,11 @@
                 alert('Línea del carrito sin producto válido: «' + (item.nombre || ('#' + li)) + '». Quitarla y volver a agregar desde catálogo o búsqueda.');
                 return;
             }
+            aplicarPrecioReglaPresentacion(item);
             lineasPayload.push({
                 producto_id: pidSend,
                 nombre: item.nombre,
-                precio: item.precioFinal,
+                precio: precioEfectivoUMB(item),
                 modo: item.modo || 'CANTIDAD',
                 unidad_venta: item.unidad_venta || 'UNIDAD',
                 cantidad_ui: (item.modo || 'CANTIDAD') === 'MONTO' ? null : item.cantidad,

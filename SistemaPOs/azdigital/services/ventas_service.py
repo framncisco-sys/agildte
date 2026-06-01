@@ -106,6 +106,13 @@ def _parse_item_carrito(p) -> dict:
             pres_id_i = None
         if pres_id_i is not None and pres_id_i <= 0:
             pres_id_i = None
+        precio_carrito = p.get("precio")
+        try:
+            precio_carrito_f = float(precio_carrito) if precio_carrito is not None else None
+            if precio_carrito_f is not None and precio_carrito_f < 0:
+                precio_carrito_f = None
+        except (TypeError, ValueError):
+            precio_carrito_f = None
         return {
             "producto_id": int(pid),
             "modo": modo if modo in ("CANTIDAD", "MONTO") else "CANTIDAD",
@@ -114,6 +121,7 @@ def _parse_item_carrito(p) -> dict:
             "monto_solicitado": float(ms) if ms is not None else None,
             "presentacion_id": pres_id_i,
             "factor_umb": float(fac_um) if fac_um is not None else None,
+            "precio_carrito": precio_carrito_f,
         }
     if isinstance(p, (list, tuple)) and len(p) >= 4:
         extra = p[4] if len(p) > 4 and isinstance(p[4], dict) else {}
@@ -248,6 +256,9 @@ def crear_venta_desde_carrito(
             raise ValueError(f"Producto no existe: {producto_id}")
         nombre_producto = productos_repo.get_nombre_producto(cur, producto_id) or "Producto"
         precio_unitario = float(prod[0])
+        precio_carrito = item.get("precio_carrito")
+        if precio_carrito is not None and precio_carrito >= 0:
+            precio_unitario = float(precio_carrito)
         stock_actual = float(prod[1] if prod[1] is not None else 0)
         promo_tipo = (prod[2] or "").strip() if len(prod) > 2 else None
         promo_val = float(prod[3]) if len(prod) > 3 and prod[3] else 0
