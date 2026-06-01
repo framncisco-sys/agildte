@@ -19,6 +19,51 @@ from ..utils.builders import generar_dte
 logger = logging.getLogger(__name__)
 
 
+def _decode_jws_payload(jws: str) -> Optional[Dict[str, Any]]:
+    """Extrae el JSON del payload de un JWS (DTE firmado tal como lo guardó MH)."""
+    try:
+        parts = (jws or '').strip().split('.')
+        if len(parts) < 2:
+            return None
+        import base64
+        pad = '=' * (-len(parts[1]) % 4)
+        raw = base64.urlsafe_b64decode(parts[1] + pad)
+        return json.loads(raw.decode('utf-8'))
+    except Exception:
+        return None
+
+
+def _receptor_anulacion_desde_venta(venta: Venta, tipo_dte: str, empresa: Empresa) -> tuple:
+    """
+    tipoDocumento y numDocumento del bloque documento (anulación) deben coincidir
+    EXACTAMENTE con el receptor del DTE aceptado (MH cod. 027).
+    No usar DUI/NIT del formulario de solicitante/responsable.
+
+    Returns:
+        (tipoDocumento, numDocumento, desde_jws)
+    """
+    if venta.dte_firmado:
+        payload = _decode_jws_payload(venta.dte_firmado)
+        if payload and isinstance(payload.get('receptor'), dict):
+            rec = payload['receptor']
+            return rec.get('tipoDocumento'), rec.get('numDocumento'), True
+
+    try:
+        amb = FacturacionService.DTE_AMBIENTE_CODE.get(
+            (empresa.ambiente or '01').strip(), '00'
+        )
+        json_dte = generar_dte(venta, ambiente=amb, tipo_dte_override=tipo_dte)
+        rec = json_dte.get('receptor') or {}
+        return rec.get('tipoDocumento'), rec.get('numDocumento'), False
+    except Exception as exc:
+        logger.warning(
+            'No se pudo regenerar receptor para anulación venta #%s: %s',
+            venta.id, exc,
+        )
+
+    return None, None, False
+
+
 class FacturacionServiceError(Exception):
     """Excepción base para errores del servicio de facturación"""
     pass
@@ -721,35 +766,40 @@ class FacturacionService:
             tel_emp = '00000000'
         correo_emp = (empresa.correo or 'contacto@empresa.sv')[:100]
 
-        # Receptor: tipoDocumento y numDocumento deben coincidir EXACTAMENTE con el DTE original (MH)
-        # NIT → 14 dígitos (zfill 14); DUI → 9 dígitos (zfill 9)
-        tipo_doc_recep = None
-        num_doc_recep = None
-        cliente = venta.cliente
-        if tipo_dte in ('03', '05', '06') and cliente:
-            # CCF / NC / ND: el receptor es siempre un contribuyente con NIT (14 dígitos)
-            nit_cli = (cliente.nit or cliente.nrc or "").replace("-", "").replace(" ", "")
-            if nit_cli and len(nit_cli) >= 3:
-                tipo_doc_recep = "36"
-                num_doc_recep = nit_cli.zfill(14)[:20]
-        elif tipo_dte == '01':
-            if cliente:
-                nit_cli = (cliente.nit or "").replace("-", "").replace(" ", "").strip()
-                dui_cli = (cliente.dui or "").replace("-", "").replace(" ", "").strip()
-                if nit_cli:
-                    tipo_doc_recep, num_doc_recep = "36", nit_cli.zfill(14)[:20]
-                elif dui_cli:
-                    # DUI: exactamente 9 dígitos (no 14)
-                    tipo_doc_recep, num_doc_recep = "13", dui_cli.zfill(9)[:9]
-            # CF sin cliente o cliente sin nit/dui: documento_receptor o null
-            doc_cf = (venta.documento_receptor or "").replace("-", "").replace(" ", "").strip()
-            if doc_cf and len(doc_cf) >= 3 and not num_doc_recep:
-                tdoc = (venta.tipo_doc_receptor or "NIT").upper()
-                if tdoc == "NIT":
-                    tipo_doc_recep, num_doc_recep = "36", doc_cf.zfill(14)[:20]
-                else:
-                    tipo_doc_recep, num_doc_recep = "13", doc_cf.zfill(9)[:9]
-        # FSE: sujetoExcluido no tiene tipoDocumento en anulación → dejar null
+        # Receptor del DTE original (no confundir con tipDocSolicitante del formulario).
+        tipo_doc_recep, num_doc_recep, desde_jws = _receptor_anulacion_desde_venta(
+            venta, tipo_dte, empresa
+        )
+
+        if not desde_jws and num_doc_recep is None and tipo_doc_recep is None:
+            cliente = venta.cliente
+            if tipo_dte in ('03', '05', '06') and cliente:
+                nit_cli = (cliente.nit or cliente.nrc or "").replace("-", "").replace(" ", "")
+                if nit_cli and len(nit_cli) >= 3:
+                    tipo_doc_recep = "36"
+                    num_doc_recep = nit_cli.zfill(14)[:20]
+            elif tipo_dte == '01':
+                doc_cf = (venta.documento_receptor or "").replace("-", "").replace(" ", "").strip()
+                if not doc_cf and cliente:
+                    doc_cf = (cliente.nit or cliente.dui or "").replace("-", "").replace(" ", "").strip()
+                if doc_cf and len(doc_cf) >= 3:
+                    dig = re.sub(r'[^0-9]', '', doc_cf)
+                    tdoc = (venta.tipo_doc_receptor or '').strip().upper()
+                    # CF aceptado por MH con 9 dígitos y tipoDocumento null (fe-fc-v1)
+                    if len(dig) in (8, 9, 10) and tdoc != 'NIT':
+                        num_doc_recep = dig[-9:] if len(dig) >= 9 else dig.zfill(9)
+                        tipo_doc_recep = None
+                    elif tdoc == 'NIT' or len(dig) >= 13:
+                        tipo_doc_recep, num_doc_recep = "36", dig.zfill(14)[:20]
+                    elif tdoc == 'DUI' or len(dig) == 9:
+                        tipo_doc_recep, num_doc_recep = None, dig.zfill(9)[:9]
+                    else:
+                        tipo_doc_recep, num_doc_recep = None, doc_cf[:20]
+
+        logger.info(
+            'Anulación venta #%s receptor documento: tipoDocumento=%r numDocumento=%r (jws=%s)',
+            venta.id, tipo_doc_recep, num_doc_recep, desde_jws,
+        )
 
         nombre_recep = (venta.nombre_receptor or 'Consumidor Final').strip() or 'Consumidor Final'
         if len(nombre_recep) < 5:

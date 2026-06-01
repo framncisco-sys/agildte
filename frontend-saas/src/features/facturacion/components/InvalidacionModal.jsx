@@ -149,11 +149,19 @@ export function InvalidacionModal({ open, onClose, venta, onExito }) {
               </div>
             </div>
 
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Los datos del receptor de la factura (tipo/número de documento) los toma el sistema del DTE
+              original guardado. El DUI o NIT que indiques abajo es solo del responsable o solicitante de
+              la anulación, no del cliente de la factura.
+            </p>
+
             <div className="border-t border-gray-200 pt-4">
               <h3 className="text-sm font-medium text-gray-700 mb-3">Responsable de anulación</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Tipo Documento</label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    Tipo documento (responsable)
+                  </label>
                   <select
                     name="tipoDocResponsable"
                     value={form.tipoDocResponsable}
@@ -194,7 +202,9 @@ export function InvalidacionModal({ open, onClose, venta, onExito }) {
               <h3 className="text-sm font-medium text-gray-700 mb-3">Quien solicita la anulación</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Tipo Documento</label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    Tipo documento (quien solicita)
+                  </label>
                   <select
                     name="tipoDocSolicitante"
                     value={form.tipoDocSolicitante}
