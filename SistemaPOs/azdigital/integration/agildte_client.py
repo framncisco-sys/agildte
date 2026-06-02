@@ -87,16 +87,10 @@ _logger = logging.getLogger(__name__)
 
 
 def _datetime_el_salvador() -> datetime:
-    """
-    Reloj «oficial» para facturación SV: America/El_Salvador (UTC−6, sin DST desde 2021).
-    Si falla zoneinfo (imagen mínima sin tzdata), usa UTC−6 fijo — mismo resultado práctico.
-    """
-    try:
-        from zoneinfo import ZoneInfo
+    """Reloj oficial SV (delega en azdigital.utils.fecha_sv)."""
+    from azdigital.utils.fecha_sv import ahora_sv
 
-        return datetime.now(ZoneInfo("America/El_Salvador"))
-    except Exception:
-        return datetime.now(timezone(timedelta(hours=-6)))
+    return ahora_sv()
 
 
 def _fecha_hora_periodo_para_agildte(
@@ -153,6 +147,41 @@ def resolve_agildte_base_url() -> str:
         if v:
             return v
     return ""
+
+
+def obtener_modo_operacion_agildte(
+    empresa_id: int,
+    cliente: "AgilDTEClient | None" = None,
+) -> dict[str, Any]:
+    """GET /api/empresas/{id}/modo-operacion/ — estado prueba/online."""
+    amb = obtener_ambiente_emresa_agildte(empresa_id, cliente=cliente)
+    return {
+        "ambiente": amb,
+        "modo": "online" if amb == "00" else "prueba",
+        "es_modo_prueba": amb != "00",
+        "etiqueta": "Versión prueba" if amb != "00" else "Online — producción",
+    }
+
+
+def cambiar_modo_operacion_agildte(
+    empresa_id: int,
+    modo: str,
+    *,
+    confirmar_reinicio: bool = False,
+    cliente: "AgilDTEClient | None" = None,
+) -> dict[str, Any]:
+    """POST /api/empresas/{id}/modo-operacion/ — prueba u online (+ reinicio correlativos)."""
+    if not resolve_agildte_base_url():
+        raise AgilDTEAPIError("AgilDTE no configurado (AGILDTE_BASE_URL).")
+    cli = cliente or login_client_from_request_or_env(trust_request_bearer=False)
+    eid = int(empresa_id)
+    if cli.empresa_id is not None:
+        eid = int(cli.empresa_id)
+    data = cli.post_json(
+        f"{API_PREFIX}/empresas/{eid}/modo-operacion/",
+        {"modo": (modo or "").strip().lower(), "confirmar_reinicio": bool(confirmar_reinicio)},
+    )
+    return data if isinstance(data, dict) else {"ok": True, "raw": data}
 
 
 def obtener_ambiente_emresa_agildte(

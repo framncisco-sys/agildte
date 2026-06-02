@@ -6,6 +6,7 @@ import { getEmpresa, updateEmpresa } from '../../../api/empresa'
 import { buildEmpresaPayload } from '../../../api/empresaPayload'
 import { EmpresaForm } from '../components/EmpresaForm'
 import { MHCertificacionPanel } from '../components/MHCertificacionPanel'
+import { ModoOperacionPanel } from '../components/ModoOperacionPanel'
 import { StressTestPanel } from '../components/StressTestPanel'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 
@@ -96,6 +97,12 @@ export default function EmpresaDetailPage() {
           submitLabel="Guardar cambios"
         />
       </div>
+
+      <ModoOperacionPanel
+        empresaId={Number(id)}
+        empresa={empresa}
+        onUpdated={(data) => setEmpresa(data)}
+      />
 
       <MHCertificacionPanel empresa={empresa} />
 

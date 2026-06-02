@@ -6,6 +6,7 @@ services:
     restart: unless-stopped
     env_file: .env.dev
     environment:
+      TZ: America/El_Salvador
       MEDIA_ROOT: /app/media
     # runserver con hot-reload automático + setup inicial
     command: >

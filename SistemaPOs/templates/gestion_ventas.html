@@ -8,7 +8,7 @@
             <p class="text-muted small mb-0">
                 Gerente y superusuario: editar datos de facturación o anular venta (requiere motivo para auditoría).
                 {% if ambiente_emision == '00' %}
-                <span class="d-block mt-1">Solo se listan ventas de <strong>producción</strong>; las de pruebas MH quedan ocultas (igual que AgilDTE).</span>
+                <span class="d-block mt-1">Solo se listan ventas de <strong>producción</strong>; las de pruebas AgilDTE quedan ocultas.</span>
                 {% elif ambiente_emision == '01' %}
                 <span class="d-block mt-1">Solo se listan ventas del ambiente de <strong>pruebas</strong>.</span>
                 {% endif %}

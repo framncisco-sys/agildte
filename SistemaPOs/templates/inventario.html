@@ -368,8 +368,10 @@
                     </div>
                     <div class="alert alert-light border small">
                         <strong><i class="bi bi-info-circle me-1"></i> Columnas esperadas:</strong>
-                        <code>codigo</code>, <code>nombre</code>, <code>precio</code>, <code>stock</code>, <code>costo</code>
-                        <br>La primera fila debe ser el encabezado. Se aceptan variantes: código/código_barra, producto/descripcion, cantidad/existencia.
+                        <code>Código</code>, <code>Producto</code>, <code>Sucursal</code>, <code>Precio / unidad</code>, <code>Stock general</code>
+                        {% if es_superadmin %}<br>Superadmin: incluya también <code>Empresa</code> (o elija la empresa abajo si no coincide el nombre).{% endif %}
+                        <br>Puede subir el mismo Excel exportado desde Inventario (se detectan encabezados y se omiten filas de totales).
+                        <br>También se aceptan variantes: <code>codigo</code>, <code>nombre</code>, <code>precio</code>, <code>stock</code>, <code>costo</code>.
                         <br>
                         <a href="{{ url_for('admin.inventario_plantilla_carga') }}" class="btn btn-sm btn-outline-primary mt-2">
                             <i class="bi bi-download me-1"></i> Descargar plantilla Excel

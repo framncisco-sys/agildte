@@ -263,6 +263,62 @@ def listar_catalogo_pos_modal(
         return [tuple(list(r) + [False, None, 12, "59", 0.0]) for r in rows]
 
 
+def listar_catalogo_pos_modal_global(
+    cur,
+    sucursal_id_usuario: int | None = None,
+    limit: int = 800,
+) -> list[tuple]:
+    """Superusuario POS: catálogo de todas las empresas (como inventario global)."""
+    params: list[Any] = []
+    filtro_suc_prod = ""
+    if sucursal_id_usuario is not None:
+        filtro_suc_prod = " AND (p.sucursal_id IS NULL OR p.sucursal_id = %s)"
+        params.append(sucursal_id_usuario)
+    ex_sql, ex_params = _sql_existencia_pos("p", sucursal_id_usuario)
+    sql_exist = f"""
+        SELECT p.id, p.nombre, p.precio_unitario, p.codigo_barra,
+            COALESCE(p.promocion_tipo, ''), COALESCE(p.promocion_valor, 0),
+            COALESCE(p.fraccionable, FALSE), p.unidades_por_caja, COALESCE(p.unidades_por_docena, 12),
+            COALESCE(NULLIF(TRIM(p.mh_codigo_unidad), ''), '59'),
+            {ex_sql} AS existencia
+        FROM productos p
+        WHERE 1=1
+    """ + filtro_suc_prod + """
+        ORDER BY UPPER(p.nombre)
+        LIMIT %s
+    """
+    params_exist = list(ex_params) + params + [limit]
+    try:
+        cur.execute(sql_exist, tuple(params_exist))
+        return list(cur.fetchall() or [])
+    except Exception:
+        cur.connection.rollback()
+    sql_simple = (
+        "SELECT p.id, p.nombre, p.precio_unitario, p.codigo_barra, "
+        "COALESCE(p.promocion_tipo, ''), COALESCE(p.promocion_valor, 0), "
+        "COALESCE(p.fraccionable, FALSE), p.unidades_por_caja, COALESCE(p.unidades_por_docena, 12), "
+        "COALESCE(NULLIF(TRIM(p.mh_codigo_unidad), ''), '59'), COALESCE(p.stock_actual, 0) "
+        "FROM productos p WHERE 1=1" + filtro_suc_prod + " ORDER BY UPPER(p.nombre) LIMIT %s"
+    )
+    try:
+        cur.execute(sql_simple, tuple(params + [limit]))
+        return list(cur.fetchall() or [])
+    except Exception:
+        cur.connection.rollback()
+        return []
+
+
+def _empresa_id_de_producto(cur, producto_id: int, default: int = 1) -> int:
+    try:
+        cur.execute("SELECT empresa_id FROM productos WHERE id = %s", (int(producto_id),))
+        row = cur.fetchone()
+        if row and row[0] is not None:
+            return int(row[0])
+    except Exception:
+        pass
+    return int(default)
+
+
 def get_nombre_producto(cur, producto_id: int) -> str | None:
     """Nombre comercial del producto en inventario POS (para descripción en DTE AgilDTE)."""
     try:

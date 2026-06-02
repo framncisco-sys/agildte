@@ -40,7 +40,9 @@ def get_suscripcion_detalle(cur, empresa_id: int = 1):
         return {"activa": False, "vencimiento": None, "dias_restantes": 0, "vigente": False}
     activa = bool(row[0])
     vencimiento = row[1]
-    hoy = date.today()
+    from azdigital.utils.fecha_sv import hoy_sv
+
+    hoy = hoy_sv()
     if vencimiento:
         dias = (vencimiento - hoy).days
     else:
@@ -189,4 +191,31 @@ def actualizar_empresa(
             (nombre, nit, nrc, actividad, direccion, telefono, correo,
              suscripcion_activa, fecha_vencimiento, empresa_id),
         )
+
+
+def get_ambiente_mh(cur, empresa_id: int) -> str | None:
+    try:
+        cur.execute(
+            "SELECT ambiente_mh FROM empresas WHERE id = %s",
+            (int(empresa_id),),
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            return str(row[0]).strip()
+    except Exception:
+        pass
+    return None
+
+
+def set_ambiente_mh(cur, empresa_id: int, ambiente: str) -> None:
+    amb = (ambiente or "01").strip()[:2]
+    if amb not in ("00", "01"):
+        amb = "01"
+    try:
+        cur.execute(
+            "UPDATE empresas SET ambiente_mh = %s WHERE id = %s",
+            (amb, int(empresa_id)),
+        )
+    except Exception:
+        pass
 

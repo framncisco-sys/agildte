@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 TZ_EL_SALVADOR = timezone(timedelta(hours=-6))
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
+from django.utils import timezone as django_timezone
 from .constants import DTE_LINEA_DESCRIPCION_MAX_LENGTH
 from .models import Venta, Empresa, Cliente
 
@@ -190,7 +191,7 @@ class CorrelativoDTE:
             raise ValueError("empresa_id es requerido para generar el correlativo")
         
         # Obtener el año actual
-        anio_actual = datetime.now().year
+        anio_actual = django_timezone.localdate().year
         
         # Usar transacción + select_for_update para evitar condiciones de carrera en concurrencia
         from django.db import IntegrityError

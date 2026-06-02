@@ -181,6 +181,16 @@
         <a href="{{ url_for('admin.gestion_ventas') }}" class="btn btn-sm btn-outline-secondary rounded-pill"><i class="bi bi-receipt-cutoff"></i> Gestión de ventas</a>
     </div>
     {% endif %}
+    {% if es_modo_prueba|default(true) %}
+    <div id="modo-prueba-banner" class="alert alert-warning border-warning border-2 fw-bold text-center mb-3 py-2" role="alert">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        {{ modo_operacion_etiqueta|default('Versión prueba') }} — Los tickets y facturas se imprimen como <strong>PRUEBA</strong> (AgilDTE apitest). Cambie a online en <a href="/configuracion" class="alert-link">Configuración</a> cuando vaya a producción.
+    </div>
+    {% else %}
+    <div id="modo-prueba-banner" class="alert alert-success border-success text-center mb-3 py-2 small" role="alert">
+        <i class="bi bi-check-circle-fill"></i> <strong>Online — producción</strong> (facturación real con AgilDTE).
+    </div>
+    {% endif %}
     <div id="offline-banner">
         ⚠️ MODO OFFLINE: <span id="pendientes-count">0</span> VENTAS GUARDADAS EN MEMORIA (ESPERANDO INTERNET). Solo Ticket. Productos desde caché.
     </div>
@@ -670,6 +680,24 @@
         inputCodigo.focus();
     }
     let catalogoProductosModalCache = [];
+    let catalogoModalFetchPromise = null;
+    let catalogoModalCargadoEn = 0;
+    const CATALOGO_MODAL_TTL_MS = 5 * 60 * 1000;
+    function catalogoModalCacheVigente() {
+        return catalogoProductosModalCache.length > 0
+            && (Date.now() - catalogoModalCargadoEn) < CATALOGO_MODAL_TTL_MS;
+    }
+    function prefetchCatalogoModalEnSegundoPlano() {
+        if (catalogoModalCacheVigente() || catalogoModalFetchPromise || !navigator.onLine) return;
+        catalogoModalFetchPromise = fetch(posUrl('/catalogo_productos'), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+            .then(function (resp) { return resp.ok ? resp.json() : { productos: [] }; })
+            .then(function (data) {
+                catalogoProductosModalCache = Array.isArray(data.productos) ? data.productos : [];
+                catalogoModalCargadoEn = Date.now();
+            })
+            .catch(function () { /* silencioso */ })
+            .finally(function () { catalogoModalFetchPromise = null; });
+    }
     function formatExistenciaCat(ex) {
         if (ex == null || ex === '') return '—';
         const n = Number(ex);
@@ -757,10 +785,21 @@
             leg.textContent = lista.length + ' producto(s). Con existencia > 0: fila o Agregar. Los de existencia 0 no se pueden vender desde aquí.';
         }
     }
-    async function cargarCatalogoModalDatos() {
+    async function cargarCatalogoModalDatos(forceReload) {
         const load = document.getElementById('modal_catalogo_loading');
         const err = document.getElementById('modal_catalogo_error');
         if (err) { err.classList.add('d-none'); err.textContent = ''; }
+        if (!forceReload && catalogoModalCacheVigente()) {
+            renderCatalogoModalTabla();
+            return;
+        }
+        if (!forceReload && catalogoModalFetchPromise) {
+            if (load) load.classList.remove('d-none');
+            try { await catalogoModalFetchPromise; } catch (e) { /* ignore */ }
+            if (load) load.classList.add('d-none');
+            renderCatalogoModalTabla();
+            return;
+        }
         if (navigator.onLine) {
             if (load) load.classList.remove('d-none');
             try {
@@ -769,15 +808,18 @@
                 try { data = await resp.json(); } catch (e) { data = {}; }
                 if (!resp.ok) {
                     catalogoProductosModalCache = [];
+                    catalogoModalCargadoEn = 0;
                     if (err) {
                         err.textContent = (data.mensaje || data.error || ('No se pudo cargar el catálogo (HTTP ' + resp.status + ').'));
                         err.classList.remove('d-none');
                     }
                 } else {
                     catalogoProductosModalCache = Array.isArray(data.productos) ? data.productos : [];
+                    catalogoModalCargadoEn = Date.now();
                 }
             } catch (e) {
                 catalogoProductosModalCache = [];
+                catalogoModalCargadoEn = 0;
                 if (err) { err.textContent = 'No se pudo cargar el catálogo.'; err.classList.remove('d-none'); }
             }
             if (load) load.classList.add('d-none');
@@ -823,6 +865,7 @@
     document.getElementById('modal_catalogo_filtro')?.addEventListener('input', function () {
         renderCatalogoModalTabla();
     });
+    setTimeout(prefetchCatalogoModalEnSegundoPlano, 800);
     function agregarDesdeFavoritoGuardado(st) {
         if (!productoPosTieneStockVendible(st)) {
             alert('Sin existencia en inventario: «' + (st.nombre || 'este producto') + '». Actualice el caché del POS (con internet) o cargue stock en Inventario.');

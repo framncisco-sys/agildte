@@ -474,24 +474,41 @@ def _factor_normalizado(val) -> Decimal:
         return Decimal("0")
 
 
-def lista_para_pos_json(
-    cur,
-    producto_id: int,
+def listar_por_productos(cur, producto_ids: list[int]) -> dict[int, list[tuple[Any, ...]]]:
+    """Presentaciones agrupadas por producto_id (consulta única)."""
+    if not producto_ids or not tabla_existe(cur):
+        return {}
+    cols = "id, nombre, factor_umb, es_umb, orden"
+    if tiene_columna_codigo_barra(cur):
+        cols += ", codigo_barra"
+    if tiene_columnas_regla_precio(cur):
+        cols += ", cantidad_desde, cantidad_hasta, precio_regla"
+    try:
+        cur.execute(
+            f"""
+            SELECT producto_id, {cols}
+            FROM producto_presentacion
+            WHERE producto_id = ANY(%s)
+            ORDER BY producto_id, orden NULLS LAST, id
+            """,
+            (producto_ids,),
+        )
+        out: dict[int, list[tuple[Any, ...]]] = {}
+        for row in cur.fetchall() or []:
+            pid = int(row[0])
+            out.setdefault(pid, []).append(tuple(row[1:]))
+        return out
+    except Exception:
+        cur.connection.rollback()
+        return {}
+
+
+def _lista_para_pos_json_desde_filas(
+    rows: list[tuple[Any, ...]],
     unidades_por_docena: int,
     unidades_por_caja: int | None,
     nombre_producto: str | None = None,
 ) -> list[dict[str, Any]]:
-    """
-    Lista para el POS: id (o null si sintético), nombre, factor, es_umb.
-
-    Si hay filas en BD pero solo la UMB (p. ej. migración parcial), se completan
-    Docena y Caja desde unidades_por_docena / unidades_por_caja como cuando no hay tabla.
-    El nombre UMB para docena/caja sale del nombre guardado en la fila es_umb (ej. Sobre, Libra).
-
-    Si faltan unidades por caja en BD pero el nombre del producto incluye «60 SOBRES», se infiere
-    el factor de caja para el desplegable del POS (no modifica la base de datos).
-    """
-    rows = listar_por_producto(cur, producto_id)
     umb_nombre = "Unidad base"
     if rows:
         for r in rows:
@@ -542,6 +559,47 @@ def lista_para_pos_json(
         if d.get("es_umb") and (d.get("nombre") or "").strip().lower() in ("unidad base", "umb", ""):
             d["nombre"] = _inferir_etiqueta_umb_desde_nombre(nombre_producto, str(d.get("nombre") or ""))
     return out
+
+
+def map_listas_para_pos_json(
+    cur,
+    items: list[tuple[int, int, int | None, str | None]],
+) -> dict[int, list[dict[str, Any]]]:
+    """Presentaciones POS para muchos productos (2 consultas máx.: tabla + filas)."""
+    if not items:
+        return {}
+    ids = [int(x[0]) for x in items]
+    rows_map = listar_por_productos(cur, ids)
+    return {
+        int(pid): _lista_para_pos_json_desde_filas(
+            rows_map.get(int(pid), []),
+            int(uxdoc or 12),
+            uxcaja,
+            nom,
+        )
+        for pid, uxdoc, uxcaja, nom in items
+    }
+
+
+def lista_para_pos_json(
+    cur,
+    producto_id: int,
+    unidades_por_docena: int,
+    unidades_por_caja: int | None,
+    nombre_producto: str | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Lista para el POS: id (o null si sintético), nombre, factor, es_umb.
+
+    Si hay filas en BD pero solo la UMB (p. ej. migración parcial), se completan
+    Docena y Caja desde unidades_por_docena / unidades_por_caja como cuando no hay tabla.
+    El nombre UMB para docena/caja sale del nombre guardado en la fila es_umb (ej. Sobre, Libra).
+
+    Si faltan unidades por caja en BD pero el nombre del producto incluye «60 SOBRES», se infiere
+    el factor de caja para el desplegable del POS (no modifica la base de datos).
+    """
+    rows = listar_por_producto(cur, producto_id)
+    return _lista_para_pos_json_desde_filas(rows, unidades_por_docena, unidades_por_caja, nombre_producto)
 
 
 def construir_filas_desde_legacy(

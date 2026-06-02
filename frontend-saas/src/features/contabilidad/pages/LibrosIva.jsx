@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Search, FileDown, FileSpreadsheet } from 'lucide-react'
 import { getLibroIvaPreview, getLibroIvaBlob, downloadInformeCfDiarioXlsx } from '../../../api/librosIva'
+import { fechaHoyElSalvadorISO } from '../../../utils/format'
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -13,9 +14,18 @@ function formatNum(n) {
   return Number.isNaN(x) ? '0.00' : x.toLocaleString('es-SV', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function mesActualElSalvador() {
+  const iso = fechaHoyElSalvadorISO()
+  return parseInt(iso.slice(5, 7), 10) || 1
+}
+
+function anioActualElSalvador() {
+  return parseInt(fechaHoyElSalvadorISO().slice(0, 4), 10) || new Date().getFullYear()
+}
+
 export default function LibrosIva() {
-  const currentYear = new Date().getFullYear()
-  const [mes, setMes] = useState(new Date().getMonth() + 1)
+  const currentYear = anioActualElSalvador()
+  const [mes, setMes] = useState(mesActualElSalvador())
   const [anio, setAnio] = useState(currentYear)
   const [tipoLibro, setTipoLibro] = useState('consumidor')
   const [preview, setPreview] = useState(null)

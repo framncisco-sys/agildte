@@ -88,6 +88,28 @@ def crear_venta(
     return int(cur.fetchone()[0])
 
 
+def actualizar_numero_caja(
+    cur,
+    venta_id: int,
+    numero_caja: int,
+    empresa_id: int | None = None,
+) -> None:
+    """Número correlativo de caja (ticket/factura) por ambiente."""
+    try:
+        if empresa_id is not None:
+            cur.execute(
+                "UPDATE ventas SET numero_caja = %s WHERE id = %s AND empresa_id = %s",
+                (int(numero_caja), int(venta_id), int(empresa_id)),
+            )
+        else:
+            cur.execute(
+                "UPDATE ventas SET numero_caja = %s WHERE id = %s",
+                (int(numero_caja), int(venta_id)),
+            )
+    except Exception:
+        pass
+
+
 def actualizar_dte_desde_respuesta_agildte(
     cur,
     venta_id: int,
@@ -433,8 +455,7 @@ def listar_ventas_recientes(
         """
         params.extend([amb, amb])
     params.append(limit)
-    cur.execute(
-        f"""
+    sql = f"""
         SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
                COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id
         FROM ventas v
@@ -444,10 +465,29 @@ def listar_ventas_recientes(
           {filtro_amb}
         ORDER BY v.id DESC
         LIMIT %s
-        """,
-        tuple(params),
-    )
-    return cur.fetchall()
+        """
+    try:
+        cur.execute(sql, tuple(params))
+        return cur.fetchall()
+    except Exception as ex:
+        if "ambiente_emision" not in str(ex):
+            raise
+        cur.connection.rollback()
+        params_sin_amb = [empresa_id, limit]
+        cur.execute(
+            f"""
+            SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
+                   COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id
+            FROM ventas v
+            LEFT JOIN clientes c ON c.id = v.cliente_id
+            WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
+              AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
+            ORDER BY v.id DESC
+            LIMIT %s
+            """,
+            tuple(params_sin_amb),
+        )
+        return cur.fetchall()
 
 
 def actualizar_venta_cabecera(

@@ -5,6 +5,7 @@ from datetime import date, datetime
 import csv
 import json
 import html
+import unicodedata
 from io import BytesIO, StringIO
 
 import psycopg2
@@ -34,6 +35,7 @@ from azdigital.repositories import (
     ventas_repo,
     ventas_reports_repo,
 )
+from azdigital.utils.fecha_sv import ahora_sv, hoy_sv, hoy_sv_str
 from azdigital.utils.historial_helper import registrar_accion
 from azdigital.utils.mh_cat003_unidades import catalogo_para_select_optgroups, normalizar_codigo_mh
 from azdigital.utils.precio_umb_desde_caja import (
@@ -161,8 +163,8 @@ def _obtener_ventas_periodo(inicio: str, fin: str, empresa_id: int = None):
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte():
     db = ConexionDB()
-    inicio = request.args.get("inicio", date.today().strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv_str())
+    fin = request.args.get("fin", hoy_sv_str())
     ventas_detalle = _obtener_ventas_periodo(inicio, fin)
     emp = _empresa_id()
     sql_evol = """
@@ -293,7 +295,7 @@ def _datos_cabecera_reporte_ventas(inicio: str, fin: str) -> dict[str, str]:
     finally:
         cur.close()
         conn.close()
-    generado = datetime.now().strftime("%d/%m/%Y %H:%M")
+    generado = ahora_sv().strftime("%d/%m/%Y %H:%M")
     periodo_txt = _formatear_fecha_pdf(inicio)
     if inicio != fin:
         periodo_txt = f"{periodo_txt} al {_formatear_fecha_pdf(fin)}"
@@ -329,7 +331,7 @@ def _datos_cabecera_inventario(periodo_txt: str = "", sucursal_nombre: str = Non
         "empresa": str(nombre_empresa),
         "sucursal": str(nombre_sucursal),
         "periodo": periodo_txt,
-        "generado": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "generado": ahora_sv().strftime("%d/%m/%Y %H:%M"),
     }
 
 
@@ -365,8 +367,8 @@ def _estilos_pdf_elegante():
 @bp.route("/reporte/exportar_excel")
 @rol_requerido("GERENTE", "CONTADOR")
 def exportar_reporte_excel():
-    inicio = request.args.get("inicio", date.today().strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv_str())
+    fin = request.args.get("fin", hoy_sv_str())
     ventas_detalle = _obtener_ventas_periodo(inicio, fin)
     try:
         from openpyxl import Workbook
@@ -484,8 +486,8 @@ def exportar_reporte_excel():
 @bp.route("/reporte/exportar_pdf")
 @rol_requerido("GERENTE", "CONTADOR")
 def exportar_reporte_pdf():
-    inicio = request.args.get("inicio", date.today().strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv_str())
+    fin = request.args.get("fin", hoy_sv_str())
     ventas_detalle = _obtener_ventas_periodo(inicio, fin)
     try:
         from reportlab.lib import colors
@@ -666,8 +668,8 @@ def reporte_kardex_detallado():
         es_super = _es_superadmin_db(cur)
         producto_id = request.args.get("producto_id", "").strip()
         sucursal_id = request.args.get("sucursal_id", "").strip()
-        inicio = request.args.get("inicio", date.today().replace(month=1, day=1).strftime("%Y-%m-%d"))
-        fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+        inicio = request.args.get("inicio", hoy_sv().replace(month=1, day=1).strftime("%Y-%m-%d"))
+        fin = request.args.get("fin", hoy_sv_str())
         prod_id = int(producto_id) if producto_id.isdigit() else None
         suc_id = int(sucursal_id) if sucursal_id.isdigit() else None
         if not es_super:
@@ -703,7 +705,7 @@ def reporte_kardex_detallado():
 @rol_requerido("GERENTE", "CONTADOR", "BODEGUERO")
 def reporte_f983():
     emp_id = _empresa_id()
-    ejercicio = int(request.args.get("ejercicio", date.today().year))
+    ejercicio = int(request.args.get("ejercicio", hoy_sv().year))
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -730,7 +732,7 @@ def reporte_f983():
 @rol_requerido("GERENTE", "CONTADOR", "BODEGUERO")
 def reporte_f983_exportar_excel():
     emp_id = _empresa_id()
-    ejercicio = int(request.args.get("ejercicio", date.today().year))
+    ejercicio = int(request.args.get("ejercicio", hoy_sv().year))
     try:
         from openpyxl import Workbook
     except ImportError:
@@ -834,7 +836,7 @@ def reporte_lista_compras():
         except (ValueError, TypeError):
             pass
 
-        hoy = date.today()
+        hoy = hoy_sv()
         inicio = (request.args.get("inicio") or request.form.get("inicio") or "").strip()
         fin = (request.args.get("fin") or request.form.get("fin") or "").strip()
         if not inicio:
@@ -994,7 +996,7 @@ def reporte_movimientos():
                         flash("Producto no encontrado o sin permiso.", "danger")
                     else:
                         stock_sist = inventario_reports_repo.get_stock_producto(cur, prod_id_form, suc_id_form)
-                        fecha_txt = (request.form.get("fecha_ajuste") or date.today().isoformat())[:10]
+                        fecha_txt = (request.form.get("fecha_ajuste") or hoy_sv_str())[:10]
                         referencia = ref or f"Ajuste manual {fecha_txt}"
                         justif = (request.form.get("justificacion_ajuste") or "").strip()
                         min_j = kardex_repo.MIN_CARACTERES_JUSTIFICACION_AJUSTE
@@ -1079,7 +1081,7 @@ def reporte_movimientos():
         sucursal_id_raw = req.get("sucursal_id", "").strip()
         inicio_param = req.get("inicio", "").strip()
         fin_param = req.get("fin", "").strip()
-        hoy = date.today()
+        hoy = hoy_sv()
         primer_dia = hoy.replace(day=1).strftime("%Y-%m-%d")
         inicio = inicio_param if inicio_param else primer_dia
         fin = fin_param if fin_param else hoy.strftime("%Y-%m-%d")
@@ -1142,7 +1144,7 @@ def reporte_movimientos():
             total_sist=total_sist,
             total_ajus=total_ajus,
             total_diff=total_diff,
-            fecha_hoy=date.today().isoformat(),
+            fecha_hoy=hoy_sv_str(),
             etiqueta_motivo=kardex_repo.etiqueta_motivo_ajuste,
             umbral_impacto_ajuste_usd=kardex_repo.UMBRAL_IMPACTO_AJUSTE_USD,
             umbral_cantidad_ajuste_umb=kardex_repo.UMBRAL_CANTIDAD_AJUSTE_UMB,
@@ -1243,8 +1245,8 @@ def reporte_kardex_exportar_excel():
     emp_id = _empresa_id()
     producto_id = request.args.get("producto_id", "").strip()
     sucursal_id = request.args.get("sucursal_id", "").strip()
-    inicio = request.args.get("inicio", date.today().replace(month=1, day=1).strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv().replace(month=1, day=1).strftime("%Y-%m-%d"))
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -1309,8 +1311,8 @@ def reporte_kardex_exportar_pdf():
     emp_id = _empresa_id()
     producto_id = request.args.get("producto_id", "").strip()
     sucursal_id = request.args.get("sucursal_id", "").strip()
-    inicio = request.args.get("inicio", date.today().replace(month=1, day=1).strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv().replace(month=1, day=1).strftime("%Y-%m-%d"))
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -1485,7 +1487,7 @@ def reporte_movimientos_exportar_excel():
         conn.close()
     producto_id = request.args.get("producto_id", "").strip()
     sucursal_id = request.args.get("sucursal_id", "").strip()
-    hoy = date.today()
+    hoy = hoy_sv()
     inicio = request.args.get("inicio", "").strip() or hoy.replace(day=1).strftime("%Y-%m-%d")
     fin = request.args.get("fin", "").strip() or hoy.strftime("%Y-%m-%d")
     db2 = ConexionDB()
@@ -1598,7 +1600,7 @@ def reporte_movimientos_exportar_pdf():
         conn.close()
     producto_id = request.args.get("producto_id", "").strip()
     sucursal_id = request.args.get("sucursal_id", "").strip()
-    hoy = date.today()
+    hoy = hoy_sv()
     inicio = request.args.get("inicio", "").strip() or hoy.replace(day=1).strftime("%Y-%m-%d")
     fin = request.args.get("fin", "").strip() or hoy.strftime("%Y-%m-%d")
     db2 = ConexionDB()
@@ -1671,7 +1673,7 @@ def reporte_mermas_ajustes():
                 emp_id = int(emp_raw)
         suc_raw = request.args.get("sucursal_id", "").strip()
         suc_id = int(suc_raw) if suc_raw.isdigit() else None
-        hoy = date.today()
+        hoy = hoy_sv()
         inicio = request.args.get("inicio", "").strip() or hoy.replace(day=1).strftime("%Y-%m-%d")
         fin = request.args.get("fin", "").strip() or hoy.strftime("%Y-%m-%d")
         solo_perdidas = request.args.get("incluir_sobrantes", "").strip() != "1"
@@ -1721,7 +1723,7 @@ def reporte_mermas_ajustes():
 @rol_requerido("GERENTE", "CONTADOR", "BODEGUERO")
 def reporte_f983_exportar_pdf():
     emp_id = _empresa_id()
-    ejercicio = int(request.args.get("ejercicio", date.today().year))
+    ejercicio = int(request.args.get("ejercicio", hoy_sv().year))
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -1752,8 +1754,8 @@ def reporte_f983_exportar_pdf():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_libro_iva():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", date.today().replace(day=1).strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv().replace(day=1).strftime("%Y-%m-%d"))
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -1788,8 +1790,8 @@ def reporte_libro_iva():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_ventas_producto():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", date.today().replace(day=1).strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv().replace(day=1).strftime("%Y-%m-%d"))
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -1952,7 +1954,7 @@ def contingencia_sincronizar():
 def reporte_documentos_anulados():
     emp_id = _empresa_id()
     inicio = request.args.get("inicio", "")
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2018,7 +2020,7 @@ def imprimir_comprobante_invalidacion(venta_id: int):
 def reporte_corte_caja():
     """Corte de Caja (X/Z): ventas por tipo DTE, método de pago e impuestos."""
     emp_id = _empresa_id()
-    fecha = request.args.get("fecha", date.today().strftime("%Y-%m-%d"))
+    fecha = request.args.get("fecha", hoy_sv_str())
     usuario_id = request.args.get("usuario_id", "").strip()
     sucursal_id = request.args.get("sucursal_id", "").strip()
     uid = int(usuario_id) if usuario_id.isdigit() else None
@@ -2088,7 +2090,7 @@ def _get_cierre_por_usuario_fecha(cur, emp_id: int, usuario_id: int, fecha_str: 
 def reporte_corte_caja_ticket():
     """Vista formato ticket 80mm para impresora térmica."""
     emp_id = _empresa_id()
-    fecha = request.args.get("fecha", date.today().strftime("%Y-%m-%d"))
+    fecha = request.args.get("fecha", hoy_sv_str())
     usuario_id = request.args.get("usuario_id", "").strip()
     sucursal_id = request.args.get("sucursal_id", "").strip()
     uid = int(usuario_id) if usuario_id.isdigit() else None
@@ -2138,7 +2140,7 @@ def reporte_corte_caja_ticket():
 @rol_requerido("GERENTE", "CONTADOR", "CAJERO")
 def reporte_corte_caja_exportar_pdf():
     emp_id = _empresa_id()
-    fecha = request.args.get("fecha", date.today().strftime("%Y-%m-%d"))
+    fecha = request.args.get("fecha", hoy_sv_str())
     usuario_id = request.args.get("usuario_id", "").strip()
     sucursal_id = request.args.get("sucursal_id", "").strip()
     uid = int(usuario_id) if usuario_id.isdigit() else None
@@ -2272,7 +2274,7 @@ def cierre_caja():
             apertura_row = cierre_caja_repo.apertura_abierta(cur, int(user_id), emp_id, suc_sid)
             if apertura_row:
                 apertura = {"id": apertura_row[0], "monto_apertura": apertura_row[1], "fecha_apertura": str(apertura_row[2]) if apertura_row[2] else ""}
-        fecha = date.today().strftime("%Y-%m-%d")
+        fecha = hoy_sv_str()
         datos = cierre_caja_repo.obtener_datos_corte(cur, emp_id, fecha, usuario_id=int(user_id) if user_id else None, sucursal_id=suc_sid)
         ultimos_cierres = cierre_caja_repo.listar_cierres_cerrados(cur, emp_id, usuario_id=int(user_id) if user_id else None)
         return render_template("cierre_caja.html", apertura=apertura, datos=datos, ultimos_cierres=ultimos_cierres)
@@ -2423,8 +2425,8 @@ def _exportar_excel_facturacion(titulo, headers, filas, cab, inicio, fin, col_mo
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_libro_iva_exportar_excel():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", date.today().strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv_str())
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2450,8 +2452,8 @@ def reporte_libro_iva_exportar_excel():
 def reporte_libro_iva_exportar_csv():
     """CSV para conciliación con DTE transmitidos al MH. Separador ; encoding UTF-8."""
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", date.today().strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv_str())
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2479,8 +2481,8 @@ def reporte_libro_iva_exportar_csv():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_libro_iva_exportar_pdf():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", date.today().strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv_str())
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2504,8 +2506,8 @@ def reporte_libro_iva_exportar_pdf():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_libro_iva_compras():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", date.today().replace(day=1).strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv().replace(day=1).strftime("%Y-%m-%d"))
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2544,8 +2546,8 @@ def reporte_libro_iva_compras():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_libro_iva_compras_exportar_excel():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", date.today().strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv_str())
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2570,8 +2572,8 @@ def reporte_libro_iva_compras_exportar_excel():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_libro_iva_compras_exportar_csv():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", date.today().strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv_str())
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2599,8 +2601,8 @@ def reporte_libro_iva_compras_exportar_csv():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_libro_iva_compras_exportar_pdf():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", date.today().strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv_str())
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2623,8 +2625,8 @@ def reporte_libro_iva_compras_exportar_pdf():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_ventas_producto_exportar_excel():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", date.today().strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv_str())
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2649,8 +2651,8 @@ def reporte_ventas_producto_exportar_excel():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_ventas_producto_exportar_pdf():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", date.today().strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    inicio = request.args.get("inicio", hoy_sv_str())
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2674,7 +2676,7 @@ def reporte_ventas_producto_exportar_pdf():
 def reporte_documentos_anulados_exportar_excel():
     emp_id = _empresa_id()
     inicio = request.args.get("inicio", "")
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2700,7 +2702,7 @@ def reporte_documentos_anulados_exportar_excel():
 def reporte_documentos_anulados_exportar_pdf():
     emp_id = _empresa_id()
     inicio = request.args.get("inicio", "")
-    fin = request.args.get("fin", date.today().strftime("%Y-%m-%d"))
+    fin = request.args.get("fin", hoy_sv_str())
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -2804,7 +2806,27 @@ def configuracion():
         except Exception:
             pass
         empresa_es_gran_contribuyente = empresas_repo.get_empresa_es_gran_contribuyente(cur, emp_id)
-        return render_template("configuracion.html", empresa=empresa, empresas=empresas, empresas_lista=empresas_lista, emp_id=emp_id, es_super=es_super, actividades=actividades, codigo_actividad_empresa=codigo_act_emp, empresa_es_gran_contribuyente=empresa_es_gran_contribuyente)
+        from azdigital.services.modo_operacion_service import obtener_estado_modo
+        from azdigital.integration.agildte_client import check_agildte_api_reachable, resolve_agildte_base_url
+
+        modo_estado = obtener_estado_modo(emp_id, cur=cur)
+        ag_st = check_agildte_api_reachable()
+        return render_template(
+            "configuracion.html",
+            empresa=empresa,
+            empresas=empresas,
+            empresas_lista=empresas_lista,
+            emp_id=emp_id,
+            es_super=es_super,
+            actividades=actividades,
+            codigo_actividad_empresa=codigo_act_emp,
+            empresa_es_gran_contribuyente=empresa_es_gran_contribuyente,
+            modo_operacion=modo_estado.get("modo", "prueba"),
+            es_modo_prueba=modo_estado.get("es_modo_prueba", True),
+            ambiente_emision=modo_estado.get("ambiente", "01"),
+            agildte_configured=bool(resolve_agildte_base_url()),
+            agildte_online=bool(ag_st.get("online")),
+        )
     finally:
         cur.close()
         conn.close()
@@ -2884,6 +2906,56 @@ def crear_empresa_route():
             except Exception:
                 pass
     return _rd("/configuracion")
+
+
+@bp.route("/configuracion/modo_operacion", methods=["POST"])
+@superadmin_required
+def configuracion_modo_operacion():
+    from flask import redirect as _rd
+
+    if session.get("rol") not in ("ADMIN", "SUPERADMIN"):
+        return redirect(url_for("core.index"))
+    modo = (request.form.get("modo_operacion") or "").strip().lower()
+    if modo not in ("prueba", "online"):
+        flash("Modo de operación no válido.", "danger")
+        return _rd("/configuracion")
+    emp_id = int(request.form.get("empresa_id") or request.args.get("empresa") or 0) or _empresa_id()
+    confirmar = request.form.get("confirmar_reinicio") == "1"
+    if modo == "online" and not confirmar:
+        flash("Debe confirmar el reinicio de correlativos al activar modo online.", "warning")
+        return _rd(f"/configuracion?empresa={emp_id}")
+    try:
+        from azdigital.integration.agildte_client import (
+            AgilDTEAPIError,
+            cambiar_modo_operacion_agildte,
+            login_client_from_request_or_env,
+        )
+        from azdigital.repositories import secuencia_comprobante_repo
+
+        cli = login_client_from_request_or_env(trust_request_bearer=False)
+        res = cambiar_modo_operacion_agildte(
+            emp_id, modo, confirmar_reinicio=confirmar, cliente=cli
+        )
+        amb_nuevo = "00" if modo == "online" else "01"
+        conn = psycopg2.connect(**ConexionDB().config)
+        cur = conn.cursor()
+        try:
+            empresas_repo.set_ambiente_mh(cur, emp_id, amb_nuevo)
+            if modo == "online" and confirmar:
+                secuencia_comprobante_repo.reiniciar_ambiente(cur, emp_id, "00")
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        msg = (res or {}).get("mensaje") or (
+            "Modo prueba activado." if modo == "prueba" else "Modo online activado; correlativos reiniciados."
+        )
+        flash(msg, "success")
+    except AgilDTEAPIError as ex:
+        flash(f"No se pudo cambiar el modo: {ex}", "danger")
+    except Exception as ex:
+        flash(f"Error al cambiar modo de operación: {ex}", "danger")
+    return _rd(f"/configuracion?empresa={emp_id}")
 
 
 @bp.route("/guardar_configuracion", methods=["POST"])
@@ -3270,7 +3342,7 @@ def inventario_exportar_excel():
     return send_file(
         buf,
         as_attachment=True,
-        download_name=f"inventario_productos_{date.today().strftime('%Y%m%d')}.xlsx",
+        download_name=f"inventario_productos_{hoy_sv().strftime('%Y%m%d')}.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
@@ -3308,7 +3380,7 @@ def inventario_exportar_pdf():
     return send_file(
         buf,
         as_attachment=True,
-        download_name=f"inventario_productos_{date.today().strftime('%Y%m%d')}.pdf",
+        download_name=f"inventario_productos_{hoy_sv().strftime('%Y%m%d')}.pdf",
         mimetype="application/pdf",
     )
 
@@ -3408,29 +3480,215 @@ def inventario_presentaciones_producto(producto_id: int):
         conn.close()
 
 
+def _normalizar_encabezado_carga(val) -> str:
+    s = str(val or "").strip().lower()
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    for ch in ("/", "-", "_"):
+        s = s.replace(ch, " ")
+    return " ".join(s.split())
+
+
+def _detectar_fila_encabezados_inventario(rows: list) -> int | None:
+    for i, row in enumerate(rows[:30]):
+        if not row:
+            continue
+        norm = [_normalizar_encabezado_carga(c) for c in row]
+        tiene_cod = any(h in ("codigo", "codigo barra") or h.startswith("codigo") for h in norm)
+        tiene_prod = any(h in ("producto", "nombre", "descripcion") for h in norm)
+        tiene_precio = any("precio" in h for h in norm)
+        tiene_stock = any("stock" in h or h in ("cantidad", "existencia") for h in norm)
+        if (tiene_cod or tiene_prod) and (tiene_precio or tiene_stock):
+            return i
+    return None
+
+
+def _mapear_columnas_carga_inventario(encabezados_raw: list) -> tuple[dict[str, int | None], list[str]]:
+    norm = [_normalizar_encabezado_carga(c) for c in encabezados_raw]
+    errores: list[str] = []
+
+    def find(*aliases: str) -> int | None:
+        aliases_norm = [_normalizar_encabezado_carga(a) for a in aliases]
+        for i, h in enumerate(norm):
+            if h in aliases_norm:
+                return i
+        for an in aliases_norm:
+            for i, h in enumerate(norm):
+                if an in h or (len(an) > 4 and h.startswith(an)):
+                    return i
+        return None
+
+    idx = {
+        "codigo": find("codigo", "código", "codigo barra"),
+        "nombre": find("producto", "nombre", "descripcion", "descripción"),
+        "precio": find("precio", "precio unitario", "precio unidad", "precio / unidad"),
+        "stock": find("stock", "stock general", "cantidad", "existencia"),
+        "empresa": find("empresa"),
+        "sucursal": find("sucursal"),
+        "costo": find("costo"),
+    }
+    if idx["nombre"] is None:
+        errores.append("Falta la columna «Producto» (o «nombre»).")
+    if idx["precio"] is None and idx["stock"] is None:
+        errores.append("Debe incluir al menos «Precio / unidad» o «Stock general».")
+    return idx, errores
+
+
+def _celda_carga(row, idx: int | None) -> str:
+    if idx is None or idx >= len(row):
+        return ""
+    v = row[idx]
+    return "" if v is None else str(v).strip()
+
+
+def _es_fila_total_o_vacia_carga(row, idx_nom: int | None, idx_cod: int | None) -> bool:
+    cod = _celda_carga(row, idx_cod).upper()
+    nom = _celda_carga(row, idx_nom)
+    if cod == "TOTAL" or nom.upper() == "TOTAL":
+        return True
+    return not nom and not _celda_carga(row, idx_cod)
+
+
+def _cache_empresas_por_nombre(cur) -> dict[str, int]:
+    """Índice nombre normalizado → id (nombre comercial, razón social y alias de exportación)."""
+    cache: dict[str, int] = {}
+    try:
+        cur.execute("SELECT id, nombre_comercial, nombre FROM empresas")
+        rows = cur.fetchall()
+    except Exception:
+        cur.connection.rollback()
+        try:
+            cur.execute("SELECT id, nombre FROM empresas")
+            rows = [(r[0], r[1], None) for r in cur.fetchall()]
+        except Exception:
+            return cache
+    for row in rows:
+        eid = int(row[0])
+        nc = (row[1] or "").strip() if len(row) > 1 else ""
+        n = (row[2] or "").strip() if len(row) > 2 and row[2] else ""
+        display = nc or n
+        for nom in (nc, n, display):
+            if nom:
+                cache[_normalizar_encabezado_carga(nom)] = eid
+    return cache
+
+
+def _resolver_empresa_carga(
+    nombre_emp: str,
+    emp_default: int,
+    cache_emp: dict[str, int],
+    es_super: bool,
+) -> int:
+    ne = (nombre_emp or "").strip()
+    if not ne or ne in ("—", "Todas", "Todas las empresas", "-"):
+        return emp_default
+    if not es_super:
+        return emp_default
+    key = _normalizar_encabezado_carga(ne)
+    return cache_emp.get(key, emp_default)
+
+
+def _cache_sucursales_por_empresa(cur) -> dict[tuple[int, str], int]:
+    cache: dict[tuple[int, str], int] = {}
+    for sid, nombre, emp_id in sucursales_repo.listar_sucursales_con_empresa(cur):
+        if nombre and emp_id is not None:
+            cache[(int(emp_id), _normalizar_encabezado_carga(nombre))] = int(sid)
+    return cache
+
+
+def _resolver_sucursal_carga(
+    nombre_suc: str,
+    emp_id: int,
+    cache_suc: dict[tuple[int, str], int],
+    suc_default: int | None,
+) -> int | None:
+    ns = (nombre_suc or "").strip()
+    if not ns or ns in ("—", "Todas", "Todas las sucursales", "-"):
+        return suc_default
+    key = (emp_id, _normalizar_encabezado_carga(ns))
+    return cache_suc.get(key, suc_default)
+
+
+def _extraer_filas_carga_inventario(rows: list) -> tuple[list[tuple], dict[str, int | None], list[str]]:
+    if not rows:
+        return [], {}, ["El archivo está vacío."]
+    hdr_i = _detectar_fila_encabezados_inventario(rows)
+    if hdr_i is None:
+        return [], {}, [
+            "No se encontró la fila de encabezados. Use las columnas: "
+            "Código, Producto, Sucursal, Precio / unidad, Stock general "
+            "(y Empresa si aplica). Puede reutilizar el Excel exportado desde Inventario."
+        ]
+    enc_raw = list(rows[hdr_i])
+    idx, errores = _mapear_columnas_carga_inventario(enc_raw)
+    if errores:
+        return [], idx, errores
+    filas: list[tuple] = []
+    for row in rows[hdr_i + 1 :]:
+        r = list(row) if row else []
+        if _es_fila_total_o_vacia_carga(r, idx["nombre"], idx["codigo"]):
+            continue
+        nom = _celda_carga(r, idx["nombre"])
+        if not nom:
+            continue
+        cod = _celda_carga(r, idx["codigo"]) or nom[:30]
+        pre = _parse_float(r[idx["precio"]]) if idx["precio"] is not None else 0.0
+        stk = _parse_float(r[idx["stock"]]) if idx["stock"] is not None else 0.0
+        cos = _parse_float(r[idx["costo"]]) if idx["costo"] is not None else 0.0
+        emp_nom = _celda_carga(r, idx["empresa"])
+        suc_nom = _celda_carga(r, idx["sucursal"])
+        filas.append((cod, nom, pre, stk, cos, emp_nom, suc_nom))
+    if not filas:
+        return [], idx, ["No se encontraron filas de productos válidas. Revise el archivo."]
+    return filas, idx, []
+
+
 @bp.route("/inventario/plantilla_carga")
 @rol_requerido("GERENTE", "BODEGUERO")
 def inventario_plantilla_carga():
-    """Descarga plantilla Excel para carga masiva de inventario."""
+    """Descarga plantilla Excel para carga masiva de inventario (mismo formato que exportación)."""
     try:
         from openpyxl import Workbook
     except ImportError:
         return "<p>Instala openpyxl: pip install openpyxl</p>", 500
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        es_super = _es_superadmin_db(cur)
+        emp_id = _empresa_id()
+        emp_nom = (session.get("empresa_nombre") or "Mi empresa").strip()
+        sucursales = sucursales_repo.listar_sucursales_min(cur, empresa_id=emp_id) or []
+        suc_ej = (sucursales[0][1] if sucursales else "Principal")
+    finally:
+        cur.close()
+        conn.close()
     wb = Workbook()
     ws = wb.active
     ws.title = "Inventario"
-    headers = ["codigo", "nombre", "precio", "stock", "costo"]
+    headers = ["Código", "Producto"]
+    if es_super:
+        headers.append("Empresa")
+    headers += ["Sucursal", "Precio / unidad", "Stock general"]
     for col, h in enumerate(headers, 1):
         ws.cell(1, col, h)
-    ejemplos = [
-        ("PROD001", "Producto ejemplo 1", 5.99, 100, 3.50),
-        ("PROD002", "Producto ejemplo 2", 12.50, 50, 8.00),
-    ]
+    if es_super:
+        ejemplos = [
+            ("PROD001", "Producto ejemplo 1", emp_nom, suc_ej, 5.99, 100),
+            ("PROD002", "Producto ejemplo 2", emp_nom, "Todas", 12.50, 50),
+        ]
+    else:
+        ejemplos = [
+            ("PROD001", "Producto ejemplo 1", suc_ej, 5.99, 100),
+            ("PROD002", "Producto ejemplo 2", "Todas", 12.50, 50),
+        ]
     for r, row in enumerate(ejemplos, 2):
         for c, val in enumerate(row, 1):
             ws.cell(r, c, val)
     ws.column_dimensions["A"].width = 14
     ws.column_dimensions["B"].width = 35
+    if es_super:
+        ws.column_dimensions["C"].width = 28
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -3440,7 +3698,7 @@ def inventario_plantilla_carga():
 @bp.route("/inventario/cargar_masivo", methods=["POST"])
 @rol_requerido("GERENTE", "BODEGUERO")
 def inventario_cargar_masivo():
-    """Carga masiva de productos desde Excel o CSV."""
+    """Carga masiva de productos desde Excel o CSV (formato exportación de inventario)."""
     if "archivo" not in request.files:
         flash("No se envió ningún archivo.", "danger")
         return redirect(url_for("admin.inventario"))
@@ -3470,32 +3728,11 @@ def inventario_cargar_masivo():
             flash("La sucursal no pertenece a la empresa.", "danger")
             return redirect(url_for("admin.inventario"))
 
-        filas = []
         if fn.endswith(".csv"):
             import csv as csv_mod
             content = f.read().decode("utf-8-sig", errors="replace")
             reader = csv_mod.reader(StringIO(content))
             rows = list(reader)
-            if not rows:
-                flash("El archivo CSV está vacío.", "danger")
-                return redirect(url_for("admin.inventario"))
-            encabezados = [str(c).strip().lower() for c in rows[0]]
-            idx_cod = _idx_col(encabezados, "codigo", "código", "codigo_barra")
-            idx_nom = _idx_col(encabezados, "nombre", "producto", "descripcion")
-            idx_pre = _idx_col(encabezados, "precio", "precio_unitario")
-            idx_stk = _idx_col(encabezados, "stock", "cantidad", "existencia")
-            idx_cos = _idx_col(encabezados, "costo")
-            for r in rows[1:]:
-                if len(r) <= max(idx_nom or 0, 0):
-                    continue
-                nom = (r[idx_nom] or "").strip() if idx_nom is not None else ""
-                if not nom:
-                    continue
-                cod = (r[idx_cod] or "").strip() if idx_cod is not None else nom[:30]
-                pre = _parse_float(r[idx_pre]) if idx_pre is not None else 0
-                stk = _parse_float(r[idx_stk]) if idx_stk is not None else 0
-                cos = _parse_float(r[idx_cos]) if idx_cos is not None else 0
-                filas.append((cod or nom[:30], nom, pre, stk, cos))
         else:
             try:
                 from openpyxl import load_workbook
@@ -3506,53 +3743,64 @@ def inventario_cargar_masivo():
             ws = wb.active
             rows = list(ws.iter_rows(values_only=True))
             wb.close()
-            if not rows:
-                flash("El archivo Excel está vacío.", "danger")
-                return redirect(url_for("admin.inventario"))
-            encabezados = [str(c or "").strip().lower() for c in rows[0]]
-            idx_cod = _idx_col(encabezados, "codigo", "código", "codigo_barra")
-            idx_nom = _idx_col(encabezados, "nombre", "producto", "descripcion")
-            idx_pre = _idx_col(encabezados, "precio", "precio_unitario")
-            idx_stk = _idx_col(encabezados, "stock", "cantidad", "existencia")
-            idx_cos = _idx_col(encabezados, "costo")
-            for r in rows[1:]:
-                r = list(r) if r else []
-                if len(r) <= max(idx_nom or 0, 0):
-                    continue
-                nom = (str(r[idx_nom] or "").strip()) if idx_nom is not None else ""
-                if not nom:
-                    continue
-                cod = (str(r[idx_cod] or "").strip()) if idx_cod is not None else nom[:30]
-                pre = _parse_float(r[idx_pre]) if idx_pre is not None else 0
-                stk = _parse_float(r[idx_stk]) if idx_stk is not None else 0
-                cos = _parse_float(r[idx_cos]) if idx_cos is not None else 0
-                filas.append((cod or nom[:30], nom, pre, stk, cos))
 
-        if not filas:
-            flash("No se encontraron filas válidas (nombre requerido). Revise el formato.", "warning")
+        filas, _idx, errores_fmt = _extraer_filas_carga_inventario(rows)
+        if errores_fmt:
+            for msg in errores_fmt:
+                flash(msg, "danger")
             return redirect(url_for("admin.inventario"))
 
+        cache_emp = _cache_empresas_por_nombre(cur)
+        cache_suc = _cache_sucursales_por_empresa(cur)
         creados = 0
+        actualizados = 0
         errores = []
-        for cod, nom, pre, stk, cos in filas:
+        for cod, nom, pre, stk, cos, emp_nom, suc_nom in filas:
+            row_emp = _resolver_empresa_carga(emp_nom, emp_id, cache_emp, es_super)
+            if not es_super and row_emp != emp_id:
+                errores.append(f"'{nom}': no puede cargar productos de otra empresa")
+                continue
+            row_suc = _resolver_sucursal_carga(suc_nom, row_emp, cache_suc, sucursal_id)
+            if suc_nom and suc_nom not in ("—", "Todas", "Todas las sucursales", "-") and row_suc is None:
+                errores.append(f"'{nom}': sucursal «{suc_nom}» no encontrada en la empresa")
+                continue
             try:
-                nid = productos_repo.crear_producto(
-                    cur, cod, nom, pre, stk,
-                    empresa_id=emp_id, sucursal_id=sucursal_id,
-                    costo_unitario=cos,
-                )
-                suc_para_stock = sucursal_id
+                existente = productos_repo.buscar_por_codigo(cur, cod, empresa_id=row_emp)
+                suc_para_stock = row_suc
                 if suc_para_stock is None:
-                    primera = kardex_repo.primera_sucursal_empresa(cur, emp_id)
+                    primera = kardex_repo.primera_sucursal_empresa(cur, row_emp)
                     if primera is None:
-                        sucursales_repo.crear_sucursal(cur, "Principal", "0001", "", "", empresa_id=emp_id)
-                        cur.execute("SELECT id FROM sucursales WHERE empresa_id = %s ORDER BY id DESC LIMIT 1", (emp_id,))
+                        sucursales_repo.crear_sucursal(cur, "Principal", "0001", "", "", empresa_id=row_emp)
+                        cur.execute(
+                            "SELECT id FROM sucursales WHERE empresa_id = %s ORDER BY id DESC LIMIT 1",
+                            (row_emp,),
+                        )
                         r = cur.fetchone()
                         suc_para_stock = int(r[0]) if r else None
                     else:
                         suc_para_stock = primera
-                kardex_repo.reemplazar_stock_unificado(cur, nid, suc_para_stock, stk, registrar_entrada=True)
-                creados += 1
+                if existente:
+                    pid = int(existente[0])
+                    productos_repo.actualizar_producto(
+                        cur,
+                        pid,
+                        cod,
+                        nom,
+                        pre,
+                        stk,
+                        sucursal_id=row_suc,
+                        empresa_scope=None if es_super else row_emp,
+                    )
+                    kardex_repo.reemplazar_stock_unificado(cur, pid, suc_para_stock, stk, registrar_entrada=True)
+                    actualizados += 1
+                else:
+                    nid = productos_repo.crear_producto(
+                        cur, cod, nom, pre, stk,
+                        empresa_id=row_emp, sucursal_id=row_suc,
+                        costo_unitario=cos,
+                    )
+                    kardex_repo.reemplazar_stock_unificado(cur, nid, suc_para_stock, stk, registrar_entrada=True)
+                    creados += 1
             except Exception as ex:
                 err_msg = str(ex)
                 if "duplicad" in err_msg.lower() or "unique" in err_msg.lower() or "codigo" in err_msg.lower():
@@ -3561,14 +3809,24 @@ def inventario_cargar_masivo():
                     errores.append(f"'{nom}': {err_msg[:80]}")
 
         conn.commit()
-        if creados > 0:
-            registrar_accion(cur, historial_usuarios_repo.EVENTO_PRODUCTO_CREADO, f"Carga masiva: {creados} producto(s) creados")
-            flash(f"Carga completada: {creados} producto(s) creados con sus cantidades.", "success")
+        if creados > 0 or actualizados > 0:
+            partes = []
+            if creados:
+                partes.append(f"{creados} creado(s)")
+            if actualizados:
+                partes.append(f"{actualizados} actualizado(s)")
+            registrar_accion(
+                cur,
+                historial_usuarios_repo.EVENTO_PRODUCTO_CREADO,
+                f"Carga masiva inventario: {', '.join(partes)}",
+            )
+            conn.commit()
+            flash(f"Carga completada: {', '.join(partes)}.", "success")
         if errores:
             for e in errores[:10]:
                 flash(e, "warning")
             if len(errores) > 10:
-                flash(f"... y {len(errores) - 10} error(es) más (códigos duplicados).", "warning")
+                flash(f"... y {len(errores) - 10} error(es) más.", "warning")
     except Exception as e:
         conn.rollback()
         flash(f"Error al procesar el archivo: {str(e)}", "danger")
@@ -3809,7 +4067,7 @@ def inventario_conteo_fisico():
             suc_raw = (request.form.get("sucursal_id") or "").strip()
             sucursal_id = int(suc_raw) if suc_raw.isdigit() else None
             fecha_txt = (request.form.get("fecha_conteo") or "").strip()[:10]
-            referencia = f"Conteo físico {fecha_txt or date.today().isoformat()}"
+            referencia = f"Conteo físico {fecha_txt or hoy_sv_str()}"
             uid = session.get("user_id")
             justificacion = (request.form.get("justificacion_conteo") or "").strip()
             supervisor_u = (request.form.get("supervisor_inventario_usuario") or "").strip()
@@ -3945,7 +4203,7 @@ def inventario_conteo_fisico():
             sucursales=sucursales,
             sucursal_id=sucursal_id,
             sucursal_nombre=sucursal_nombre,
-            fecha_hoy=date.today().isoformat(),
+            fecha_hoy=hoy_sv_str(),
             es_superadmin=es_super,
             empresas=empresas,
             empresa_id=emp_id,
@@ -4034,7 +4292,7 @@ def inventario_conteo_fisico_exportar_excel():
     try:
         suc_raw = (form.get("sucursal_id") or "").strip()
         sucursal_id = int(suc_raw) if suc_raw.isdigit() else None
-        fecha_txt = (form.get("fecha_conteo") or date.today().isoformat())[:10]
+        fecha_txt = (form.get("fecha_conteo") or hoy_sv_str())[:10]
         filas, grandes, resumen, suc_nom = _construir_datos_reporte_conteo(cur2, emp_id, sucursal_id, fecha_txt, form)
     finally:
         cur2.close()
@@ -4158,7 +4416,7 @@ def inventario_conteo_fisico_exportar_pdf():
         conn.close()
     suc_raw = (form.get("sucursal_id") or "").strip()
     sucursal_id = int(suc_raw) if suc_raw.isdigit() else None
-    fecha_txt = (form.get("fecha_conteo") or date.today().isoformat())[:10]
+    fecha_txt = (form.get("fecha_conteo") or hoy_sv_str())[:10]
     db2 = ConexionDB()
     conn2 = psycopg2.connect(**db2.config)
     cur2 = conn2.cursor()
@@ -5251,7 +5509,7 @@ def compras_registrar_desde_dte():
         else:
             prov_id = proveedores_repo.crear(cur, emp_id, dte_temp["emisor_nombre"] or "Proveedor DTE", dte_temp["emisor_nit"], dte_temp.get("emisor_nrc", ""))
         num_fact = dte_temp.get("numero_documento", "") or dte_temp.get("numero_control", "") or "DTE"
-        fecha = dte_temp.get("fecha_emision", "")[:10] if dte_temp.get("fecha_emision") else date.today().isoformat()
+        fecha = dte_temp.get("fecha_emision", "")[:10] if dte_temp.get("fecha_emision") else hoy_sv_str()
         notas = f"Importado desde DTE. Código: {dte_temp.get('codigo_generacion', '')}"
         compra_id = compras_repo.crear(cur, emp_id, prov_id, num_fact, fecha, session.get("user_id"), notas, dte_temp.get("codigo_generacion", ""), dte_temp.get("sello_recepcion", ""))
         total_compra = 0.0
@@ -5362,14 +5620,14 @@ def compras_nueva():
             empresas=empresas,
             emp_id=emp_id,
             es_super=es_super,
-            today=date.today().isoformat(),
+            today=hoy_sv_str(),
             compra_presentaciones_opts=compra_pres_opts,
             **kw,
         )
         if request.method == "POST":
             prov_id = int((request.form.get("proveedor_id") or "0"))
             num_fact = (request.form.get("numero_factura") or "").strip() or "S/N"
-            fecha = (request.form.get("fecha") or date.today().isoformat())[:10]
+            fecha = (request.form.get("fecha") or hoy_sv_str())[:10]
             notas = (request.form.get("notas") or "").strip()
             if not prov_id:
                 flash("Seleccione un proveedor.", "danger")
@@ -5941,16 +6199,16 @@ def eliminar_sucursal(sucursal_id):
 @rol_requerido("GERENTE")
 def gestion_ventas():
     emp_id = _empresa_id()
-    ambiente_empresa = "01"
-    try:
-        from azdigital.integration.agildte_client import obtener_ambiente_emresa_agildte
-
-        ambiente_empresa = obtener_ambiente_emresa_agildte(emp_id)
-    except Exception:
-        pass
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
+    ambiente_empresa = "01"
+    try:
+        from azdigital.services.modo_operacion_service import obtener_ambiente_empresa
+
+        ambiente_empresa = obtener_ambiente_empresa(emp_id, cur=cur)
+    except Exception:
+        pass
     try:
         rows = ventas_repo.listar_ventas_recientes(
             cur,

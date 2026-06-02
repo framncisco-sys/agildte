@@ -191,7 +191,9 @@ def get_promocion_activa_producto(cur, producto_id: int, empresa_id: int, fecha:
     Retorna (tipo, valor, valor_comprar, valor_pagar, descuento_monto, producto_regalo_id, cantidad_min_compra, cantidad_regalo).
     """
     if fecha is None:
-        fecha = date.today()
+        from azdigital.utils.fecha_sv import hoy_sv
+
+        fecha = hoy_sv()
     cur.execute(
         """
         SELECT pr.tipo, pr.valor, COALESCE(pr.valor_comprar, pr.valor, 2), COALESCE(pr.valor_pagar, 1),
@@ -209,3 +211,40 @@ def get_promocion_activa_producto(cur, producto_id: int, empresa_id: int, fecha:
         (producto_id, empresa_id, fecha, fecha),
     )
     return cur.fetchone()
+
+
+def map_promociones_activas_para_productos(
+    cur,
+    producto_ids: list[int],
+    fecha: date | None = None,
+) -> dict[int, tuple]:
+    """Promoción activa por producto_id (una consulta para todo el catálogo POS)."""
+    if not producto_ids:
+        return {}
+    if fecha is None:
+        from azdigital.utils.fecha_sv import hoy_sv
+
+        fecha = hoy_sv()
+    try:
+        cur.execute(
+            """
+            SELECT DISTINCT ON (pp.producto_id)
+                   pp.producto_id,
+                   pr.tipo, pr.valor, COALESCE(pr.valor_comprar, pr.valor, 2), COALESCE(pr.valor_pagar, 1),
+                   pr.descuento_monto, pr.producto_regalo_id, COALESCE(pr.cantidad_min_compra, 1),
+                   COALESCE(pr.cantidad_regalo, 1)
+            FROM promocion_productos pp
+            JOIN promociones pr ON pr.id = pp.promocion_id
+            JOIN productos p ON p.id = pp.producto_id AND pr.empresa_id = p.empresa_id
+            WHERE pp.producto_id = ANY(%s)
+              AND COALESCE(pr.activa, TRUE) = TRUE
+              AND (pr.fecha_inicio IS NULL OR pr.fecha_inicio <= %s)
+              AND (pr.fecha_fin IS NULL OR pr.fecha_fin >= %s)
+            ORDER BY pp.producto_id, pr.fecha_inicio DESC NULLS LAST
+            """,
+            (producto_ids, fecha, fecha),
+        )
+        return {int(r[0]): r[1:] for r in cur.fetchall()}
+    except Exception:
+        cur.connection.rollback()
+        return {}

@@ -23,6 +23,7 @@ from azdigital.repositories import (
     ventas_repo,
 )
 from azdigital.services.auth_service import verificar_password
+from azdigital.utils.fecha_sv import hoy_sv
 from azdigital.services.whatsapp_notificacion_service import preparar_envio_whatsapp_venta
 from azdigital.integration.agildte_client import public_sync_result
 from azdigital.integration.agildte_sync import intentar_sync_venta_si_habilitado
@@ -47,7 +48,49 @@ def _pos_es_superadmin_db(cur) -> bool:
     rol = str(r[0] or "").strip().upper() if r else ""
     return rol in ("ADMIN", "SUPERADMIN")
 
-# Roles de tienda con acceso al POS y a las APIs usadas por ventas.html (ADMIN/SUPERADMIN pasan siempre en ``rol_requerido``).
+
+def _pos_contexto_productos(cur) -> dict:
+    """
+    Empresa y alcance para APIs de productos POS.
+    Superadmin: catálogo global (como inventario). Resto: empresa de sesión.
+    Si la empresa de sesión no tiene productos, usa la empresa con más artículos.
+    """
+    try:
+        emp_id = int(session.get("empresa_id") or 1)
+    except (TypeError, ValueError):
+        emp_id = 1
+    suc_u = session.get("sucursal_id")
+    suc_f = int(suc_u) if suc_u is not None and str(suc_u).strip().isdigit() else None
+    es_super = _pos_es_superadmin_db(cur)
+    use_global = es_super
+    if not use_global:
+        try:
+            cur.execute("SELECT COUNT(*) FROM productos WHERE empresa_id = %s", (emp_id,))
+            n = int((cur.fetchone() or [0])[0])
+            if n == 0:
+                cur.execute(
+                    """
+                    SELECT empresa_id FROM productos
+                    WHERE empresa_id IS NOT NULL
+                    GROUP BY empresa_id
+                    ORDER BY COUNT(*) DESC
+                    LIMIT 1
+                    """
+                )
+                row = cur.fetchone()
+                if row and row[0] is not None:
+                    emp_id = int(row[0])
+        except Exception:
+            pass
+    return {
+        "emp_id": emp_id,
+        "suc_f": suc_f,
+        "es_super": es_super,
+        "use_global": use_global,
+    }
+
+
+# Roles de tienda con acceso al POS
 _ROLES_POS = ("GERENTE", "CAJERO", "BODEGUERO")
 
 
@@ -144,6 +187,9 @@ def ventas_pos():
     _sr = (request.script_root or "").strip().rstrip("/")
     if not _sr:
         _sr = get_application_url_prefix() or ""
+    from azdigital.services.modo_operacion_service import obtener_estado_modo
+
+    modo_pos = obtener_estado_modo(empresa_id_pos)
     html = render_template(
         "ventas.html",
         es_superadmin=es_super,
@@ -153,6 +199,8 @@ def ventas_pos():
         empresa_id_pos=empresa_id_pos,
         sucursal_id_pos=sucursal_id_pos,
         pos_script_root=_sr or "",
+        es_modo_prueba=modo_pos.get("es_modo_prueba", True),
+        modo_operacion_etiqueta=modo_pos.get("etiqueta", "Versión prueba"),
     )
     # Evita HTML del POS en caché (proxy/navegador) para que cambios en ventas.html se vean al recargar.
     resp = make_response(html)
@@ -616,17 +664,21 @@ def buscar_producto(codigo: str):
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
-        emp_id = session.get("empresa_id", 1)
-        suc_u = session.get("sucursal_id")
-        suc_f = int(suc_u) if suc_u is not None and str(suc_u).strip().isdigit() else None
-        r = productos_repo.buscar_por_codigo(cur, codigo, empresa_id=emp_id, sucursal_id_usuario=suc_f)
+        ctx = _pos_contexto_productos(cur)
+        emp_id = ctx["emp_id"]
+        suc_f = ctx["suc_f"]
+        filtro_emp = None if ctx["use_global"] else emp_id
+        r = productos_repo.buscar_por_codigo(
+            cur, codigo, empresa_id=filtro_emp, sucursal_id_usuario=suc_f
+        )
         if not r:
             return jsonify({"error": "No encontrado"}), 404
+        emp_promo = productos_repo._empresa_id_de_producto(cur, int(r[0]), emp_id)
         promo_tipo = (r[4] or "").strip().upper() if len(r) > 4 else ""
         promo_val = float(r[5]) if len(r) > 5 and r[5] else 0
         promo_vc, promo_vp, promo_dm = 2, 1, None
         try:
-            promo_activa = promociones_repo.get_promocion_activa_producto(cur, r[0], emp_id, date.today())
+            promo_activa = promociones_repo.get_promocion_activa_producto(cur, r[0], emp_promo, hoy_sv())
             if promo_activa:
                 promo_tipo, promo_val = promo_activa[0], float(promo_activa[1] or 0)
                 if len(promo_activa) > 4:
@@ -669,17 +721,23 @@ def productos_pos_cache():
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
-        emp_id = session.get("empresa_id", 1)
-        suc_u = session.get("sucursal_id")
-        suc_f = int(suc_u) if suc_u is not None and str(suc_u).strip().isdigit() else None
-        res = productos_repo.buscar_por_nombre(cur, "", limit=800, empresa_id=emp_id, sucursal_id_usuario=suc_f) or []
+        ctx = _pos_contexto_productos(cur)
+        emp_id = ctx["emp_id"]
+        suc_f = ctx["suc_f"]
+        filtro_emp = None if ctx["use_global"] else emp_id
+        res = productos_repo.buscar_por_nombre(
+            cur, "", limit=800, empresa_id=filtro_emp, sucursal_id_usuario=suc_f
+        ) or []
         productos = []
         for r in res:
             promo_tipo = (r[4] or "").strip().upper() if len(r) > 4 else ""
             promo_val = float(r[5]) if len(r) > 5 and r[5] else 0
             promo_vc, promo_vp, promo_dm = 2, 1, None
             try:
-                promo_activa = promociones_repo.get_promocion_activa_producto(cur, r[0], emp_id, date.today())
+                emp_promo = productos_repo._empresa_id_de_producto(cur, int(r[0]), emp_id)
+                promo_activa = promociones_repo.get_promocion_activa_producto(
+                    cur, r[0], emp_promo, hoy_sv()
+                )
                 if promo_activa:
                     promo_tipo, promo_val = promo_activa[0], float(promo_activa[1] or 0)
                     if len(promo_activa) > 4:
@@ -707,19 +765,21 @@ def productos_pos_cache():
                 "presentaciones": pres,
                 "existencia": ex_cache,
             })
-        return jsonify({"productos": productos, "empresa_id": emp_id})
+        return jsonify({"productos": productos, "empresa_id": emp_id, "catalogo_global": ctx["use_global"]})
     finally:
         cur.close()
         conn.close()
 
 
-def _fila_a_producto_pos_json(cur, r: tuple, emp_id: int) -> dict:
+def _fila_a_producto_pos_json(cur, r: tuple, emp_id: int, *, use_global: bool = False) -> dict:
     """Convierte fila SQL del catálogo POS a JSON (promociones activas + presentaciones)."""
+    pid = int(r[0])
+    emp_promo = productos_repo._empresa_id_de_producto(cur, pid, emp_id) if use_global else emp_id
     promo_tipo = (r[4] or "").strip().upper() if len(r) > 4 else ""
     promo_val = float(r[5]) if len(r) > 5 and r[5] else 0
     promo_vc, promo_vp, promo_dm = 2, 1, None
     try:
-        promo_activa = promociones_repo.get_promocion_activa_producto(cur, r[0], emp_id, date.today())
+        promo_activa = promociones_repo.get_promocion_activa_producto(cur, pid, emp_promo, hoy_sv())
         if promo_activa:
             promo_tipo, promo_val = promo_activa[0], float(promo_activa[1] or 0)
             if len(promo_activa) > 4:
@@ -739,6 +799,27 @@ def _fila_a_producto_pos_json(cur, r: tuple, emp_id: int) -> dict:
     nom_prod = str(r[1] or "").strip() if len(r) > 1 else None
     pres = presentaciones_repo.lista_para_pos_json(cur, int(r[0]), uxdoc, uxcaja, nombre_producto=nom_prod)
     ex = float(r[10]) if len(r) > 10 and r[10] is not None else 0.0
+    return _producto_pos_json_desde_partes(
+        r, promo_tipo, promo_val, promo_vc, promo_vp, promo_dm, fracc, uxcaja, uxdoc, mh, pres, ex
+    )
+
+
+def _producto_pos_json_desde_partes(
+    r: tuple,
+    promo_tipo: str,
+    promo_val: float,
+    promo_vc: float,
+    promo_vp: float,
+    promo_dm: float | None,
+    fracc: bool,
+    uxcaja: int | None,
+    uxdoc: int,
+    mh: str,
+    pres: list,
+    ex: float,
+) -> dict:
+    if promo_tipo not in ("2X1", "3X2", "PORCENTAJE", "DESCUENTO_MONTO", "VOLUMEN", "REGALO", "PRECIO_FIJO", "DESCUENTO_CANTIDAD"):
+        promo_tipo = ""
     return {
         "id": r[0],
         "nombre": r[1],
@@ -758,6 +839,59 @@ def _fila_a_producto_pos_json(cur, r: tuple, emp_id: int) -> dict:
     }
 
 
+def _filas_a_catalogo_pos_json(cur, rows: list[tuple], emp_id: int, *, use_global: bool = False) -> list[dict]:
+    """Catálogo modal POS en lote (evita N+1 consultas por producto)."""
+    if not rows:
+        return []
+    ids = [int(r[0]) for r in rows]
+    fecha = hoy_sv()
+    promos_map = promociones_repo.map_promociones_activas_para_productos(cur, ids, fecha)
+    meta_pres: list[tuple[int, int, int | None, str | None]] = []
+    for r in rows:
+        uxdoc = int(r[8]) if len(r) > 8 and r[8] is not None else 12
+        uxcaja = int(r[7]) if len(r) > 7 and r[7] is not None else None
+        nom_prod = str(r[1] or "").strip() if len(r) > 1 else None
+        meta_pres.append((int(r[0]), uxdoc, uxcaja, nom_prod))
+    pres_map = presentaciones_repo.map_listas_para_pos_json(cur, meta_pres)
+    out: list[dict] = []
+    for r in rows:
+        pid = int(r[0])
+        promo_tipo = (r[4] or "").strip().upper() if len(r) > 4 else ""
+        promo_val = float(r[5]) if len(r) > 5 and r[5] else 0
+        promo_vc, promo_vp, promo_dm = 2, 1, None
+        promo_activa = promos_map.get(pid)
+        if promo_activa:
+            promo_tipo, promo_val = promo_activa[0], float(promo_activa[1] or 0)
+            if len(promo_activa) > 4:
+                promo_vc = float(promo_activa[2] or 2)
+                promo_vp = float(promo_activa[3] or 1)
+                promo_dm = float(promo_activa[4]) if promo_activa[4] is not None else None
+            if promo_tipo == "DESCUENTO_CANTIDAD" and len(promo_activa) > 6 and promo_activa[6] is not None:
+                promo_vc = float(promo_activa[6])
+        fracc = bool(r[6]) if len(r) > 6 else False
+        uxcaja = int(r[7]) if len(r) > 7 and r[7] is not None else None
+        uxdoc = int(r[8]) if len(r) > 8 and r[8] is not None else 12
+        mh = normalizar_codigo_mh(str(r[9]) if len(r) > 9 else None)
+        ex = float(r[10]) if len(r) > 10 and r[10] is not None else 0.0
+        out.append(
+            _producto_pos_json_desde_partes(
+                r,
+                promo_tipo,
+                promo_val,
+                promo_vc,
+                promo_vp,
+                promo_dm,
+                fracc,
+                uxcaja,
+                uxdoc,
+                mh,
+                pres_map.get(pid, []),
+                ex,
+            )
+        )
+    return out
+
+
 @bp.route("/catalogo_productos")
 @bp.route("/pos/catalogo_productos")  # acceso directo sin prefijo nginx /pos/
 @rol_requerido(*_ROLES_POS)
@@ -767,12 +901,23 @@ def pos_catalogo_productos():
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
-        emp_id = session.get("empresa_id", 1)
-        suc_u = session.get("sucursal_id")
-        suc_f = int(suc_u) if suc_u is not None and str(suc_u).strip().isdigit() else None
-        res = productos_repo.listar_catalogo_pos_modal(cur, emp_id, sucursal_id_usuario=suc_f, limit=800)
-        productos = [_fila_a_producto_pos_json(cur, row, emp_id) for row in res]
-        return jsonify({"productos": productos, "empresa_id": emp_id})
+        ctx = _pos_contexto_productos(cur)
+        emp_id = ctx["emp_id"]
+        suc_f = ctx["suc_f"]
+        if ctx["use_global"]:
+            res = productos_repo.listar_catalogo_pos_modal_global(
+                cur, sucursal_id_usuario=suc_f, limit=800
+            )
+        else:
+            res = productos_repo.listar_catalogo_pos_modal(
+                cur, emp_id, sucursal_id_usuario=suc_f, limit=800
+            )
+        productos = _filas_a_catalogo_pos_json(cur, res, emp_id, use_global=ctx["use_global"])
+        return jsonify({
+            "productos": productos,
+            "empresa_id": emp_id,
+            "catalogo_global": ctx["use_global"],
+        })
     finally:
         cur.close()
         conn.close()
@@ -786,17 +931,23 @@ def buscar_por_nombre():
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
-        emp_id = session.get("empresa_id", 1)
-        suc_u = session.get("sucursal_id")
-        suc_f = int(suc_u) if suc_u is not None and str(suc_u).strip().isdigit() else None
-        res = productos_repo.buscar_por_nombre(cur, q, limit=10, empresa_id=emp_id, sucursal_id_usuario=suc_f) or []
+        ctx = _pos_contexto_productos(cur)
+        emp_id = ctx["emp_id"]
+        suc_f = ctx["suc_f"]
+        filtro_emp = None if ctx["use_global"] else emp_id
+        res = productos_repo.buscar_por_nombre(
+            cur, q, limit=10, empresa_id=filtro_emp, sucursal_id_usuario=suc_f
+        ) or []
         productos = []
         for r in res:
             promo_tipo = (r[4] or "").strip().upper() if len(r) > 4 else ""
             promo_val = float(r[5]) if len(r) > 5 and r[5] else 0
             promo_vc, promo_vp, promo_dm = 2, 1, None
             try:
-                promo_activa = promociones_repo.get_promocion_activa_producto(cur, r[0], emp_id, date.today())
+                emp_promo = productos_repo._empresa_id_de_producto(cur, int(r[0]), emp_id)
+                promo_activa = promociones_repo.get_promocion_activa_producto(
+                    cur, r[0], emp_promo, hoy_sv()
+                )
                 if promo_activa:
                     promo_tipo, promo_val = promo_activa[0], float(promo_activa[1] or 0)
                     if len(promo_activa) > 4:
@@ -1184,6 +1335,38 @@ def _resolver_empresa_emisor_comprobante(
     return None
 
 
+def _ambiente_emision_venta(cur, venta_id: int, empresa_id: int) -> str:
+    try:
+        cur.execute(
+            "SELECT ambiente_emision FROM ventas WHERE id = %s",
+            (int(venta_id),),
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            amb = str(row[0]).strip()
+            if amb in ("00", "01"):
+                return amb
+    except Exception:
+        pass
+    try:
+        from azdigital.integration.agildte_client import obtener_ambiente_emresa_agildte
+
+        return obtener_ambiente_emresa_agildte(empresa_id)
+    except Exception:
+        return "01"
+
+
+def _numero_comprobante_display(cur, venta_id: int, venta) -> int:
+    try:
+        cur.execute("SELECT numero_caja FROM ventas WHERE id = %s", (int(venta_id),))
+        row = cur.fetchone()
+        if row and row[0] is not None:
+            return int(row[0])
+    except Exception:
+        pass
+    return int(venta[0]) if venta else 0
+
+
 def _fecha_emision_iso_venta(cur, venta_id: int) -> str | None:
     """Fecha de emisión (YYYY-MM-DD) para parámetro fechaEmi en consulta pública MH / QR."""
     try:
@@ -1217,6 +1400,9 @@ def _tpl_comprobante_venta(
     if not empresa:
         return None, None
     fecha_emi = _fecha_emision_iso_venta(cur, venta_id)
+    ambiente_comp = _ambiente_emision_venta(cur, venta_id, empresa_id)
+    es_modo_prueba = ambiente_comp != "00"
+    numero_comp = _numero_comprobante_display(cur, venta_id, venta)
     tcomp = str(venta[4] or "TICKET").strip().upper() if len(venta) > 4 else "TICKET"
     copias = min(max(int(copias or 1), 1), 3)
     codigo_gen = (venta[14] or "").strip() if len(venta) > 14 else ""
@@ -1293,13 +1479,22 @@ def _tpl_comprobante_venta(
             "consulta_dte_url": consulta_url,
             "fecha_emision_dte": fecha_emi,
             "estado_dte": estado_dte,
+            "es_modo_prueba": es_modo_prueba,
+            "numero_comprobante": numero_comp,
         }
         if formato == "ticket":
             ctx["retencion_iva"] = retencion_iva
             ctx["total_a_pagar"] = total_a_pagar
             return "ticket_dte_print.html", ctx
         return "comprobante_sv_print.html", ctx
-    ctx_ticket: dict = {"venta": venta, "detalles": detalles, "empresa": empresa, "copias": copias}
+    ctx_ticket: dict = {
+        "venta": venta,
+        "detalles": detalles,
+        "empresa": empresa,
+        "copias": copias,
+        "es_modo_prueba": es_modo_prueba,
+        "numero_comprobante": numero_comp,
+    }
     codigo_gen_t = (venta[14] or "").strip() if len(venta) > 14 else ""
     numero_ctrl_t = (venta[15] or "").strip() if len(venta) > 15 else ""
     sello_rec_t = (venta[16] or "").strip() if len(venta) > 16 else ""

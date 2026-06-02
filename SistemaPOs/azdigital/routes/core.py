@@ -8,6 +8,7 @@ from flask import Blueprint, current_app, jsonify, redirect, render_template, re
 
 from azdigital.decorators import login_required, _rol_desde_bd
 from azdigital.repositories import empresas_repo, productos_repo
+from azdigital.utils.fecha_sv import hoy_sv
 from database import ConexionDB
 
 bp = Blueprint("core", __name__)
@@ -29,7 +30,7 @@ def tiene_suscripcion(empresa_id: int = 1) -> bool:
         activa, vencimiento = estado[0], estado[1]
         if activa is False:
             return False
-        if vencimiento and vencimiento < date.today():
+        if vencimiento and vencimiento < hoy_sv():
             return False
         return True
     except Exception:
@@ -92,7 +93,7 @@ def _render_dashboard():
         "total_empresas": e_count[0][0] if e_count else 0,
         "total_sucursales": s_count[0][0] if s_count else 0,
     }
-    hoy = date.today()
+    hoy = hoy_sv()
     mes_actual = hoy.month
     ano_actual = hoy.year
     primer_dia_mes = date(ano_actual, mes_actual, 1)

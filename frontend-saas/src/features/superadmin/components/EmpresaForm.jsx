@@ -3,8 +3,8 @@ import { Save, Loader2, Search, Upload, FileKey, MessageCircle, Monitor } from '
 import { ModalBuscadorActividad } from '../../facturacion/components/ModalBuscadorActividad'
 
 const AMBIENTES = [
-  { value: '01', label: 'Pruebas (MH)' },
-  { value: '00', label: 'Producción (MH)' },
+  { value: '01', label: 'Pruebas (AgilDTE)' },
+  { value: '00', label: 'Producción (AgilDTE)' },
 ]
 
 const TIPOS_SISTEMA = [
@@ -120,7 +120,7 @@ export function EmpresaForm({ initial = EMPTY, onSubmit, saving = false, submitL
             {field('correo', 'Correo', { type: 'email' })}
             {field('telefono', 'Teléfono')}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Ambiente MH</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Ambiente AgilDTE</label>
               <select
                 name="ambiente"
                 value={form.ambiente}

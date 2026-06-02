@@ -80,6 +80,7 @@
     {% for i in range(copias|default(1)) %}
     {% if i > 0 %}<div class="copia-separador"></div>{% endif %}
     {% if (copias|default(1)) > 1 %}<div class="text-center copia-etiqueta">{% if i == 0 %}— COPIA CLIENTE —{% else %}— COPIA ESTABLECIMIENTO —{% endif %}</div>{% endif %}
+    {% include '_banner_modo_prueba.html' %}
     <div class="text-center ticket-head">
         <h3 class="bold">{{ empresa_fiscal.nombre_comercial if empresa_fiscal is defined else (empresa[1] if empresa else 'Empresa') }}</h3>
         <p>NIT: {{ empresa_fiscal.nit if empresa_fiscal is defined else '—' }} | NRC: {{ empresa_fiscal.nrc if empresa_fiscal is defined else '—' }}</p>
@@ -90,7 +91,7 @@
         <p>{{ (empresa[5] if empresa and empresa|length > 5 else '') or '' }}</p>
         {% endif %}
         <div class="linea"></div>
-        <p class="bold">TICKET / COMPROBANTE #{{ venta[0] }}</p>
+        <p class="bold">TICKET / COMPROBANTE #{{ numero_comprobante|default(venta[0]) }}{% if es_modo_prueba %} <span style="font-size:9px;">(PRUEBA)</span>{% endif %}</p>
         <p>FECHA: {{ venta[1] }}</p>
         {% if estado_dte is defined and estado_dte in ('CONTINGENCIA', 'PENDIENTE_TRANSMISION') %}
         <div class="banner-contingencia-print" style="background:#fff3cd;border:2px solid #856404;padding:4px;margin:4px 0;text-align:center;font-weight:bold;font-size:10px;">

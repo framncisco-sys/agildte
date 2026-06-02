@@ -527,6 +527,84 @@ class EmpresaViewSet(viewsets.ModelViewSet):
             "resumen_envio": resumen,
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get', 'post'], url_path='modo-operacion')
+    def modo_operacion(self, request, pk=None):
+        """
+        GET: estado actual (prueba / online).
+        POST: { "modo": "prueba"|"online", "confirmar_reinicio": true }
+        Al pasar a online se reinician correlativos DTE del año en curso.
+        """
+        from .empresa_operacion import (
+            ambiente_desde_modo,
+            modo_desde_ambiente,
+            resetear_correlativos_dte,
+        )
+        from .permissions import IsAdminUser
+
+        empresa = self.get_object()
+        r = require_empresa_allowed(request, empresa.id)
+        if r is not None:
+            return r
+
+        if request.method == 'GET':
+            amb = (empresa.ambiente or '01').strip()
+            return Response({
+                'empresa_id': empresa.id,
+                'ambiente': amb,
+                'modo': modo_desde_ambiente(amb),
+                'es_modo_prueba': amb != '00',
+                'etiqueta': 'Versión prueba' if amb != '00' else 'Online — producción',
+            })
+
+        if not IsAdminUser().has_permission(request, self):
+            return Response(
+                {'detail': 'Solo administradores pueden cambiar el modo de operación.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        modo = (request.data.get('modo') or '').strip().lower()
+        if modo not in ('prueba', 'online'):
+            return Response(
+                {'detail': "El campo 'modo' debe ser 'prueba' u 'online'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ambiente_nuevo = ambiente_desde_modo(modo)
+        ambiente_anterior = (empresa.ambiente or '01').strip()
+        correlativos_reiniciados = False
+
+        if modo == 'online':
+            if not request.data.get('confirmar_reinicio'):
+                return Response(
+                    {
+                        'detail': (
+                            'Al activar modo online se reinician los correlativos de facturas. '
+                            'Envíe confirmar_reinicio: true.'
+                        ),
+                        'requiere_confirmacion': True,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            resetear_correlativos_dte(empresa)
+            correlativos_reiniciados = True
+
+        empresa.ambiente = ambiente_nuevo
+        empresa.save(update_fields=['ambiente'])
+
+        return Response({
+            'mensaje': (
+                'Modo prueba activado. Los comprobantes se marcarán como PRUEBA y usarán AgilDTE apitest.'
+                if modo == 'prueba'
+                else 'Modo online activado. Correlativos DTE reiniciados para el año en curso.'
+            ),
+            'empresa_id': empresa.id,
+            'modo': modo,
+            'ambiente': ambiente_nuevo,
+            'ambiente_anterior': ambiente_anterior,
+            'correlativos_reiniciados': correlativos_reiniciados,
+            'anio': timezone.localdate().year,
+        }, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get', 'patch'], url_path='correlativos')
     def correlativos(self, request, pk=None):
         """
@@ -1476,7 +1554,7 @@ def procesar_json_dte(request):
                     try:
                         fecha_doc = datetime.strptime(fecha_str, '%Y-%m-%d').date()
                     except:
-                        fecha_doc = datetime.now().date()
+                        fecha_doc = timezone.localdate()
                     
                     periodo = fecha_doc.strftime('%Y-%m')
                     
@@ -1533,7 +1611,7 @@ def procesar_json_dte(request):
                     try:
                         fecha_doc = datetime.strptime(fecha_str, '%Y-%m-%d').date()
                     except:
-                        fecha_doc = datetime.now().date()
+                        fecha_doc = timezone.localdate()
                     
                     periodo = fecha_doc.strftime('%Y-%m')
                     
@@ -1597,7 +1675,7 @@ def procesar_json_dte(request):
                     try:
                         fecha_doc = datetime.strptime(fecha_str, '%Y-%m-%d').date()
                     except:
-                        fecha_doc = datetime.now().date()
+                        fecha_doc = timezone.localdate()
                     
                     periodo = fecha_doc.strftime('%Y-%m')
                     

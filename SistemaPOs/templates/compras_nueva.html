@@ -171,7 +171,7 @@
     }
     document.addEventListener('DOMContentLoaded', function() {
         var tbody = document.getElementById('tbodyDetalle');
-        var hoy = new Date().toISOString().slice(0, 10);
+        var hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/El_Salvador' });
         var inpFecha = document.querySelector('input[name="fecha"]');
         if (inpFecha && !inpFecha.value) inpFecha.value = hoy;
 

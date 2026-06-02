@@ -1,9 +1,11 @@
+import { fechaHoyElSalvadorISO } from '../../utils/format'
+
 /**
  * Estadísticas vacías del dashboard (sin ventas en el mes o API no disponible).
  */
-export function buildEmptyDashboardStats(date = new Date()) {
-  const year = date.getFullYear()
-  const month = date.getMonth()
+export function buildEmptyDashboardStats(dateIso = fechaHoyElSalvadorISO()) {
+  const year = parseInt(String(dateIso).slice(0, 4), 10)
+  const month = parseInt(String(dateIso).slice(5, 7), 10) - 1
   const lastDay = new Date(year, month + 1, 0).getDate()
   const ventas_por_dia = []
   for (let d = 1; d <= lastDay; d += 1) {

@@ -17,6 +17,41 @@
 
     <div class="row">
         <div class="col-md-6">
+            <div class="card p-4 mb-4 border-2 {{ 'border-warning' if es_modo_prueba else 'border-success' }}">
+                <h5 class="fw-bold mb-2"><i class="bi bi-toggle-on text-primary"></i> Modo de operación (caja y facturación)</h5>
+                <p class="small text-muted mb-3">
+                    <strong>Versión prueba:</strong> tickets y facturas se imprimen marcados como <em>PRUEBA</em> y los DTE van al ambiente de pruebas de AgilDTE (apitest).
+                    <strong>Online:</strong> facturación real en producción; al activarlo se reinician los correlativos de facturas y tickets de caja del año en curso.
+                </p>
+                {% if not agildte_configured %}
+                <div class="alert alert-warning small py-2">Configure <code>AGILDTE_BASE_URL</code> para sincronizar el ambiente con AgilDTE.</div>
+                {% elif not agildte_online %}
+                <div class="alert alert-danger small py-2">AgilDTE no responde; el cambio de modo puede fallar hasta restablecer la conexión.</div>
+                {% endif %}
+                <div class="mb-3">
+                    <span class="badge fs-6 {{ 'bg-warning text-dark' if es_modo_prueba else 'bg-success' }}">
+                        Actual: {{ 'Versión prueba' if es_modo_prueba else 'Online — producción' }}
+                    </span>
+                    <span class="badge bg-secondary ms-1">Ambiente AgilDTE: {{ '01 Pruebas' if ambiente_emision == '01' else '00 Producción' }}</span>
+                </div>
+                <form action="/configuracion/modo_operacion" method="POST" id="formModoOperacion" onsubmit="return confirmarModoOperacion(event);">
+                    <input type="hidden" name="empresa_id" value="{{ emp_id }}">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="radio" name="modo_operacion" id="modo_prueba" value="prueba" {{ 'checked' if es_modo_prueba else '' }}>
+                        <label class="form-check-label fw-bold" for="modo_prueba">Versión prueba</label>
+                        <div class="small text-muted ms-4">Imprime «PRUEBA» en ticket y factura; numeración de prueba separada.</div>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="radio" name="modo_operacion" id="modo_online" value="online" {{ 'checked' if not es_modo_prueba else '' }}>
+                        <label class="form-check-label fw-bold" for="modo_online">Online — todo funcionando (producción)</label>
+                        <div class="small text-muted ms-4">Reinicia contadores de facturas DTE y tickets al confirmar.</div>
+                    </div>
+                    <input type="hidden" name="confirmar_reinicio" id="confirmar_reinicio" value="0">
+                    <button type="submit" class="btn btn-primary w-100 fw-bold">
+                        <i class="bi bi-check2-circle"></i> Aplicar modo seleccionado
+                    </button>
+                </form>
+            </div>
             <div class="card p-4">
                 <h5 class="fw-bold mb-3">Datos de la Empresa</h5>
                 <form action="/guardar_configuracion" method="POST">
@@ -215,6 +250,26 @@
 {% endblock %}
 {% block scripts %}
 <script>
+function confirmarModoOperacion(ev) {
+    const online = document.getElementById('modo_online') && document.getElementById('modo_online').checked;
+    const confirmar = document.getElementById('confirmar_reinicio');
+    if (online) {
+        const ok = window.confirm(
+            '¿Activar modo ONLINE (producción)?\n\n' +
+            'Se reiniciarán los correlativos de facturas electrónicas y los números de ticket/factura de caja para este año.\n' +
+            'Los documentos emitidos en prueba no se mezclarán con los de producción.\n\n' +
+            '¿Continuar?'
+        );
+        if (!ok) {
+            ev.preventDefault();
+            return false;
+        }
+        if (confirmar) confirmar.value = '1';
+    } else if (confirmar) {
+        confirmar.value = '0';
+    }
+    return true;
+}
 (function() {
     const opcionesNit = { mask: '0000-000000-000-0', lazy: false, overwrite: false };
     const opcionesNrc = { mask: '000000-0', lazy: false, overwrite: false };

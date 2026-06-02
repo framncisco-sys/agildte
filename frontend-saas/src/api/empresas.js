@@ -38,3 +38,22 @@ export async function createEmpresa(rawPayload) {
 export async function deleteEmpresa(id) {
   await apiClient.delete(`${BASE}/${id}/`)
 }
+
+/**
+ * Estado modo prueba / online (ambiente MH).
+ */
+export async function getModoOperacion(empresaId) {
+  const { data } = await apiClient.get(`${BASE}/${empresaId}/modo-operacion/`)
+  return data
+}
+
+/**
+ * Cambia modo: 'prueba' | 'online'. Online requiere confirmarReinicio.
+ */
+export async function cambiarModoOperacion(empresaId, modo, { confirmarReinicio = false } = {}) {
+  const { data } = await apiClient.post(`${BASE}/${empresaId}/modo-operacion/`, {
+    modo,
+    confirmar_reinicio: confirmarReinicio,
+  })
+  return data
+}

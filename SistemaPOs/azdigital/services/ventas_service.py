@@ -243,7 +243,9 @@ def crear_venta_desde_carrito(
     """
     total = 0.0
     lineas: list[LineaVenta] = []
-    fecha = fecha_venta or date.today()
+    from azdigital.utils.fecha_sv import hoy_sv
+
+    fecha = fecha_venta or hoy_sv()
 
     for p in carrito:
         item = _parse_item_carrito(p)
@@ -462,14 +464,26 @@ def persistir_venta(
         estado_dte=estado_inicial,
     )
     try:
-        from azdigital.integration.agildte_client import obtener_ambiente_emresa_agildte
+        from azdigital.services.modo_operacion_service import obtener_ambiente_empresa
 
+        amb_em = obtener_ambiente_empresa(empresa_id, cur=cur)
         ventas_repo.actualizar_ambiente_emision(
             cur,
             venta_id,
-            obtener_ambiente_emresa_agildte(empresa_id),
+            amb_em,
             empresa_id=empresa_id,
         )
+        try:
+            from azdigital.repositories import secuencia_comprobante_repo
+
+            num_caja = secuencia_comprobante_repo.siguiente_numero(
+                cur, empresa_id, tc, amb_em
+            )
+            ventas_repo.actualizar_numero_caja(
+                cur, venta_id, num_caja, empresa_id=empresa_id
+            )
+        except Exception:
+            pass
     except Exception:
         pass
     # codigo_generacion, numero_control y sello: solo los asigna AgilDTE (sync tras POST /api/pos/procesar-venta/).
