@@ -1,0 +1,93 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <a href="{{ url_for('admin.inventario') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Inventario</a>
+            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-archive text-danger"></i> Productos dados de baja</h2>
+            <p class="text-muted small mb-0">
+                Aquí ves los productos que un <strong>Gerente</strong> o <strong>superusuario</strong> dio de baja.
+                No aparecen en el inventario activo, pero el registro se conserva con motivo y responsable.
+            </p>
+        </div>
+    </div>
+
+    <div class="alert alert-light border small mb-3">
+        <i class="bi bi-info-circle text-primary"></i>
+        <strong>¿Dónde lo encuentro?</strong> Menú lateral → sección <em>Inventario</em> →
+        <strong>Productos dados de baja</strong>, o desde Inventario el botón <strong>DADOS DE BAJA</strong>.
+    </div>
+    <div class="alert alert-success border-success-subtle small mb-3">
+        <i class="bi bi-arrow-repeat"></i>
+        <strong>¿Volvió a tener ese producto?</strong> En la tabla, pulse <strong>Reactivar</strong>.
+        El mismo registro (mismo código e historial) vuelve al inventario y a la caja.
+        No hace falta crearlo otra vez.
+    </div>
+
+    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h6 class="m-0 fw-bold text-primary"><i class="bi bi-list-ul me-1"></i> Registros de baja</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle m-0 table-hover table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Código</th>
+                        <th>Producto</th>
+                        {% if es_superadmin %}<th>Empresa</th>{% endif %}
+                        <th>Sucursal</th>
+                        <th class="text-primary">Eliminado por</th>
+                        <th>Rol</th>
+                        <th>Fecha baja</th>
+                        <th>Motivo</th>
+                        <th class="text-end pe-4">Stock al bajar</th>
+                        <th class="text-end pe-4">Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in filas %}
+                    <tr>
+                        <td class="ps-4 font-monospace small">{{ r[1] or '—' }}</td>
+                        <td class="fw-bold">{{ r[2] or '—' }}</td>
+                        {% if es_superadmin %}<td class="small text-muted">{{ r[3] or '—' }}</td>{% endif %}
+                        <td class="small">{{ r[4] or '—' }}</td>
+                        <td class="fw-semibold text-primary">{{ r[7] or '—' }}</td>
+                        <td><span class="badge bg-secondary">{{ r[8] or '—' }}</span></td>
+                        <td class="small text-nowrap">{{ r[6] or '—' }}</td>
+                        <td class="small" style="max-width: 320px;">{{ r[5] or '—' }}</td>
+                        <td class="text-end">{{ r[9] if r|length > 9 else '—' }}</td>
+                        <td class="text-end pe-4">
+                            <form action="/reactivar_producto/{{ r[0] }}" method="POST" class="d-inline form-reactivar-producto"
+                                  data-nombre="{{ r[2]|e }}">
+                                <button type="submit" class="btn btn-sm btn-success" title="Volver a inventario activo">
+                                    <i class="bi bi-arrow-repeat"></i> Reactivar
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ 10 if es_superadmin else 9 }}" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay productos dados de baja.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('.form-reactivar-producto').forEach(function(frm) {
+    frm.addEventListener('submit', function(e) {
+        var nombre = frm.getAttribute('data-nombre') || 'este producto';
+        if (!confirm('¿Reactivar «' + nombre + '»?\n\nVolverá a aparecer en inventario y en caja con el mismo código e historial.')) {
+            e.preventDefault();
+        }
+    });
+});
+</script>
+{% endblock %}

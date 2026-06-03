@@ -31,6 +31,59 @@
     #modalProducto .modal-header {
         flex-shrink: 0;
     }
+    .inv-page-header .inv-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem;
+    }
+    .inv-page-header .inv-toolbar .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        white-space: nowrap;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        line-height: 1.25;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        min-height: 2.5rem;
+    }
+    .inv-page-header .inv-toolbar .btn i {
+        font-size: 1rem;
+        flex-shrink: 0;
+    }
+    .inv-page-header .inv-toolbar-group {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.35rem;
+        padding: 0.5rem 0.6rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.625rem;
+    }
+    .inv-page-header .inv-toolbar-group-btns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+    .inv-page-header .inv-toolbar-group-label {
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #64748b;
+        line-height: 1.2;
+        margin: 0;
+    }
+    @media (max-width: 991.98px) {
+        .inv-page-header .inv-toolbar {
+            justify-content: flex-start;
+        }
+    }
 </style>
 <div class="container-fluid mt-2">
     <div class="accordion mb-3 border rounded-3 overflow-hidden shadow-sm" id="accGuiaMedidas">
@@ -54,24 +107,48 @@
             </div>
         </div>
     </div>
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2 class="fw-bold text-dark">Inventario de Productos</h2>
-            <p class="text-muted small">En cada producto: primero la <strong>unidad de bodega</strong> (cómo contás stock), después <strong>cómo se vende en caja</strong> (caja, docena, etc.). <strong>Conteo físico</strong> y <strong>Kardex</strong> usan siempre la unidad pequeña.</p>
-        </div>
-        <div class="d-flex gap-2">
-            <a href="{{ url_for('admin.inventario_exportar_excel') }}" class="btn btn-outline-primary rounded-pill px-3 fw-bold shadow-sm" title="Descargar inventario en Excel">
-                <i class="bi bi-file-earmark-excel me-2"></i> EXCEL
-            </a>
-            <a href="{{ url_for('admin.inventario_exportar_pdf') }}" class="btn btn-outline-danger rounded-pill px-3 fw-bold shadow-sm" title="Descargar inventario en PDF">
-                <i class="bi bi-file-earmark-pdf me-2"></i> PDF
-            </a>
-            <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalProducto" id="btnNuevoProducto">
-                <i class="bi bi-plus-lg me-2"></i> NUEVO PRODUCTO
-            </button>
-            <button type="button" class="btn btn-outline-success rounded-pill px-4 fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalCargarInventario">
-                <i class="bi bi-upload me-2"></i> CARGAR INVENTARIO
-            </button>
+    <div class="inv-page-header mb-4">
+        <div class="row g-3 align-items-start">
+            <div class="col-lg-5 col-xl-6">
+                <h2 class="fw-bold text-dark mb-1">Inventario de Productos</h2>
+                <p class="text-muted small mb-0">En cada producto: primero la <strong>unidad de bodega</strong> (cómo contás stock), después <strong>cómo se vende en caja</strong> (caja, docena, etc.). <strong>Conteo físico</strong> y <strong>Kardex</strong> usan siempre la unidad pequeña.</p>
+            </div>
+            <div class="col-lg-7 col-xl-6">
+                <div class="inv-toolbar">
+                    <div class="inv-toolbar-group">
+                        <span class="inv-toolbar-group-label">Exportar</span>
+                        <div class="inv-toolbar-group-btns">
+                            <a href="{{ url_for('admin.inventario_exportar_excel') }}" class="btn btn-outline-primary" title="Descargar inventario en Excel">
+                                <i class="bi bi-file-earmark-excel"></i> Excel
+                            </a>
+                            <a href="{{ url_for('admin.inventario_exportar_pdf') }}" class="btn btn-outline-danger" title="Descargar inventario en PDF">
+                                <i class="bi bi-file-earmark-pdf"></i> PDF
+                            </a>
+                        </div>
+                    </div>
+                    {% if puede_dar_baja_producto %}
+                    <div class="inv-toolbar-group">
+                        <span class="inv-toolbar-group-label">Bajas</span>
+                        <div class="inv-toolbar-group-btns">
+                            <a href="{{ url_for('admin.reporte_productos_baja') }}" class="btn btn-outline-secondary" title="Productos dados de baja y reactivar">
+                                <i class="bi bi-archive"></i> Dados de baja
+                            </a>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <div class="inv-toolbar-group">
+                        <span class="inv-toolbar-group-label">Acciones</span>
+                        <div class="inv-toolbar-group-btns">
+                            <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalCargarInventario">
+                                <i class="bi bi-upload"></i> Cargar inventario
+                            </button>
+                            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalProducto" id="btnNuevoProducto">
+                                <i class="bi bi-plus-lg"></i> Nuevo producto
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -122,11 +199,13 @@
                             <td class="text-end pe-4">
                                 <a href="{{ url_for('admin.inventario_kardex', producto_id=p[0]) }}" class="btn btn-sm btn-outline-secondary me-1" title="Kardex"><i class="bi bi-journal-text"></i> Kardex</a>
                                 <button type="button" class="btn btn-sm btn-outline-primary btn-editar-producto me-1" title="Editar" data-id="{{ p[0] }}" data-codigo="{{ p[1]|e }}" data-nombre="{{ p[2]|e }}" data-precio="{{ p[3] }}" data-stock="{{ p[4] }}" data-empresa-id="{{ p[5] if p[5] is not none else '' }}" data-sucursal-id="{{ p[6] if p[6] is not none else '' }}" data-costo="{{ p[9] if p|length > 9 and p[9] is not none else '0' }}" data-promocion-tipo="{{ (p[10] or '')|upper if p|length > 10 else '' }}" data-promocion-valor="{{ p[11] if p|length > 11 and p[11] is not none else '' }}" data-fraccionable="{{ '1' if p|length > 12 and p[12] else '0' }}" data-unidades-por-caja="{{ p[13] if p|length > 13 and p[13] is not none else '' }}" data-unidades-por-docena="{{ p[14] if p|length > 14 and p[14] is not none else '12' }}" data-mh-codigo="{{ p[15] if p|length > 15 else '59' }}"><i class="bi bi-pencil-square"></i> Editar</button>
-                                <form action="/eliminar_producto/{{ p[0] }}" method="POST" class="d-inline form-eliminar-producto">
-                                    <input type="hidden" name="supervisor_user" class="elim-supervisor-user" value="">
-                                    <input type="hidden" name="supervisor_password" class="elim-supervisor-password" value="">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="bi bi-trash3"></i> Eliminar</button>
+                                {% if puede_dar_baja_producto %}
+                                <form action="/eliminar_producto/{{ p[0] }}" method="POST" class="d-inline form-eliminar-producto"
+                                      data-nombre="{{ p[2]|e }}">
+                                    <input type="hidden" name="motivo_baja" class="elim-motivo-baja" value="">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Dar de baja (solo Gerente o superusuario)"><i class="bi bi-trash3"></i> Eliminar</button>
                                 </form>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -923,19 +1002,27 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    function pedirMotivoBaja(nombreProd, callback) {
+        var motivo = window.prompt(
+            'Motivo de la baja de «' + (nombreProd || 'este producto') + '» (obligatorio, mín. 5 caracteres):\n\n' +
+            'El producto dejará de verse en inventario y en caja, pero quedará en el reporte de productos dados de baja.'
+        );
+        if (motivo === null) return;
+        motivo = (motivo || '').trim();
+        if (motivo.length < 5) {
+            alert('Debe escribir un motivo de al menos 5 caracteres.');
+            return;
+        }
+        callback(motivo);
+    }
+
     document.querySelectorAll('.form-eliminar-producto').forEach(function(frm) {
         frm.addEventListener('submit', function(e) {
             e.preventDefault();
-            if (!confirm('¿Eliminar este producto?')) return;
-            if (!requiereClaveSupervisor) {
-                frm.submit();
-                return;
-            }
-            solicitarAutorizacion('Para eliminar este producto se requieren credenciales de Gerente.', function(user, pass) {
-                var uInp = frm.querySelector('.elim-supervisor-user');
-                var pInp = frm.querySelector('.elim-supervisor-password');
-                if (uInp) uInp.value = user || '';
-                if (pInp) pInp.value = pass || '';
+            var nombreProd = frm.getAttribute('data-nombre') || '';
+            pedirMotivoBaja(nombreProd, function(motivo) {
+                var mInp = frm.querySelector('.elim-motivo-baja');
+                if (mInp) mInp.value = motivo;
                 frm.submit();
             });
         });

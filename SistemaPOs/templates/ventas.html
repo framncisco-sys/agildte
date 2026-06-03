@@ -146,6 +146,50 @@
     #modalScannerBarrasPOS .modal-body {
         background: #0f172a;
     }
+    #pos_busqueda_manual_root {
+        overflow: visible;
+        z-index: 20;
+    }
+    #pos_busqueda_manual_root .input-group {
+        flex-wrap: nowrap;
+    }
+    #lista_sugerencias {
+        z-index: 1060;
+        max-height: min(50vh, 320px);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    body.device-mobile #btnAbrirCatalogoProductos,
+    body.device-tablet #btnAbrirCatalogoProductos {
+        min-height: 44px;
+        min-width: 5.5rem;
+        flex-shrink: 0;
+        touch-action: manipulation;
+    }
+    body.device-mobile #input_nombre,
+    body.device-tablet #input_nombre {
+        min-height: 44px;
+        font-size: 16px;
+    }
+    body.device-mobile #pos_busqueda_manual_root .input-group-text,
+    body.device-tablet #pos_busqueda_manual_root .input-group-text {
+        min-height: 44px;
+        touch-action: manipulation;
+        cursor: pointer;
+    }
+    .pos-hint-catalogo-movil {
+        display: none;
+    }
+    @media (max-width: 991.98px) {
+        .pos-hint-catalogo-movil { display: block !important; }
+    }
+    @media (hover: none) and (pointer: coarse) {
+        .pos-hint-catalogo-movil { display: block !important; }
+    }
+    body.device-mobile .pos-hint-catalogo-movil,
+    body.device-tablet .pos-hint-catalogo-movil {
+        display: block !important;
+    }
 
     body.device-tablet .row.g-4 > .col-lg-4 {
         flex: 0 0 100%;
@@ -218,15 +262,16 @@
                     </div>
                     <div class="col-12 col-md-6">
                         <label class="text-primary small fw-bold mb-2">BÚSQUEDA MANUAL</label>
-                        <div class="position-relative">
+                        <p class="small text-muted mb-1 d-none pos-hint-catalogo-movil">Escriba 2+ letras para ver resultados o pulse <strong>Catálogo</strong>.</p>
+                        <div class="position-relative" id="pos_busqueda_manual_root">
                             <div class="input-group shadow-sm">
-                                <span class="input-group-text bg-light border-0"><i class="bi bi-search"></i></span>
-                                <input type="text" id="input_nombre" class="form-control border-0" placeholder="Escriba para filtrar o abra el catálogo…" title="Doble clic: catálogo completo con existencia y precio">
+                                <span class="input-group-text bg-light border-0" id="btnBusquedaAbrirCatalogo" role="button" tabindex="0" title="Abrir catálogo de productos" aria-label="Abrir catálogo"><i class="bi bi-search"></i></span>
+                                <input type="text" id="input_nombre" class="form-control border-0" placeholder="Buscar producto…" title="Escriba para filtrar; en móvil use el botón Catálogo" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
                                 <button type="button" class="btn btn-outline-primary" id="btnAbrirCatalogoProductos" title="Ver todos los productos (existencia y precio)">
-                                    <i class="bi bi-list-ul"></i> Catálogo
+                                    <i class="bi bi-list-ul"></i><span class="d-none d-sm-inline"> Catálogo</span>
                                 </button>
                             </div>
-                            <div id="lista_sugerencias" class="list-group position-absolute w-100 shadow mt-1" style="display:none; z-index:1000;"></div>
+                            <div id="lista_sugerencias" class="list-group position-absolute w-100 shadow mt-1" style="display:none;"></div>
                         </div>
                     </div>
                 </div>
@@ -370,8 +415,8 @@
 </div>
 
 <!-- Modal: catálogo completo (existencia + precio) -->
-<div class="modal fade" id="modalCatalogoProductos" tabindex="-1" aria-labelledby="modalCatalogoProductosLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+<div class="modal fade" id="modalCatalogoProductos" tabindex="-1" aria-labelledby="modalCatalogoProductosLabel" aria-hidden="true" data-bs-focus="false">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down">
         <div class="modal-content">
             <div class="modal-header py-2">
                 <h5 class="modal-title fw-bold" id="modalCatalogoProductosLabel"><i class="bi bi-box-seam text-primary"></i> Catálogo de productos</h5>
@@ -509,6 +554,9 @@
     </div>
 </div>
 
+{# Escáner cámara: librería local (móvil en LAN sin internet no puede usar unpkg) #}
+<script src="{{ (pos_script_root or '') }}{{ url_for('static', filename='vendor/html5-qrcode.min.js') }}?v=2.3.8"></script>
+
 <script>
     const requiereClaveSupervisor = {{ 'true' if requiere_clave_supervisor|default(false) else 'false' }};
     const requiereClaveSupervisorDescuento = {{ 'true' if requiere_clave_supervisor_descuento|default(false) else 'false' }};
@@ -552,6 +600,9 @@
     const inputCodigo = document.getElementById('input_codigo');
     const inputNombre = document.getElementById('input_nombre');
     const listaSugerencias = document.getElementById('lista_sugerencias');
+    if (inputCodigo && posEsPantallaTactil()) {
+        inputCodigo.removeAttribute('autofocus');
+    }
     const inputDescPct = document.getElementById('descuento_pct');
     const inputDescMonto = document.getElementById('descuento_monto');
 
@@ -839,27 +890,65 @@
         }
         renderCatalogoModalTabla();
     }
-    function abrirModalCatalogoProductos() {
-        listaSugerencias.style.display = 'none';
-        const el = document.getElementById('modalCatalogoProductos');
-        if (!el || typeof bootstrap === 'undefined') return;
-        const m = bootstrap.Modal.getOrCreateInstance(el);
-        m.show();
+    function posAsegurarModalEnBody(modalEl) {
+        if (!modalEl || modalEl.getAttribute('data-pos-modal-body') === '1') return;
+        document.body.appendChild(modalEl);
+        modalEl.setAttribute('data-pos-modal-body', '1');
     }
-    document.getElementById('btnAbrirCatalogoProductos')?.addEventListener('click', function (e) {
-        e.preventDefault();
-        abrirModalCatalogoProductos();
-    });
-    inputNombre.addEventListener('dblclick', function (e) {
-        e.preventDefault();
-        abrirModalCatalogoProductos();
-    });
+    function posEsPantallaTactil() {
+        try {
+            if (document.body.classList.contains('device-mobile') || document.body.classList.contains('device-tablet')) return true;
+            return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+        } catch (e) { return false; }
+    }
+    function abrirModalCatalogoProductos() {
+        if (listaSugerencias) listaSugerencias.style.display = 'none';
+        const el = document.getElementById('modalCatalogoProductos');
+        if (!el) {
+            alert('No se encontró el catálogo en esta página. Recargue (Ctrl+F5).');
+            return;
+        }
+        if (typeof bootstrap === 'undefined') {
+            alert('Espere a que cargue la página e intente de nuevo.');
+            return;
+        }
+        posAsegurarModalEnBody(el);
+        try {
+            bootstrap.Modal.getOrCreateInstance(el).show();
+        } catch (err) {
+            console.warn('abrirModalCatalogoProductos', err);
+            alert('No se pudo abrir el catálogo. Recargue la página.');
+        }
+    }
+    function posEnlazarAbrirCatalogo(btn) {
+        if (!btn || btn.getAttribute('data-pos-catalogo-bound') === '1') return;
+        btn.setAttribute('data-pos-catalogo-bound', '1');
+        var abrir = function (e) {
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            abrirModalCatalogoProductos();
+        };
+        btn.addEventListener('click', abrir);
+    }
+    posEnlazarAbrirCatalogo(document.getElementById('btnAbrirCatalogoProductos'));
+    posEnlazarAbrirCatalogo(document.getElementById('btnBusquedaAbrirCatalogo'));
+    if (inputNombre) {
+        inputNombre.addEventListener('dblclick', function (e) {
+            e.preventDefault();
+            abrirModalCatalogoProductos();
+        });
+    }
+    (function () {
+        var modalCat = document.getElementById('modalCatalogoProductos');
+        if (modalCat) posAsegurarModalEnBody(modalCat);
+        var modalScan = document.getElementById('modalScannerBarrasPOS');
+        if (modalScan) posAsegurarModalEnBody(modalScan);
+    })();
     document.getElementById('modalCatalogoProductos')?.addEventListener('show.bs.modal', function () {
         const f = document.getElementById('modal_catalogo_filtro');
         if (f) f.value = '';
         cargarCatalogoModalDatos().then(function () {
             const f2 = document.getElementById('modal_catalogo_filtro');
-            if (f2) setTimeout(function () { f2.focus(); }, 200);
+            if (f2) setTimeout(function () { f2.focus(); }, 280);
         });
     });
     document.getElementById('modal_catalogo_filtro')?.addEventListener('input', function () {
@@ -1075,12 +1164,33 @@
         function posCargarHtml5QrcodeLib() {
             return new Promise(function (resolve, reject) {
                 if (typeof Html5Qrcode !== 'undefined') return resolve();
-                var s = document.createElement('script');
-                s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
-                s.async = true;
-                s.onload = function () { resolve(); };
-                s.onerror = function () { reject(new Error('html5-qrcode')); };
-                document.head.appendChild(s);
+                var urls = [
+                    posUrl('/static/vendor/html5-qrcode.min.js?v=2.3.8'),
+                    'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js',
+                    'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
+                ];
+                var seen = {};
+                urls = urls.filter(function (u) {
+                    if (!u || seen[u]) return false;
+                    seen[u] = true;
+                    return true;
+                });
+                function cargarSiguiente(i) {
+                    if (typeof Html5Qrcode !== 'undefined') return resolve();
+                    if (i >= urls.length) {
+                        return reject(new Error('html5-qrcode'));
+                    }
+                    var s = document.createElement('script');
+                    s.src = urls[i];
+                    s.async = true;
+                    s.onload = function () {
+                        if (typeof Html5Qrcode !== 'undefined') resolve();
+                        else cargarSiguiente(i + 1);
+                    };
+                    s.onerror = function () { cargarSiguiente(i + 1); };
+                    document.head.appendChild(s);
+                }
+                cargarSiguiente(0);
             });
         }
         function posFormatosBarras() {
@@ -1113,7 +1223,7 @@
             try {
                 await posCargarHtml5QrcodeLib();
             } catch (e) {
-                posSetMsg('No se pudo cargar la librería de escaneo (red).');
+                posSetMsg('No se pudo cargar el escáner. Recargue la página (Ctrl+F5) o use el código con pistola/teclado.');
                 _starting = false;
                 return;
             }
@@ -2557,7 +2667,12 @@
 
     window.addEventListener('keydown', (e) => { if (e.key === 'F2') { e.preventDefault(); guardarVenta(); } });
     document.addEventListener('click', (e) => {
-        if (e.target !== inputNombre) listaSugerencias.style.display = 'none';
+        if (listaSugerencias) {
+            var rootBusq = document.getElementById('pos_busqueda_manual_root');
+            if (rootBusq && !rootBusq.contains(e.target)) {
+                listaSugerencias.style.display = 'none';
+            }
+        }
         if (clienteFieldWrap && listaClientes && !clienteFieldWrap.contains(e.target)) {
             listaClientes.style.display = 'none';
         }

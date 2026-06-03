@@ -2,49 +2,276 @@
 
 {% block content %}
 <style>
-    .empresa-card { cursor: pointer; transition: all 0.2s; border: 2px solid transparent; }
-    .empresa-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(234, 88, 12, 0.15) !important; border-color: #ea580c; }
-    .empresa-card .entrar-btn { opacity: 0.9; }
-    .empresa-card:hover .entrar-btn { opacity: 1; }
+    .sa-page { --sa-primary: #1e40af; --sa-primary-dark: #1e3a8a; --sa-slate: #0f172a; --sa-muted: #64748b; --sa-border: #e2e8f0; --sa-surface: #f8fafc; }
+    .sa-hero {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #2563eb 100%);
+        border-radius: 1rem;
+        color: #fff;
+        padding: 1.75rem 2rem;
+        position: relative;
+        overflow: hidden;
+    }
+    .sa-hero::after {
+        content: "";
+        position: absolute;
+        right: -3rem;
+        top: -3rem;
+        width: 14rem;
+        height: 14rem;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.06);
+        pointer-events: none;
+    }
+    .sa-hero h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 0.35rem; }
+    .sa-hero .sa-lead { opacity: 0.88; font-size: 0.9rem; max-width: 36rem; margin: 0; }
+    .sa-hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin-top: 1rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 2rem;
+        background: rgba(251, 191, 36, 0.2);
+        border: 1px solid rgba(251, 191, 36, 0.45);
+        font-size: 0.75rem;
+        font-weight: 700;
+    }
+    .sa-stat {
+        background: #fff;
+        border: 1px solid var(--sa-border);
+        border-radius: 0.75rem;
+        padding: 1rem 1.15rem;
+        height: 100%;
+    }
+    .sa-stat .sa-stat-value { font-size: 1.75rem; font-weight: 800; color: var(--sa-slate); line-height: 1; }
+    .sa-stat .sa-stat-label { font-size: 0.75rem; font-weight: 600; color: var(--sa-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.25rem; }
+    .sa-toolbar {
+        background: #fff;
+        border: 1px solid var(--sa-border);
+        border-radius: 0.75rem;
+        padding: 0.85rem 1rem;
+    }
+    .sa-search-wrap { position: relative; max-width: 22rem; }
+    .sa-search-wrap i { position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--sa-muted); }
+    .sa-search-wrap input { padding-left: 2.35rem; border-radius: 0.5rem; font-size: 0.875rem; }
+    .sa-empresa-card {
+        background: #fff;
+        border: 1px solid var(--sa-border);
+        border-radius: 0.875rem;
+        padding: 1.15rem 1.25rem;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+        cursor: pointer;
+    }
+    .sa-empresa-card:hover {
+        border-color: #93c5fd;
+        box-shadow: 0 12px 28px rgba(30, 64, 175, 0.12);
+        transform: translateY(-2px);
+    }
+    .sa-empresa-card:focus-within { outline: 2px solid #3b82f6; outline-offset: 2px; }
+    .sa-avatar {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 0.625rem;
+        background: linear-gradient(145deg, #dbeafe, #bfdbfe);
+        color: var(--sa-primary-dark);
+        font-weight: 800;
+        font-size: 0.8rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        text-transform: uppercase;
+    }
+    .sa-empresa-name {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--sa-slate);
+        line-height: 1.3;
+        margin: 0;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+    }
+    .sa-meta { font-size: 0.78rem; color: var(--sa-muted); }
+    .sa-meta strong { color: #475569; font-weight: 600; }
+    .sa-chip {
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.35rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+    .sa-chip-id { background: var(--sa-surface); color: #475569; border: 1px solid var(--sa-border); }
+    .sa-chip-ok { background: #dcfce7; color: #166534; }
+    .sa-chip-warn { background: #fef3c7; color: #92400e; }
+    .sa-chip-off { background: #f1f5f9; color: #64748b; }
+    .sa-entrar {
+        margin-top: auto;
+        padding-top: 1rem;
+    }
+    .sa-entrar .btn {
+        font-size: 0.8125rem;
+        font-weight: 700;
+        border-radius: 0.5rem;
+        padding: 0.5rem 1rem;
+    }
+    .sa-empty {
+        border: 2px dashed var(--sa-border);
+        border-radius: 1rem;
+        padding: 3rem 2rem;
+        text-align: center;
+        background: var(--sa-surface);
+    }
+    .sa-no-results { display: none; }
+    .sa-no-results.is-visible { display: block; }
 </style>
-<div class="container-fluid px-4 mt-4">
-    <div class="mb-4">
-        <h1 class="fw-bold mb-1"><i class="bi bi-buildings-fill text-primary"></i> Panel Superusuario</h1>
-        <p class="text-muted">Seleccione una empresa para gestionar su información, ventas y configuración.</p>
-        <div class="d-inline-flex align-items-center gap-2 px-3 py-2 rounded-3 bg-warning bg-opacity-10 border border-warning border-opacity-25">
-            <i class="bi bi-shield-fill-check text-warning"></i>
-            <span class="small fw-bold text-dark">Modo Superadmin: acceso a todas las empresas</span>
+
+<div class="sa-page container-fluid px-0 mt-2">
+    <div class="sa-hero mb-4">
+        <div class="row align-items-center g-3 position-relative" style="z-index: 1;">
+            <div class="col-lg-8">
+                <h1><i class="bi bi-buildings me-2"></i>Panel Superusuario</h1>
+                <p class="sa-lead">Seleccione una empresa para gestionar ventas, inventario, facturación y configuración del POS.</p>
+                <span class="sa-hero-badge"><i class="bi bi-shield-lock-fill"></i> Acceso global a todas las empresas registradas</span>
+            </div>
+            <div class="col-lg-4 text-lg-end">
+                <a href="{{ url_for('admin.usuarios') }}" class="btn btn-outline-light btn-sm fw-bold rounded-3 me-2">
+                    <i class="bi bi-people"></i> Usuarios
+                </a>
+                <a href="{{ url_for('admin.configuracion') }}{% if session.get('empresa_id') %}?empresa={{ session.empresa_id }}{% endif %}" class="btn btn-light btn-sm fw-bold rounded-3">
+                    <i class="bi bi-gear"></i> Configuración
+                </a>
+            </div>
         </div>
     </div>
 
-    <div class="row g-4">
-        {% for emp in empresas %}
-        <div class="col-md-6 col-lg-4">
-            <div class="card border-0 rounded-4 shadow-sm empresa-card h-100 overflow-hidden">
-                <div class="card-body p-4 d-flex flex-column">
-                    <div class="d-flex align-items-start justify-content-between mb-3">
-                        <div class="bg-primary bg-opacity-10 text-primary rounded-3 p-3">
-                            <i class="bi bi-building fs-2"></i>
-                        </div>
-                        <span class="badge bg-light text-dark border">ID {{ emp[0] }}</span>
-                    </div>
-                    <h5 class="fw-bold mb-2 text-dark">{{ emp[1] or 'Sin nombre' }}</h5>
-                    <p class="text-muted small mb-3 flex-grow-1">Empresa registrada en el sistema</p>
-                    <a href="/entrar_empresa/{{ emp[0] }}" class="btn btn-primary w-100 entrar-btn fw-bold rounded-3 py-2">
-                        <i class="bi bi-box-arrow-in-right me-2"></i> Entrar
-                    </a>
-                </div>
+    <div class="row g-3 mb-4">
+        <div class="col-sm-4">
+            <div class="sa-stat">
+                <div class="sa-stat-value">{{ total_empresas|default(empresas|length) }}</div>
+                <div class="sa-stat-label">Empresas registradas</div>
             </div>
         </div>
-        {% else %}
-        <div class="col-12">
-            <div class="card border-0 rounded-4 shadow-sm p-5 text-center">
-                <i class="bi bi-inbox display-4 text-muted mb-3"></i>
-                <h5 class="text-muted">No hay empresas registradas</h5>
-                <p class="text-muted small mb-0">Registre una empresa desde la base de datos para comenzar.</p>
+        <div class="col-sm-4">
+            <div class="sa-stat">
+                <div class="sa-stat-value text-success">{{ empresas_vigentes|default(0) }}</div>
+                <div class="sa-stat-label">Suscripción vigente</div>
             </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="sa-stat">
+                <div class="sa-stat-value text-secondary">{{ (total_empresas|default(empresas|length)) - (empresas_vigentes|default(0)) }}</div>
+                <div class="sa-stat-label">Sin vigencia / inactivas</div>
+            </div>
+        </div>
+    </div>
+
+    {% if empresas %}
+    <div class="sa-toolbar mb-4 d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div class="sa-search-wrap flex-grow-1">
+            <i class="bi bi-search"></i>
+            <input type="search" class="form-control" id="saBuscarEmpresa" placeholder="Buscar por nombre, NIT, NRC o ID…" autocomplete="off">
+        </div>
+        <span class="text-muted small fw-semibold" id="saContador">{{ empresas|length }} empresa(s)</span>
+    </div>
+
+    <div class="row g-3" id="saGridEmpresas">
+        {% for emp in empresas %}
+        {% set nombre = emp[1] or 'Sin nombre' %}
+        {% set nit = emp[2] if emp|length > 2 else '' %}
+        {% set nrc = emp[3] if emp|length > 3 else '' %}
+        {% set activa = emp[4] if emp|length > 4 else false %}
+        {% set vence = emp[5] if emp|length > 5 else none %}
+        {% set vigente = (vence and vence >= hoy) or (activa and not vence) %}
+        {% set palabras = nombre.split() %}
+        {% set iniciales = (palabras[0][:1] ~ (palabras[1][:1] if palabras|length > 1 else palabras[0][1:2]))|upper %}
+        <div class="col-md-6 col-xl-4 sa-empresa-item"
+             data-search="{{ (emp[0]|string ~ ' ' ~ nombre ~ ' ' ~ nit ~ ' ' ~ nrc)|lower }}">
+            <article class="sa-empresa-card" onclick="window.location.href='/entrar_empresa/{{ emp[0] }}';" role="button" tabindex="0"
+                     onkeydown="if(event.key==='Enter'){window.location.href='/entrar_empresa/{{ emp[0] }}';}">
+                <div class="d-flex gap-3 mb-3">
+                    <div class="sa-avatar" aria-hidden="true">{{ iniciales }}</div>
+                    <div class="flex-grow-1 min-width-0">
+                        <div class="d-flex align-items-start justify-content-between gap-2 mb-1">
+                            <h2 class="sa-empresa-name">{{ nombre }}</h2>
+                            <span class="sa-chip sa-chip-id flex-shrink-0">#{{ emp[0] }}</span>
+                        </div>
+                        {% if vigente and vence %}
+                        <span class="sa-chip sa-chip-ok"><i class="bi bi-check-circle-fill me-1"></i>Vigente hasta {{ vence.strftime('%d/%m/%Y') }}</span>
+                        {% elif vigente %}
+                        <span class="sa-chip sa-chip-ok"><i class="bi bi-check-circle-fill me-1"></i>Activa</span>
+                        {% elif vence and vence < hoy %}
+                        <span class="sa-chip sa-chip-warn"><i class="bi bi-exclamation-circle me-1"></i>Venció {{ vence.strftime('%d/%m/%Y') }}</span>
+                        {% else %}
+                        <span class="sa-chip sa-chip-off"><i class="bi bi-pause-circle me-1"></i>Inactiva</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="sa-meta mb-2">
+                    {% if nit %}<div><strong>NIT:</strong> {{ nit }}</div>{% endif %}
+                    {% if nrc %}<div><strong>NRC:</strong> {{ nrc }}</div>{% endif %}
+                    {% if not nit and not nrc %}<div class="text-secondary">Sin NIT/NRC registrado</div>{% endif %}
+                </div>
+                <div class="sa-entrar">
+                    <a href="/entrar_empresa/{{ emp[0] }}" class="btn btn-primary w-100" onclick="event.stopPropagation();">
+                        <i class="bi bi-box-arrow-in-right me-1"></i> Gestionar empresa
+                    </a>
+                </div>
+            </article>
         </div>
         {% endfor %}
     </div>
+
+    <div class="sa-empty sa-no-results mt-4" id="saSinResultados">
+        <i class="bi bi-search display-6 text-muted mb-2 d-block"></i>
+        <h5 class="fw-bold text-secondary">No hay coincidencias</h5>
+        <p class="text-muted small mb-0">Pruebe otro término de búsqueda.</p>
+    </div>
+
+    {% else %}
+    <div class="sa-empty">
+        <i class="bi bi-building display-4 text-muted mb-3 d-block"></i>
+        <h5 class="fw-bold">No hay empresas registradas</h5>
+        <p class="text-muted small mb-3">Cree una empresa desde configuración o el proceso de alta en el sistema.</p>
+        <a href="{{ url_for('admin.configuracion') }}" class="btn btn-primary rounded-3 fw-bold">
+            <i class="bi bi-plus-lg me-1"></i> Ir a configuración
+        </a>
+    </div>
+    {% endif %}
 </div>
+
+{% if empresas %}
+<script>
+(function () {
+    var input = document.getElementById('saBuscarEmpresa');
+    var items = document.querySelectorAll('.sa-empresa-item');
+    var contador = document.getElementById('saContador');
+    var sinResultados = document.getElementById('saSinResultados');
+    if (!input || !items.length) return;
+
+    function filtrar() {
+        var q = (input.value || '').trim().toLowerCase();
+        var visibles = 0;
+        items.forEach(function (el) {
+            var match = !q || (el.getAttribute('data-search') || '').indexOf(q) !== -1;
+            el.style.display = match ? '' : 'none';
+            if (match) visibles++;
+        });
+        if (contador) {
+            contador.textContent = visibles + ' de ' + items.length + ' empresa(s)';
+        }
+        if (sinResultados) {
+            sinResultados.classList.toggle('is-visible', visibles === 0);
+        }
+    }
+    input.addEventListener('input', filtrar);
+})();
+</script>
+{% endif %}
 {% endblock %}

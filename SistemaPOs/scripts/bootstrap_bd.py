@@ -61,6 +61,8 @@ SQL_SCRIPTS = (
     "sql/schema_producto_presentacion.sql",
     "sql/schema_numero_caja.sql",
     "sql/schema_ventas_ambiente_emision.sql",
+    "sql/schema_historial_usuarios.sql",
+    "sql/schema_productos_baja_logica.sql",
 )
 
 

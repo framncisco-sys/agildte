@@ -175,3 +175,39 @@ def tabla_existe(cur) -> bool:
         """
     )
     return cur.fetchone() is not None
+
+
+_DDL_HISTORIAL_STMTS = (
+    """
+    CREATE TABLE IF NOT EXISTS historial_usuarios (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+        username VARCHAR(100),
+        evento VARCHAR(50) NOT NULL,
+        detalle TEXT,
+        ip_address VARCHAR(45),
+        user_agent TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_historial_usuarios_usuario_id ON historial_usuarios(usuario_id)",
+    "CREATE INDEX IF NOT EXISTS idx_historial_usuarios_created_at ON historial_usuarios(created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_historial_usuarios_evento ON historial_usuarios(evento)",
+)
+
+
+def asegurar_tabla(cur) -> bool:
+    """Crea la tabla historial_usuarios si no existe. Retorna True si quedó disponible."""
+    if tabla_existe(cur):
+        return True
+    try:
+        for stmt in _DDL_HISTORIAL_STMTS:
+            cur.execute(stmt)
+        cur.connection.commit()
+        return tabla_existe(cur)
+    except Exception:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+        return False

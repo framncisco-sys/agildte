@@ -175,8 +175,6 @@ def cambiar_modo_operacion_agildte(
         raise AgilDTEAPIError("AgilDTE no configurado (AGILDTE_BASE_URL).")
     cli = cliente or login_client_from_request_or_env(trust_request_bearer=False)
     eid = int(empresa_id)
-    if cli.empresa_id is not None:
-        eid = int(cli.empresa_id)
     data = cli.post_json(
         f"{API_PREFIX}/empresas/{eid}/modo-operacion/",
         {"modo": (modo or "").strip().lower(), "confirmar_reinicio": bool(confirmar_reinicio)},
@@ -200,8 +198,6 @@ def obtener_ambiente_emresa_agildte(
     try:
         cli = cliente or login_client_from_request_or_env(trust_request_bearer=False)
         eid = int(empresa_id)
-        if cli.empresa_id is not None:
-            eid = int(cli.empresa_id)
         data = cli.get_json(f"{API_PREFIX}/empresas/{eid}/")
         if isinstance(data, dict):
             amb = (data.get("ambiente") or "").strip()
@@ -210,6 +206,41 @@ def obtener_ambiente_emresa_agildte(
     except Exception:
         pass
     return "01"
+
+
+def obtener_empresa_agildte(
+    empresa_id: int,
+    cliente: "AgilDTEClient | None" = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """
+    GET /api/empresas/{id}/ — datos maestros en AgilDTE (NIT, NRC, actividad, ambiente).
+    Usa siempre el id solicitado (no el empresa_default del JWT).
+    """
+    if not resolve_agildte_base_url():
+        return None, "AgilDTE no configurado (AGILDTE_BASE_URL)."
+    try:
+        cli = cliente or login_client_from_request_or_env(trust_request_bearer=False)
+        data = cli.get_json(f"{API_PREFIX}/empresas/{int(empresa_id)}/")
+        if isinstance(data, dict):
+            return data, None
+        return None, "Respuesta inválida del servidor AgilDTE."
+    except AgilDTEForbiddenError:
+        return None, "Sin permiso para ver esta empresa en AgilDTE (403)."
+    except (AgilDTEAuthError, AgilDTEUnauthorizedError) as e:
+        hint = (
+            "Entre desde el portal «Abrir PosAgil» (recomendado) o defina AGILDTE_USERNAME y "
+            "AGILDTE_PASSWORD en .env / docker-compose con un usuario Django real (no los valores de ejemplo)."
+        )
+        if not _credenciales_servicio_validas():
+            hint = (
+                "AGILDTE_USERNAME/AGILDTE_PASSWORD no están configurados (siguen los valores de ejemplo en .env). "
+                "Use un usuario Django con acceso a la empresa o entre por SSO desde el portal."
+            )
+        return None, f"No se pudo autenticar en AgilDTE: {e}. {hint}"
+    except AgilDTEAPIError as e:
+        return None, str(e)
+    except Exception as e:
+        return None, str(e)
 
 
 def check_agildte_api_reachable(timeout: float = 4.0) -> dict[str, Any]:
@@ -1023,13 +1054,30 @@ def _raise_missing_service_credentials_error() -> None:
     )
 
 
+def _credenciales_servicio_validas() -> bool:
+    user = (os.environ.get("AGILDTE_USERNAME") or os.environ.get("AGILDTE_USER") or "").strip()
+    password = (os.environ.get("AGILDTE_PASSWORD") or "").strip()
+    if not user or not password:
+        return False
+    placeholders = {
+        "tu_usuario_django",
+        "tu_clave",
+        "changeme",
+        "password",
+        "admin",
+    }
+    if user.lower() in placeholders or password.lower() in placeholders:
+        return False
+    return True
+
+
 def login_client_from_env() -> AgilDTEClient:
     """
     Crea cliente, lee AGILDTE_USERNAME y AGILDTE_PASSWORD, ejecuta login.
     """
     user = (os.environ.get("AGILDTE_USERNAME") or os.environ.get("AGILDTE_USER") or "").strip()
     password = os.environ.get("AGILDTE_PASSWORD") or ""
-    if not user or not password:
+    if not _credenciales_servicio_validas():
         _raise_missing_service_credentials_error()
     cli = client_from_env()
     cli.login(user, password)

@@ -15,6 +15,19 @@
         </div>
     </div>
 
+    {% if agildte_configured %}
+    <div class="alert {{ 'alert-success' if agildte_empresa_ok else 'alert-warning' }} small py-2 mb-4">
+        {% if agildte_empresa_ok %}
+        <i class="bi bi-cloud-check me-1"></i> Datos enlazados con AgilDTE (empresa #{{ emp_id }}).
+        {% if datos_completados_agildte %} Campos vacíos en POS se completaron con el catálogo central.{% endif %}
+        {% elif agildte_empresa_error %}
+        <i class="bi bi-cloud-slash me-1"></i> No se pudo leer la empresa en AgilDTE: {{ agildte_empresa_error }}
+        {% else %}
+        <i class="bi bi-cloud me-1"></i> AgilDTE configurado; seleccione o guarde una empresa para sincronizar datos.
+        {% endif %}
+    </div>
+    {% endif %}
+
     <div class="row">
         <div class="col-md-6">
             <div class="card p-4 mb-4 border-2 {{ 'border-warning' if es_modo_prueba else 'border-success' }}">
@@ -53,7 +66,20 @@
                 </form>
             </div>
             <div class="card p-4">
-                <h5 class="fw-bold mb-3">Datos de la Empresa</h5>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <h5 class="fw-bold mb-0">Datos de la Empresa</h5>
+                    {% if agildte_configured %}
+                    <form action="/configuracion/sincronizar_agildte" method="POST" class="m-0">
+                        <input type="hidden" name="empresa_id" value="{{ emp_id }}">
+                        <button type="submit" class="btn btn-outline-primary btn-sm fw-bold">
+                            <i class="bi bi-cloud-download"></i> Importar desde AgilDTE
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% if not empresa %}
+                <div class="alert alert-warning">No hay empresa seleccionada. Elija una en el listado o cree una nueva.</div>
+                {% endif %}
                 <form action="/guardar_configuracion" method="POST">
                     {% if es_super and empresas %}
                     <div class="mb-3">
@@ -69,34 +95,34 @@
                     {% endif %}
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Razón Social / Nombre Comercial</label>
-                        <input type="text" name="nombre" class="form-control" value="{{ (empresa[1] or '') if empresa and empresa|length > 1 else '' }}" required>
+                        <input type="text" name="nombre" class="form-control" value="{{ empresa.nombre_comercial if empresa else '' }}" required>
                     </div>
                     <div class="row mb-3">
                         <div class="col-6">
                             <label class="form-label small fw-bold">NIT</label>
-                            <input type="text" id="nit_empresa" name="nit" class="form-control" value="{{ (empresa[2] or '') if empresa and empresa|length > 2 else '' }}" placeholder="0614-161386-001-4">
+                            <input type="text" id="nit_empresa" name="nit" class="form-control" value="{{ empresa.nit if empresa else '' }}" placeholder="0614-161386-001-4">
                         </div>
                         <div class="col-6">
                             <label class="form-label small fw-bold">NRC</label>
-                            <input type="text" id="nrc_empresa" name="nrc" class="form-control" value="{{ (empresa[3] or '') if empresa and empresa|length > 3 else '' }}" placeholder="123456-7">
+                            <input type="text" id="nrc_empresa" name="nrc" class="form-control" value="{{ empresa.nrc if empresa else '' }}" placeholder="123456-7">
                         </div>
                     </div>
-                    {% set _desc_act_emp = (empresa[5] or '') if empresa and empresa|length > 5 else '' %}
+                    {% set _desc_act_emp = empresa.actividad_economica if empresa else '' %}
                     {% with field_name='codigo_actividad_economica', field_id='actividad_empresa', label='Actividad Económica (código)', codigo_value=codigo_actividad_empresa|default(''), descripcion_value=_desc_act_emp, desc_hidden_name='actividad', hint='Código oficial MH. Mismo catálogo que AgilDTE.' %}
                     {% include '_campo_actividad_economica.html' %}
                     {% endwith %}
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Dirección de Casa Matriz</label>
-                        <textarea name="direccion" class="form-control" rows="2">{{ (empresa[6] or '') if empresa and empresa|length > 6 else '' }}</textarea>
+                        <textarea name="direccion" class="form-control" rows="2">{{ empresa.direccion if empresa else '' }}</textarea>
                     </div>
                     <div class="row mb-3">
                         <div class="col-6">
                             <label class="form-label small fw-bold">Teléfono</label>
-                            <input type="text" id="tel_empresa" name="tel" class="form-control" value="{{ (empresa[7] or '') if empresa and empresa|length > 7 else '' }}" placeholder="2222-2222">
+                            <input type="text" id="tel_empresa" name="tel" class="form-control" value="{{ empresa.telefono if empresa else '' }}" placeholder="2222-2222">
                         </div>
                         <div class="col-6">
                             <label class="form-label small fw-bold">Correo (DTE)</label>
-                            <input type="email" id="correo_empresa" name="correo" class="form-control" value="{{ (empresa[8] or '') if empresa and empresa|length > 8 else '' }}" placeholder="correo@empresa.com">
+                            <input type="email" id="correo_empresa" name="correo" class="form-control" value="{{ empresa.correo if empresa else '' }}" placeholder="correo@empresa.com">
                         </div>
                     </div>
                     <div class="mb-3">
@@ -108,13 +134,14 @@
                     </div>
                     <div class="mb-3">
                         <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" name="suscripcion_activa" {% if empresa and empresa|length > 10 and empresa[10] %}checked{% endif %}>
-                            <label class="form-check-label small fw-bold">Suscripción Activa</label>
+                            <input class="form-check-input" type="checkbox" name="suscripcion_activa" {% if empresa and empresa.suscripcion_activa %}checked{% endif %}>
+                            <label class="form-check-label small fw-bold">Suscripción activa (sin fecha de vencimiento)</label>
                         </div>
+                        <small class="text-muted">Si indica una <strong>fecha de vencimiento futura</strong>, la empresa queda vigente aunque este interruptor esté apagado.</small>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label small fw-bold">Fecha Vencimiento</label>
-                        <input type="date" name="vencimiento" class="form-control" value="{{ empresa[11].strftime('%Y-%m-%d') if empresa and empresa|length > 11 and empresa[11] else '' }}">
+                        <label class="form-label small fw-bold">Fecha vencimiento</label>
+                        <input type="date" name="vencimiento" class="form-control" value="{{ empresa.fecha_vencimiento.strftime('%Y-%m-%d') if empresa and empresa.fecha_vencimiento else '' }}">
                     </div>
                     <button type="submit" class="btn btn-primary w-100 fw-bold">Guardar Cambios</button>
                 </form>
@@ -148,19 +175,34 @@
                                 <td class="fw-bold">{{ emp[1] if emp|length > 1 else '—' }}</td>
                                 <td class="small">{{ emp[2] if emp|length > 2 else '—' }}</td>
                                 <td>
-                                    {% if emp|length > 4 and emp[4] %}
+                                    {% set emp_activa = emp[4] if emp|length > 4 else false %}
+                                    {% set emp_vence = emp[5] if emp|length > 5 else none %}
+                                    {% set emp_vigente = (emp_vence and emp_vence >= hoy) or (emp_activa and not emp_vence) %}
+                                    {% if emp_vigente and emp_vence %}
+                                    <span class="badge bg-success">Vigente</span>
+                                    <small class="d-block text-muted">Hasta {{ emp_vence.strftime('%d/%m/%Y') }}</small>
+                                    {% elif emp_vigente %}
                                     <span class="badge bg-success">Activa</span>
+                                    {% elif emp_vence %}
+                                    <span class="badge bg-warning text-dark">Vencida</span>
+                                    <small class="d-block text-muted">{{ emp_vence.strftime('%d/%m/%Y') }}</small>
                                     {% else %}
                                     <span class="badge bg-secondary">Inactiva</span>
                                     {% endif %}
-                                    {% if emp|length > 5 and emp[5] %}
-                                    <small class="d-block text-muted">Vence: {{ emp[5].strftime('%d/%m/%Y') }}</small>
-                                    {% endif %}
                                 </td>
-                                <td>
+                                <td class="text-nowrap">
                                     <a href="/configuracion?empresa={{ emp[0] if emp|length > 0 else '' }}" class="btn btn-sm btn-outline-primary" title="Configurar">
                                         <i class="bi bi-pencil"></i> Configurar
                                     </a>
+                                    {% if es_super %}
+                                    <form action="/configuracion/eliminar_empresa" method="POST" class="d-inline"
+                                          onsubmit="return confirm('¿Eliminar esta empresa y todos sus datos (sucursales, productos, etc.)? Esta acción no se puede deshacer.');">
+                                        <input type="hidden" name="empresa_id" value="{{ emp[0] if emp|length > 0 else '' }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar empresa">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
@@ -168,11 +210,7 @@
                     </table>
                 </div>
                 {% else %}
-                {% if es_super %}
-                <p class="small text-muted mb-0">No hay empresas registradas. Las empresas se crean desde la base de datos.</p>
-                {% else %}
-                <p class="small text-muted mb-0">Está configurando la empresa asignada a su usuario.</p>
-                {% endif %}
+                <p class="text-muted small mb-0">No hay empresas registradas en el POS.</p>
                 {% endif %}
                 <hr class="my-3">
                 <p class="small text-muted mb-0">
@@ -184,7 +222,6 @@
 </div>
 
 {% if es_super %}
-<!-- Modal Nueva Empresa - mismos campos que editar -->
 <div class="modal fade" id="modalNuevaEmpresa" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -201,11 +238,11 @@
                     <div class="row mb-3">
                         <div class="col-6">
                             <label class="form-label fw-bold">NIT</label>
-                            <input type="text" id="nit_nueva" name="nit" class="form-control" placeholder="0614-161386-001-4" title="Formato: 0614-161386-001-4 (opcional)">
+                            <input type="text" id="nit_nueva" name="nit" class="form-control" placeholder="0614-161386-001-4">
                         </div>
                         <div class="col-6">
                             <label class="form-label fw-bold">NRC</label>
-                            <input type="text" id="nrc_nueva" name="nrc" class="form-control" placeholder="123456-7" title="Formato: 123456-7 (opcional)">
+                            <input type="text" id="nrc_nueva" name="nrc" class="form-control" placeholder="123456-7">
                         </div>
                     </div>
                     <div class="mb-3">
@@ -220,7 +257,7 @@
                     <div class="row mb-3">
                         <div class="col-6">
                             <label class="form-label fw-bold">Teléfono</label>
-                            <input type="text" id="tel_nueva" name="telefono" class="form-control" placeholder="2222-2222" title="Formato: 2222-2222 (opcional)">
+                            <input type="text" id="tel_nueva" name="telefono" class="form-control" placeholder="2222-2222">
                         </div>
                         <div class="col-6">
                             <label class="form-label fw-bold">Correo (DTE)</label>
@@ -256,8 +293,7 @@ function confirmarModoOperacion(ev) {
     if (online) {
         const ok = window.confirm(
             '¿Activar modo ONLINE (producción)?\n\n' +
-            'Se reiniciarán los correlativos de facturas electrónicas y los números de ticket/factura de caja para este año.\n' +
-            'Los documentos emitidos en prueba no se mezclarán con los de producción.\n\n' +
+            'Se reiniciarán los correlativos de facturas electrónicas y los números de ticket/factura de caja para este año.\n\n' +
             '¿Continuar?'
         );
         if (!ok) {
@@ -274,13 +310,11 @@ function confirmarModoOperacion(ev) {
     const opcionesNit = { mask: '0000-000000-000-0', lazy: false, overwrite: false };
     const opcionesNrc = { mask: '000000-0', lazy: false, overwrite: false };
     const opcionesTel = { mask: '0000-0000', lazy: false, overwrite: false };
-
     function aplicarMascara(el, opts) {
         if (!el || typeof IMask === 'undefined') return;
         if (el._imask) { el._imask.destroy(); el._imask = null; }
         el._imask = IMask(el, opts);
     }
-
     function aplicarMascaras() {
         aplicarMascara(document.getElementById('nit_empresa'), opcionesNit);
         aplicarMascara(document.getElementById('nrc_empresa'), opcionesNrc);
@@ -289,15 +323,10 @@ function confirmarModoOperacion(ev) {
         aplicarMascara(document.getElementById('nrc_nueva'), opcionesNrc);
         aplicarMascara(document.getElementById('tel_nueva'), opcionesTel);
     }
-
     aplicarMascaras();
     const modalNueva = document.getElementById('modalNuevaEmpresa');
     if (modalNueva) {
-        modalNueva.addEventListener('shown.bs.modal', function() {
-            aplicarMascara(document.getElementById('nit_nueva'), opcionesNit);
-            aplicarMascara(document.getElementById('nrc_nueva'), opcionesNrc);
-            aplicarMascara(document.getElementById('tel_nueva'), opcionesTel);
-        });
+        modalNueva.addEventListener('shown.bs.modal', aplicarMascaras);
     }
 })();
 </script>

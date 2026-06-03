@@ -39,6 +39,8 @@ services:
       - ./scripts/sql/schema_producto_presentacion.sql:/docker-entrypoint-initdb.d/05-posagil-presentaciones.sql:ro
       - ./scripts/sql/schema_numero_caja.sql:/docker-entrypoint-initdb.d/06-posagil-numero-caja.sql:ro
       - ./scripts/sql/schema_ventas_ambiente_emision.sql:/docker-entrypoint-initdb.d/07-posagil-ambiente-emision.sql:ro
+      - ./scripts/sql/schema_historial_usuarios.sql:/docker-entrypoint-initdb.d/08-posagil-historial-usuarios.sql:ro
+      - ./scripts/sql/schema_productos_baja_logica.sql:/docker-entrypoint-initdb.d/09-posagil-productos-baja.sql:ro
     ports:
       - "${POSAGIL_PG_HOST_PORT:-5433}:5432"
     healthcheck:

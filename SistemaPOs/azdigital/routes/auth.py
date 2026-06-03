@@ -77,7 +77,10 @@ def _bootstrap_session_from_row(db: ConexionDB, u: tuple) -> None:
         conn2 = psycopg2.connect(**db.config)
         cur2 = conn2.cursor()
         emp = empresas_repo.get_empresa(cur2, session["empresa_id"])
-        session["empresa_nombre"] = (emp[1] or emp[9] or "Empresa") if emp and len(emp) > 9 else "Empresa"
+        vista = empresas_repo.empresa_row_a_vista(emp) if emp else None
+        session["empresa_nombre"] = (
+            (vista.get("nombre_comercial") or vista.get("nombre") or "Empresa") if vista else "Empresa"
+        )
         cur2.close()
         conn2.close()
     except Exception:

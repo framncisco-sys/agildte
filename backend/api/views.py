@@ -678,6 +678,20 @@ class EmpresaViewSet(viewsets.ModelViewSet):
             return Empresa.objects.none()
         return Empresa.objects.filter(id__in=empresa_ids).order_by('nombre')
 
+    def get_permissions(self):
+        from .permissions import IsAdminUser
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [DRFIsAuthenticated(), IsAdminUser()]
+        return [DRFIsAuthenticated()]
+
+    def destroy(self, request, *args, **kwargs):
+        if Empresa.objects.count() <= 1:
+            return Response(
+                {'detail': 'No puede eliminar la única empresa del sistema.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
 
 class ActividadEconomicaLimitPagination(LimitOffsetPagination):
     default_limit = 20

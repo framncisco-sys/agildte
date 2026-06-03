@@ -128,6 +128,14 @@ def provision_if_missing(cur, me_json: dict[str, Any]) -> tuple[bool, str | None
         )
         if cur.rowcount == 0:
             ensure_usuario_from_agildte(cur, username, pos_rol, empresa_id)
+        try:
+            from azdigital.integration.agildte_client import obtener_empresa_agildte
+
+            ag_data, _ag_err = obtener_empresa_agildte(empresa_id)
+            if ag_data:
+                empresas_repo.aplicar_empresa_agildte_en_bd(cur, empresa_id, ag_data)
+        except Exception:
+            pass
     except Exception as e:
         return False, str(e)
     return True, None

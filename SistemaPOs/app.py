@@ -184,6 +184,14 @@ def create_app() -> Flask:
     app.register_blueprint(pos_bp)
     app.register_blueprint(admin_bp)
 
+    # Ruta de baja en el mismo prefijo que /configuracion (evita 404 si el worker no recargó admin.py)
+    from azdigital.routes.admin import configuracion_eliminar_empresa
+    app.add_url_rule(
+        "/configuracion/eliminar_empresa",
+        view_func=configuracion_eliminar_empresa,
+        methods=["POST"],
+    )
+
     @app.before_request
     def _sync_agildte_role_from_token():
         """Actualiza usuarios.rol desde /api/auth/me/ si hay JWT en sesión (promoción cajero→admin en AgilDTE)."""
@@ -260,6 +268,7 @@ def create_app() -> Flask:
             puede_ver_reportes_contables,
             puede_ver_administracion,
             puede_gestionar_ventas,
+            puede_dar_baja_producto,
         )
         ctx = {
             "alertas_inventario": [],
@@ -270,6 +279,7 @@ def create_app() -> Flask:
             "puede_ver_reportes_contables": False,
             "puede_ver_administracion": False,
             "puede_gestionar_ventas": False,
+            "puede_dar_baja_producto": False,
             "es_super": False,
         }
         if not session.get("username"):
@@ -298,6 +308,7 @@ def create_app() -> Flask:
         ctx["puede_ver_reportes_contables"] = puede_ver_reportes_contables(rol)
         ctx["puede_ver_administracion"] = puede_ver_administracion(rol)
         ctx["puede_gestionar_ventas"] = puede_gestionar_ventas(rol)
+        ctx["puede_dar_baja_producto"] = puede_dar_baja_producto(rol)
         ctx["es_super"] = rol in ("ADMIN", "SUPERADMIN")
         try:
             import psycopg2

@@ -24,6 +24,41 @@ def _productos_tiene_columna(cur, nombre_columna: str) -> bool:
     return cur.fetchone() is not None
 
 
+def asegurar_columnas_baja(cur) -> bool:
+    """Crea columnas activo/motivo_baja si faltan (migración en caliente)."""
+    if _productos_tiene_columna(cur, "activo"):
+        return True
+    try:
+        cur.execute("ALTER TABLE productos ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT TRUE")
+        cur.execute("ALTER TABLE productos ADD COLUMN IF NOT EXISTS motivo_baja TEXT")
+        cur.execute("ALTER TABLE productos ADD COLUMN IF NOT EXISTS fecha_baja TIMESTAMP")
+        cur.execute(
+            "ALTER TABLE productos ADD COLUMN IF NOT EXISTS usuario_baja_id "
+            "INTEGER REFERENCES usuarios(id) ON DELETE SET NULL"
+        )
+        cur.execute(
+            "ALTER TABLE productos ADD COLUMN IF NOT EXISTS usuario_baja_username VARCHAR(100)"
+        )
+        cur.connection.commit()
+        return _productos_tiene_columna(cur, "activo")
+    except Exception:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+        return False
+
+
+def _filtro_activos_sql(cur, alias: str | None = "p", *, solo_activos: bool = True) -> str:
+    """Fragmento AND para inventario/POS (activos) o reporte de bajas (inactivos)."""
+    if not _productos_tiene_columna(cur, "activo"):
+        return ""
+    col = f"{alias}.activo" if alias else "activo"
+    if solo_activos:
+        return f" AND COALESCE({col}, TRUE) = TRUE"
+    return f" AND COALESCE({col}, TRUE) = FALSE"
+
+
 def _sql_existencia_pos(alias: str = "p", sucursal_id_usuario: int | None = None) -> tuple[str, list[Any]]:
     """
     Stock vendible en POS. Si hay ``producto_stock_sucursal`` pero ninguna fila para la sucursal
@@ -98,6 +133,7 @@ def _buscar_via_presentacion_codigo_barra(
     if sucursal_id_usuario is not None:
         q += " AND (p.sucursal_id IS NULL OR p.sucursal_id = %s)"
         params.append(sucursal_id_usuario)
+    q += _filtro_activos_sql(cur, "p", solo_activos=True)
     q += " LIMIT 1"
     cur.execute(q, tuple(params))
     return cur.fetchone()
@@ -120,6 +156,7 @@ def buscar_por_codigo(cur, codigo: str, empresa_id: int = None, sucursal_id_usua
     if sucursal_id_usuario is not None:
         q += " AND (p.sucursal_id IS NULL OR p.sucursal_id = %s)"
         params.append(sucursal_id_usuario)
+    q += _filtro_activos_sql(cur, "p", solo_activos=True)
     try:
         cur.execute(q, tuple(params))
         r = cur.fetchone()
@@ -177,6 +214,7 @@ def buscar_por_nombre(cur, q: str, limit: int = 10, empresa_id: int = None, sucu
     if sucursal_id_usuario is not None:
         sql += " AND (p.sucursal_id IS NULL OR p.sucursal_id = %s)"
         params.append(sucursal_id_usuario)
+    sql += _filtro_activos_sql(cur, "p", solo_activos=True)
     sql += " LIMIT %s"
     params.append(limit)
     try:
@@ -231,7 +269,7 @@ def listar_catalogo_pos_modal(
             {ex_sql} AS existencia
         FROM productos p
         WHERE p.empresa_id = %s
-    """ + filtro_suc_prod + """
+    """ + filtro_suc_prod + _filtro_activos_sql(cur, "p", solo_activos=True) + """
         ORDER BY UPPER(p.nombre)
         LIMIT %s
     """
@@ -241,12 +279,13 @@ def listar_catalogo_pos_modal(
         return list(cur.fetchall() or [])
     except Exception:
         cur.connection.rollback()
+    fa = _filtro_activos_sql(cur, "p", solo_activos=True)
     sql_simple = (
         "SELECT p.id, p.nombre, p.precio_unitario, p.codigo_barra, "
         "COALESCE(p.promocion_tipo, ''), COALESCE(p.promocion_valor, 0), "
         "COALESCE(p.fraccionable, FALSE), p.unidades_por_caja, COALESCE(p.unidades_por_docena, 12), "
         "COALESCE(NULLIF(TRIM(p.mh_codigo_unidad), ''), '59'), COALESCE(p.stock_actual, 0) "
-        "FROM productos p WHERE p.empresa_id = %s" + filtro_suc_prod + " ORDER BY UPPER(p.nombre) LIMIT %s"
+        "FROM productos p WHERE p.empresa_id = %s" + filtro_suc_prod + fa + " ORDER BY UPPER(p.nombre) LIMIT %s"
     )
     try:
         cur.execute(sql_simple, tuple([empresa_id] + params + [limit]))
@@ -283,7 +322,7 @@ def listar_catalogo_pos_modal_global(
             {ex_sql} AS existencia
         FROM productos p
         WHERE 1=1
-    """ + filtro_suc_prod + """
+    """ + filtro_suc_prod + _filtro_activos_sql(cur, "p", solo_activos=True) + """
         ORDER BY UPPER(p.nombre)
         LIMIT %s
     """
@@ -293,12 +332,13 @@ def listar_catalogo_pos_modal_global(
         return list(cur.fetchall() or [])
     except Exception:
         cur.connection.rollback()
+    fa = _filtro_activos_sql(cur, "p", solo_activos=True)
     sql_simple = (
         "SELECT p.id, p.nombre, p.precio_unitario, p.codigo_barra, "
         "COALESCE(p.promocion_tipo, ''), COALESCE(p.promocion_valor, 0), "
         "COALESCE(p.fraccionable, FALSE), p.unidades_por_caja, COALESCE(p.unidades_por_docena, 12), "
         "COALESCE(NULLIF(TRIM(p.mh_codigo_unidad), ''), '59'), COALESCE(p.stock_actual, 0) "
-        "FROM productos p WHERE 1=1" + filtro_suc_prod + " ORDER BY UPPER(p.nombre) LIMIT %s"
+        "FROM productos p WHERE 1=1" + filtro_suc_prod + fa + " ORDER BY UPPER(p.nombre) LIMIT %s"
     )
     try:
         cur.execute(sql_simple, tuple(params + [limit]))
@@ -406,11 +446,12 @@ def incrementar_stock(cur, producto_id: int, cantidad: float) -> None:
 
 
 def listar_inventario(cur, limit: int = 500, empresa_id: int = None):
+    fa = _filtro_activos_sql(cur, "p", solo_activos=True)
     try:
         if empresa_id:
             try:
                 cur.execute(
-                    """
+                    f"""
                     SELECT p.id, p.codigo_barra, p.nombre, COALESCE(p.precio_unitario, 0), COALESCE(p.stock_actual, 0),
                            p.empresa_id, p.sucursal_id,
                            COALESCE(e.nombre_comercial, e.nombre, '—'), COALESCE(s.nombre, ''),
@@ -421,7 +462,7 @@ def listar_inventario(cur, limit: int = 500, empresa_id: int = None):
                     FROM productos p
                     LEFT JOIN empresas e ON e.id = p.empresa_id
                     LEFT JOIN sucursales s ON s.id = p.sucursal_id
-                    WHERE p.empresa_id = %s
+                    WHERE p.empresa_id = %s{fa}
                     ORDER BY p.id DESC
                     LIMIT %s
                     """,
@@ -439,31 +480,34 @@ def listar_inventario(cur, limit: int = 500, empresa_id: int = None):
                             FROM productos p
                             LEFT JOIN empresas e ON e.id = p.empresa_id
                             LEFT JOIN sucursales s ON s.id = p.sucursal_id
-                            WHERE p.empresa_id = %s ORDER BY p.id DESC LIMIT %s""",
+                            WHERE p.empresa_id = %s{fa} ORDER BY p.id DESC LIMIT %s""",
                         (empresa_id, limit),
                     )
                 except Exception:
                     cur.connection.rollback()
+                    fa0 = _filtro_activos_sql(cur, None, solo_activos=True)
                     cur.execute(
-                        "SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0), empresa_id, sucursal_id, '', 0, '', 0 FROM productos WHERE empresa_id = %s ORDER BY id DESC LIMIT %s",
+                        f"SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0), empresa_id, sucursal_id, '', 0, '', 0 FROM productos WHERE empresa_id = %s{fa0} ORDER BY id DESC LIMIT %s",
                         (empresa_id, limit),
                     )
         else:
+            fa0 = _filtro_activos_sql(cur, None, solo_activos=True)
             cur.execute(
-                "SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0) FROM productos ORDER BY id DESC LIMIT %s",
+                f"SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0) FROM productos WHERE 1=1{fa0} ORDER BY id DESC LIMIT %s",
                 (limit,),
             )
         rows = cur.fetchall()
     except Exception:
         cur.connection.rollback()
+        fa0 = _filtro_activos_sql(cur, None, solo_activos=True)
         if empresa_id:
             cur.execute(
-                "SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0), empresa_id, sucursal_id, '', 0, '', 0 FROM productos WHERE empresa_id = %s ORDER BY id DESC LIMIT %s",
+                f"SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0), empresa_id, sucursal_id, '', 0, '', 0 FROM productos WHERE empresa_id = %s{fa0} ORDER BY id DESC LIMIT %s",
                 (empresa_id, limit),
             )
         else:
             cur.execute(
-                "SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0) FROM productos ORDER BY id DESC LIMIT %s",
+                f"SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0) FROM productos WHERE 1=1{fa0} ORDER BY id DESC LIMIT %s",
                 (limit,),
             )
         rows = cur.fetchall()
@@ -480,9 +524,10 @@ def _umb_map_desde_presentaciones(cur, rows) -> dict[int, str]:
 
 def listar_inventario_global(cur, limit: int = 500):
     """Superusuario: mismas columnas normalizadas que listar_inventario (incl. texto stock y nombre UMB)."""
+    fa = _filtro_activos_sql(cur, "p", solo_activos=True)
     try:
         cur.execute(
-            """
+            f"""
             SELECT p.id, p.codigo_barra, p.nombre, COALESCE(p.precio_unitario, 0), COALESCE(p.stock_actual, 0),
                    p.empresa_id, p.sucursal_id,
                    COALESCE(e.nombre_comercial, e.nombre, '—'),
@@ -494,6 +539,7 @@ def listar_inventario_global(cur, limit: int = 500):
             FROM productos p
             LEFT JOIN empresas e ON e.id = p.empresa_id
             LEFT JOIN sucursales s ON s.id = p.sucursal_id
+            WHERE 1=1{fa}
             ORDER BY p.id DESC
             LIMIT %s
             """,
@@ -1006,29 +1052,144 @@ def actualizar_producto(
     )
 
 
-def eliminar_producto(cur, producto_id: int, empresa_id: int = None) -> bool:
+def dar_baja_producto(
+    cur,
+    producto_id: int,
+    motivo: str,
+    usuario_baja_id: int | None = None,
+    usuario_baja_username: str | None = None,
+    empresa_id: int | None = None,
+) -> bool:
+    """Baja lógica: activo=FALSE, conserva fila y motivo para reporte."""
+    asegurar_columnas_baja(cur)
+    motivo_txt = (motivo or "").strip()[:2000]
+    if not motivo_txt:
+        return False
+    uname = (usuario_baja_username or "").strip()[:100] or None
     if empresa_id:
-        cur.execute("DELETE FROM productos WHERE id = %s AND empresa_id = %s", (producto_id, empresa_id))
+        cur.execute(
+            """
+            UPDATE productos SET
+                activo = FALSE,
+                motivo_baja = %s,
+                fecha_baja = CURRENT_TIMESTAMP,
+                usuario_baja_id = %s,
+                usuario_baja_username = %s
+            WHERE id = %s AND empresa_id = %s
+              AND COALESCE(activo, TRUE) = TRUE
+            """,
+            (motivo_txt, usuario_baja_id, uname, producto_id, empresa_id),
+        )
     else:
-        cur.execute("DELETE FROM productos WHERE id = %s", (producto_id,))
+        cur.execute(
+            """
+            UPDATE productos SET
+                activo = FALSE,
+                motivo_baja = %s,
+                fecha_baja = CURRENT_TIMESTAMP,
+                usuario_baja_id = %s,
+                usuario_baja_username = %s
+            WHERE id = %s AND COALESCE(activo, TRUE) = TRUE
+            """,
+            (motivo_txt, usuario_baja_id, uname, producto_id),
+        )
     return cur.rowcount > 0
 
 
-def productos_stock_bajo(cur, umbral: float = 5, empresa_id: int = None):
+def eliminar_producto(cur, producto_id: int, empresa_id: int = None) -> bool:
+    """Compatibilidad: delega en baja lógica (requiere motivo vía dar_baja_producto)."""
+    return dar_baja_producto(cur, producto_id, "Baja sin motivo registrado (legacy)", empresa_id=empresa_id)
+
+
+def reactivar_producto(cur, producto_id: int, empresa_id: int | None = None) -> bool:
+    """Vuelve a activar un producto dado de baja; reaparece en inventario y caja."""
+    asegurar_columnas_baja(cur)
     if empresa_id:
         cur.execute(
-            """SELECT id, nombre, COALESCE(stock_actual, 0)
+            """
+            UPDATE productos SET
+                activo = TRUE,
+                motivo_baja = NULL,
+                fecha_baja = NULL,
+                usuario_baja_id = NULL,
+                usuario_baja_username = NULL
+            WHERE id = %s AND empresa_id = %s
+              AND COALESCE(activo, TRUE) = FALSE
+            """,
+            (producto_id, empresa_id),
+        )
+    else:
+        cur.execute(
+            """
+            UPDATE productos SET
+                activo = TRUE,
+                motivo_baja = NULL,
+                fecha_baja = NULL,
+                usuario_baja_id = NULL,
+                usuario_baja_username = NULL
+            WHERE id = %s AND COALESCE(activo, TRUE) = FALSE
+            """,
+            (producto_id,),
+        )
+    return cur.rowcount > 0
+
+
+def listar_productos_baja(cur, empresa_id: int | None = None, limit: int = 500) -> list:
+    """
+    Productos dados de baja para reporte.
+    (id, codigo, nombre, empresa, sucursal, motivo, fecha, usuario, rol_usuario, stock)
+    """
+    asegurar_columnas_baja(cur)
+    fb = _filtro_activos_sql(cur, "p", solo_activos=False)
+    cond = ""
+    params: list[Any] = []
+    if empresa_id is not None:
+        cond = " AND p.empresa_id = %s"
+        params.append(empresa_id)
+    params.append(limit)
+    try:
+        cur.execute(
+            f"""
+            SELECT p.id, p.codigo_barra, p.nombre,
+                   COALESCE(e.nombre_comercial, e.nombre, '—'),
+                   COALESCE(s.nombre, '—'),
+                   COALESCE(p.motivo_baja, '—'),
+                   TO_CHAR(p.fecha_baja, 'DD/MM/YYYY HH24:MI'),
+                   COALESCE(NULLIF(TRIM(p.usuario_baja_username), ''), u.username, '—'),
+                   COALESCE(u.rol, '—'),
+                   COALESCE(p.stock_actual, 0)
+            FROM productos p
+            LEFT JOIN empresas e ON e.id = p.empresa_id
+            LEFT JOIN sucursales s ON s.id = p.sucursal_id
+            LEFT JOIN usuarios u ON u.id = p.usuario_baja_id
+            WHERE 1=1{fb}{cond}
+            ORDER BY p.fecha_baja DESC NULLS LAST, p.id DESC
+            LIMIT %s
+            """,
+            tuple(params),
+        )
+        return cur.fetchall() or []
+    except Exception:
+        cur.connection.rollback()
+        return []
+
+
+def productos_stock_bajo(cur, umbral: float = 5, empresa_id: int = None):
+    fa = _filtro_activos_sql(cur, None, solo_activos=True)
+    if empresa_id:
+        cur.execute(
+            f"""SELECT id, nombre, COALESCE(stock_actual, 0)
                FROM productos
-               WHERE empresa_id = %s AND COALESCE(stock_actual, 0) < %s
+               WHERE empresa_id = %s AND COALESCE(stock_actual, 0) < %s{fa}
                ORDER BY stock_actual ASC NULLS FIRST
                LIMIT 20""",
             (empresa_id, umbral),
         )
     else:
         cur.execute(
-            """SELECT id, nombre, COALESCE(stock_actual, 0)
+            f"""SELECT id, nombre, COALESCE(stock_actual, 0)
                FROM productos
-               WHERE COALESCE(stock_actual, 0) < %s
+               WHERE COALESCE(stock_actual, 0) < %s{fa}
                ORDER BY stock_actual ASC NULLS FIRST
                LIMIT 20""",
             (umbral,),

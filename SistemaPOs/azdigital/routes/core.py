@@ -28,11 +28,7 @@ def tiene_suscripcion(empresa_id: int = 1) -> bool:
         if not estado:
             return False
         activa, vencimiento = estado[0], estado[1]
-        if activa is False:
-            return False
-        if vencimiento and vencimiento < hoy_sv():
-            return False
-        return True
+        return empresas_repo.es_suscripcion_vigente(bool(activa), vencimiento, hoy_sv())
     except Exception:
         # fail-closed
         return False
@@ -51,6 +47,8 @@ def entrar_empresa(empresa_id):
     from azdigital.decorators import _rol_desde_bd
     if _rol_desde_bd() not in ("ADMIN", "SUPERADMIN"):
         return redirect(url_for("core.index"))
+    from flask import flash
+
     try:
         db = ConexionDB()
         conn = psycopg2.connect(**db.config)
@@ -60,10 +58,15 @@ def entrar_empresa(empresa_id):
         conn.close()
         if emp:
             session["empresa_id"] = empresa_id
-            session["empresa_nombre"] = (emp[1] or emp[9] if len(emp) > 9 else emp[1]) or "Empresa"
-    except Exception:
-        pass
-    return redirect(url_for("core.dashboard"))
+            vista = empresas_repo.empresa_row_a_vista(emp)
+            session["empresa_nombre"] = (vista.get("nombre_comercial") or vista.get("nombre") or "Empresa") if vista else "Empresa"
+            return redirect(url_for("core.dashboard"))
+    except Exception as ex:
+        current_app.logger.exception("entrar_empresa")
+        flash(f"No se pudo abrir la empresa: {ex}", "danger")
+        return redirect(url_for("core.index"))
+    flash("Empresa no encontrada en el sistema POS.", "warning")
+    return redirect(url_for("core.index"))
 
 
 def _render_dashboard():
@@ -326,10 +329,21 @@ def index():
         db = ConexionDB()
         conn = psycopg2.connect(**db.config)
         cur = conn.cursor()
-        empresas = empresas_repo.listar_empresas(cur) or []
+        empresas = empresas_repo.listar_empresas_detalle(cur) or []
         cur.close()
         conn.close()
-        return render_template("dashboard_superadmin.html", empresas=empresas)
+        hoy = date.today()
+        total = len(empresas)
+        vigentes = sum(
+            1 for e in empresas if empresas_repo.es_suscripcion_vigente(bool(e[4]), e[5], hoy)
+        )
+        return render_template(
+            "dashboard_superadmin.html",
+            empresas=empresas,
+            total_empresas=total,
+            empresas_vigentes=vigentes,
+            hoy=hoy,
+        )
 
     if rol == "GERENTE":
         return redirect(url_for("core.dashboard"))

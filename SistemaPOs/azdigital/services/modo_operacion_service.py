@@ -29,8 +29,6 @@ def _ambiente_desde_agildte_api(empresa_id: int) -> str | None:
     try:
         cli = login_client_from_request_or_env(trust_request_bearer=False)
         eid = int(empresa_id)
-        if cli.empresa_id is not None:
-            eid = int(cli.empresa_id)
         data = cli.get_json(f"{API_PREFIX}/empresas/{eid}/")
         if isinstance(data, dict):
             amb = (data.get("ambiente") or "").strip()

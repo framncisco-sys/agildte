@@ -9,7 +9,7 @@ import unicodedata
 from io import BytesIO, StringIO
 
 import psycopg2
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import generate_password_hash
 
 from azdigital.decorators import admin_required, rol_requerido, superadmin_required
@@ -961,6 +961,66 @@ def reporte_lista_compras():
             empresas=empresas,
             emp_id=emp_id,
             es_super=es_super,
+        )
+    finally:
+        cur.close()
+        conn.close()
+
+
+@bp.route("/reactivar_producto/<int:producto_id>", methods=["POST"])
+@rol_requerido("GERENTE")
+def reactivar_producto_route(producto_id: int):
+    from azdigital.decorators import puede_dar_baja_producto
+
+    if not puede_dar_baja_producto((session.get("rol") or "").strip().upper()):
+        flash("Solo Gerente o superusuario puede reactivar productos.", "danger")
+        return redirect(url_for("admin.reporte_productos_baja"))
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        es_super = _es_superadmin_db(cur)
+        scope = None if es_super else _empresa_id()
+        productos_repo.asegurar_columnas_baja(cur)
+        if productos_repo.reactivar_producto(cur, producto_id, empresa_id=scope):
+            registrar_accion(
+                cur,
+                historial_usuarios_repo.EVENTO_PRODUCTO_EDITADO,
+                f"Producto #{producto_id} reactivado en inventario",
+            )
+            conn.commit()
+            flash("Producto reactivado. Ya aparece de nuevo en inventario y en caja.", "success")
+        else:
+            conn.rollback()
+            flash("No se pudo reactivar: no existe, no estaba de baja o no pertenece a su empresa.", "warning")
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error al reactivar: {str(e)}", "danger")
+    finally:
+        cur.close()
+        conn.close()
+    return redirect(url_for("admin.reporte_productos_baja"))
+
+
+@bp.route("/reporte/inventario/productos-baja")
+@rol_requerido("GERENTE")
+def reporte_productos_baja():
+    """Productos dados de baja (no eliminados de BD) con motivo y fecha."""
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        es_super = _es_superadmin_db(cur)
+        emp_id = None if es_super else _empresa_id()
+        productos_repo.asegurar_columnas_baja(cur)
+        filas = productos_repo.listar_productos_baja(cur, empresa_id=emp_id, limit=500)
+        empresas = (empresas_repo.listar_empresas(cur) or []) if es_super else []
+        return render_template(
+            "reporte_productos_baja.html",
+            filas=filas,
+            es_superadmin=es_super,
+            empresas=empresas,
+            empresa_id_filtro=emp_id,
         )
     finally:
         cur.close()
@@ -2776,8 +2836,6 @@ def configuracion():
     try:
         es_super = _es_superadmin_db(cur)
         emp_id = int(request.args.get("empresa") or 0) if es_super else _empresa_id()
-        if not emp_id:
-            emp_id = _empresa_id()
         if es_super:
             try:
                 empresas = empresas_repo.listar_empresas(cur) or []
@@ -2787,11 +2845,21 @@ def configuracion():
                 empresas_lista = empresas_repo.listar_empresas_detalle(cur) or []
             except Exception:
                 empresas_lista = [(e[0], e[1], "", "", False, None) for e in empresas] if empresas else []
+            if not emp_id:
+                if session.get("empresa_id"):
+                    emp_id = int(session["empresa_id"])
+                elif empresas:
+                    emp_id = int(empresas[0][0])
         else:
             empresas = []
             empresas_lista = []
+        if not emp_id:
+            emp_id = _empresa_id()
         empresa_row = db.ejecutar_sql("SELECT * FROM empresas WHERE id = %s", (emp_id,), es_select=True)
-        empresa = empresa_row[0] if empresa_row else None
+        empresa_raw = empresa_row[0] if empresa_row else None
+        empresa_v = empresas_repo.sanitizar_empresa_vista(
+            empresas_repo.empresa_row_a_vista(empresa_raw) or {"id": emp_id}
+        )
         actividades = []
         try:
             cur.execute("SELECT codigo, descripcion FROM actividades_economicas ORDER BY codigo")
@@ -2809,15 +2877,52 @@ def configuracion():
         from azdigital.services.modo_operacion_service import obtener_estado_modo
         from azdigital.integration.agildte_client import check_agildte_api_reachable, resolve_agildte_base_url
 
+        from azdigital.integration.agildte_client import obtener_empresa_agildte
+
+        agildte_data, agildte_empresa_error = obtener_empresa_agildte(emp_id)
+        if agildte_data and empresas_repo.empresa_necesita_sync_agildte(empresa_v):
+            try:
+                empresas_repo.aplicar_empresa_agildte_en_bd(cur, emp_id, agildte_data)
+                conn.commit()
+                empresa_row = db.ejecutar_sql("SELECT * FROM empresas WHERE id = %s", (emp_id,), es_select=True)
+                empresa_raw = empresa_row[0] if empresa_row else None
+                empresa_v = empresas_repo.sanitizar_empresa_vista(
+                    empresas_repo.empresa_row_a_vista(empresa_raw) or {"id": emp_id}
+                )
+                flash("Datos de la empresa actualizados desde AgilDTE.", "success")
+            except Exception as sync_ex:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                current_app.logger.warning("auto_sync_agildte empresa %s: %s", emp_id, sync_ex)
+        empresa_v = empresas_repo.combinar_empresa_con_agildte(empresa_v, agildte_data)
+        if codigo_act_emp and empresas_repo.limpiar_valor_formulario("codigo_actividad_economica", codigo_act_emp):
+            empresa_v["codigo_actividad_economica"] = codigo_act_emp
+        else:
+            codigo_act_emp = (empresa_v.get("codigo_actividad_economica") or "").strip()
+        if codigo_act_emp:
+            try:
+                desc_cat = actividades_repo.get_descripcion_por_codigo(cur, codigo_act_emp)
+                if desc_cat and not empresas_repo.limpiar_valor_formulario(
+                    "actividad_economica", empresa_v.get("actividad_economica") or ""
+                ):
+                    empresa_v["actividad_economica"] = desc_cat
+            except Exception:
+                pass
+
         modo_estado = obtener_estado_modo(emp_id, cur=cur)
         ag_st = check_agildte_api_reachable()
+        from azdigital.utils.fecha_sv import hoy_sv
+
         return render_template(
             "configuracion.html",
-            empresa=empresa,
+            empresa=empresa_v,
             empresas=empresas,
             empresas_lista=empresas_lista,
             emp_id=emp_id,
             es_super=es_super,
+            hoy=hoy_sv(),
             actividades=actividades,
             codigo_actividad_empresa=codigo_act_emp,
             empresa_es_gran_contribuyente=empresa_es_gran_contribuyente,
@@ -2826,6 +2931,9 @@ def configuracion():
             ambiente_emision=modo_estado.get("ambiente", "01"),
             agildte_configured=bool(resolve_agildte_base_url()),
             agildte_online=bool(ag_st.get("online")),
+            agildte_empresa_ok=bool(agildte_data),
+            agildte_empresa_error=agildte_empresa_error,
+            datos_completados_agildte=bool(empresa_v.get("_datos_agildte")),
         )
     finally:
         cur.close()
@@ -2908,6 +3016,89 @@ def crear_empresa_route():
     return _rd("/configuracion")
 
 
+def _eliminar_empresa_y_redirigir(empresa_id: int):
+    """Lógica compartida de baja de empresa (superadmin). Retorna redirect a configuración."""
+    from flask import redirect as _rd
+
+    if session.get("rol") not in ("ADMIN", "SUPERADMIN"):
+        return redirect(url_for("core.index"))
+    try:
+        empresa_id = int(empresa_id)
+    except (TypeError, ValueError):
+        flash("ID de empresa no válido.", "danger")
+        return _rd("/configuracion")
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        if empresas_repo.contar_empresas(cur) <= 1:
+            flash("No puede eliminar la única empresa del sistema.", "danger")
+            return _rd("/configuracion")
+        emp = empresas_repo.get_empresa(cur, empresa_id)
+        if not emp:
+            flash("Empresa no encontrada.", "danger")
+            return _rd("/configuracion")
+        nombre = ""
+        if len(emp) > 1:
+            nombre = (emp[1] or "").strip()
+        if not nombre and len(emp) > 2:
+            nombre = (emp[2] or "").strip()
+        try:
+            if not empresas_repo.eliminar_empresa(cur, empresa_id):
+                flash("No se pudo eliminar la empresa.", "danger")
+                return _rd("/configuracion")
+            registrar_accion(
+                cur,
+                historial_usuarios_repo.EVENTO_CONFIG_EMPRESA,
+                f"Empresa eliminada: {nombre or empresa_id}",
+            )
+            conn.commit()
+            flash(f"Empresa «{nombre or empresa_id}» eliminada correctamente.", "success")
+            restantes = empresas_repo.listar_empresas(cur) or []
+            if restantes:
+                return _rd(f"/configuracion?empresa={restantes[0][0]}")
+            return _rd("/configuracion")
+        except Exception as e:
+            conn.rollback()
+            err = str(e).lower()
+            if "foreign key" in err or "violates" in err or "restrict" in err:
+                flash(
+                    "No se puede eliminar: la empresa tiene datos vinculados que no se pueden borrar automáticamente. "
+                    "Elimine o reasigne usuarios, ventas o registros asociados e intente de nuevo.",
+                    "danger",
+                )
+            else:
+                flash(f"Error al eliminar: {str(e)}", "danger")
+    finally:
+        cur.close()
+        conn.close()
+    return _rd("/configuracion")
+
+
+@bp.route("/configuracion/eliminar_empresa", methods=["POST"])
+@superadmin_required
+def configuracion_eliminar_empresa():
+    """Elimina empresa desde el listado de Configuración (misma ruta base que /configuracion)."""
+    raw = (request.form.get("empresa_id") or "").strip()
+    try:
+        eid = int(raw)
+    except (TypeError, ValueError):
+        flash("ID de empresa no válido.", "danger")
+        from flask import redirect as _rd
+        return _rd("/configuracion")
+    return _eliminar_empresa_y_redirigir(eid)
+
+
+@bp.route("/eliminar_empresa/<int:empresa_id>", methods=["GET", "POST"])
+@superadmin_required
+def eliminar_empresa_route(empresa_id: int):
+    if request.method == "GET":
+        from flask import redirect as _rd
+        flash("Use el botón Eliminar en Configuración de empresa.", "warning")
+        return _rd("/configuracion")
+    return _eliminar_empresa_y_redirigir(empresa_id)
+
+
 @bp.route("/configuracion/modo_operacion", methods=["POST"])
 @superadmin_required
 def configuracion_modo_operacion():
@@ -2958,6 +3149,55 @@ def configuracion_modo_operacion():
     return _rd(f"/configuracion?empresa={emp_id}")
 
 
+@bp.route("/configuracion/sincronizar_agildte", methods=["POST"])
+@superadmin_required
+def configuracion_sincronizar_agildte():
+    """Copia datos maestros desde AgilDTE a la BD local del POS."""
+    from flask import redirect as _rd
+
+    emp_form = request.form.get("empresa_id")
+    emp_id = int(emp_form) if emp_form and str(emp_form).isdigit() else _empresa_id()
+    from azdigital.integration.agildte_client import obtener_empresa_agildte
+
+    agildte_data, err = obtener_empresa_agildte(emp_id)
+    if err or not agildte_data:
+        flash(err or "No se obtuvieron datos de AgilDTE.", "danger")
+        return _rd(f"/configuracion?empresa={emp_id}")
+
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(**ConexionDB().config)
+        cur = conn.cursor()
+        empresas_repo.aplicar_empresa_agildte_en_bd(cur, emp_id, agildte_data)
+        registrar_accion(
+            cur,
+            historial_usuarios_repo.EVENTO_CONFIG_EMPRESA,
+            f"Datos sincronizados desde AgilDTE (empresa {emp_id})",
+        )
+        conn.commit()
+        flash("Datos importados desde AgilDTE y guardados en el POS.", "success")
+    except Exception as ex:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        flash(f"Error al sincronizar: {ex}", "danger")
+    finally:
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return _rd(f"/configuracion?empresa={emp_id}")
+
+
 @bp.route("/guardar_configuracion", methods=["POST"])
 @superadmin_required
 def guardar_configuracion():
@@ -2966,15 +3206,26 @@ def guardar_configuracion():
         return _rd(_uf("core.index"))
     form = request.form
     nombre = form.get("nombre", "").strip()
-    nit = form.get("nit", "").strip()
-    nrc = form.get("nrc", "").strip()
-    codigo_actividad = form.get("codigo_actividad_economica", "").strip()
-    actividad = form.get("actividad", "").strip()
-    direccion = form.get("direccion", "").strip()
-    tel = form.get("tel", "").strip()
-    correo = form.get("correo", "").strip()
+    nit = empresas_repo.limpiar_valor_formulario("nit", form.get("nit", ""))
+    nrc = empresas_repo.limpiar_valor_formulario("nrc", form.get("nrc", ""))
+    codigo_actividad = empresas_repo.limpiar_valor_formulario(
+        "codigo_actividad_economica", form.get("codigo_actividad_economica", "")
+    )
+    actividad = empresas_repo.limpiar_valor_formulario("actividad_economica", form.get("actividad", ""))
+    direccion = empresas_repo.limpiar_valor_formulario("direccion", form.get("direccion", ""))
+    tel = empresas_repo.limpiar_valor_formulario("telefono", form.get("tel", ""))
+    correo = empresas_repo.limpiar_valor_formulario("correo", form.get("correo", ""))
     vencimiento = form.get("vencimiento") or None
     suscripcion_activa = True if form.get("suscripcion_activa") else False
+    if vencimiento:
+        from datetime import date as _date
+
+        try:
+            fv = _date.fromisoformat(str(vencimiento)[:10])
+            if fv >= _date.today():
+                suscripcion_activa = True
+        except ValueError:
+            pass
     es_gran_contribuyente = bool(form.get("es_gran_contribuyente"))
     emp_form = form.get("empresa_id")
     emp_id = int(emp_form) if emp_form and str(emp_form).isdigit() else _empresa_id()
@@ -3196,6 +3447,8 @@ def inventario():
         )
         rol = (session.get("rol") or "").strip().upper()
         requiere_clave_supervisor = rol == "BODEGUERO"
+        from azdigital.decorators import puede_dar_baja_producto
+        puede_baja = puede_dar_baja_producto(rol)
         catalogo_mh = mh_unidades_repo.listar_todas(cur) or []
         catalogo_mh_grupos = catalogo_para_select_optgroups(dict(catalogo_mh))
         return render_template(
@@ -3206,6 +3459,7 @@ def inventario():
             sucursales_todas=sucursales_todas,
             sucursales_empresa=sucursales_empresa,
             requiere_clave_supervisor=requiere_clave_supervisor,
+            puede_dar_baja_producto=puede_baja,
             catalogo_mh=catalogo_mh,
             catalogo_mh_grupos=catalogo_mh_grupos,
         )
@@ -4797,44 +5051,48 @@ def guardar_producto():
 
 
 @bp.route("/eliminar_producto/<int:producto_id>", methods=["GET", "POST"])
-@rol_requerido("GERENTE", "BODEGUERO")
+@rol_requerido("GERENTE")
 def eliminar_producto(producto_id):
     if request.method == "GET":
         return redirect(url_for("admin.inventario"))
+    from azdigital.decorators import puede_dar_baja_producto
     rol = (session.get("rol") or "").strip().upper()
+    if not puede_dar_baja_producto(rol):
+        flash("Solo Gerente o superusuario puede dar de baja productos.", "danger")
+        return redirect(url_for("admin.inventario"))
     emp_id = _empresa_id()
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
-        if rol == "BODEGUERO":
-            form = request.form
-            sup_user = (form.get("supervisor_user") or "").strip()
-            sup_pass = form.get("supervisor_password") or ""
-            if not sup_user or not sup_pass:
-                flash("Se requiere autorización de Gerente para eliminar productos.", "warning")
-                return redirect(url_for("admin.inventario"))
-            u = usuarios_repo.get_usuario_login(cur, sup_user)
-            if not u:
-                flash("Usuario o contraseña de supervisor incorrectos.", "danger")
-                return redirect(url_for("admin.inventario"))
-            u_rol = (u[3] or "").strip().upper() if len(u) > 3 else ""
-            if u_rol not in ("GERENTE", "ADMIN", "SUPERADMIN"):
-                flash("Solo Gerente o Administrador puede autorizar la eliminación.", "danger")
-                return redirect(url_for("admin.inventario"))
-            if not verificar_password(u[2], sup_pass):
-                flash("Usuario o contraseña de supervisor incorrectos.", "danger")
-                return redirect(url_for("admin.inventario"))
+        motivo = (request.form.get("motivo_baja") or "").strip()
+        if len(motivo) < 5:
+            flash("Indique el motivo de la baja (mínimo 5 caracteres).", "warning")
+            return redirect(url_for("admin.inventario"))
+        productos_repo.asegurar_columnas_baja(cur)
         es_super = _es_superadmin_db(cur)
         scope = None if es_super else emp_id
-        deleted = productos_repo.eliminar_producto(cur, producto_id, scope)
+        uid = session.get("user_id")
+        uname = (session.get("username") or "").strip()
+        deleted = productos_repo.dar_baja_producto(
+            cur,
+            producto_id,
+            motivo,
+            usuario_baja_id=uid,
+            usuario_baja_username=uname,
+            empresa_id=scope,
+        )
         if deleted:
-            registrar_accion(cur, historial_usuarios_repo.EVENTO_PRODUCTO_ELIMINADO, f"Producto #{producto_id} eliminado")
+            registrar_accion(
+                cur,
+                historial_usuarios_repo.EVENTO_PRODUCTO_ELIMINADO,
+                f"Producto #{producto_id} dado de baja: {motivo[:120]}",
+            )
             conn.commit()
-            flash("Producto eliminado.", "success")
+            flash("Producto dado de baja. Ya no aparece en inventario ni en caja.", "success")
         else:
             conn.rollback()
-            flash("Producto no encontrado o no pertenece a su empresa.", "warning")
+            flash("Producto no encontrado, ya estaba de baja o no pertenece a su empresa.", "warning")
     except Exception as e:
         conn.rollback()
         flash(f"Error: {str(e)}", "danger")
@@ -5081,18 +5339,23 @@ def usuarios_slash():
 @admin_required
 def historial_usuarios():
     """Muestra el historial de accesos (login, logout, cambios de contraseña)."""
-    emp_id = _empresa_id() if not _es_superadmin() else None
-    evento = request.args.get("evento", "").strip() or None
-    usuario_id = request.args.get("usuario_id", "").strip()
-    usuario_id = int(usuario_id) if usuario_id.isdigit() else None
-    offset = max(0, int(request.args.get("offset", 0) or 0))
-    limite = min(500, max(50, int(request.args.get("limite", 100) or 100)))
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
-        if not historial_usuarios_repo.tabla_existe(cur):
-            flash("La tabla de historial no existe. Ejecute: python scripts/alter_historial_usuarios.py", "warning")
+        es_super = _es_superadmin_db(cur)
+        emp_id = None if es_super else _empresa_id()
+        evento = request.args.get("evento", "").strip() or None
+        usuario_id = request.args.get("usuario_id", "").strip()
+        usuario_id = int(usuario_id) if usuario_id.isdigit() else None
+        offset = max(0, int(request.args.get("offset", 0) or 0))
+        limite = min(500, max(50, int(request.args.get("limite", 100) or 100)))
+        if not historial_usuarios_repo.asegurar_tabla(cur):
+            flash(
+                "No se pudo crear la tabla de historial. Ejecute: "
+                "docker compose exec posagil python scripts/alter_historial_usuarios.py",
+                "danger",
+            )
             return redirect(url_for("admin.usuarios"))
         registros = historial_usuarios_repo.listar(
             cur, empresa_id=emp_id, usuario_id=usuario_id, evento=evento, limite=limite, offset=offset

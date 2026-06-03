@@ -531,6 +531,13 @@
                 <span class="menu-nombre">Movimientos</span>
                 <span class="menu-rubro">Ajustes, traslados, bajas</span>
             </a>
+            {% if puede_dar_baja_producto %}
+            <a href="/reporte/inventario/productos-baja" class="menu-item {{ 'active' if '/reporte/inventario/productos-baja' in request.path else '' }}" style="padding-left: 2.5rem;">
+                <i class="bi bi-archive"></i>
+                <span class="menu-nombre">Productos dados de baja</span>
+                <span class="menu-rubro">Motivo y quién dio de baja</span>
+            </a>
+            {% endif %}
             <a href="/inventario/conteo-fisico" class="menu-item {{ 'active' if '/inventario/conteo-fisico' in request.path else '' }}" style="padding-left: 2.5rem;">
                 <i class="bi bi-clipboard-data"></i>
                 <span class="menu-nombre">Conteo físico</span>

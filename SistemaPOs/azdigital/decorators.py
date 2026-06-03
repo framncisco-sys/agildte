@@ -137,3 +137,9 @@ def puede_gestionar_ventas(rol: str | None) -> bool:
     """Gestión de ventas (editar / anular): GERENTE, ADMIN, SUPERADMIN."""
     return _rol_tiene_acceso(rol, ROLES_GERENTE)
 
+
+def puede_dar_baja_producto(rol: str | None) -> bool:
+    """Dar de baja productos en inventario: solo Gerente o superusuario (ADMIN/SUPERADMIN)."""
+    r = (rol or "").strip().upper()
+    return r in ROLES_SUPER or r == "GERENTE"
+
