@@ -2,12 +2,18 @@
 {% extends "layout.html" %}
 {% block content %}
 <div class="container-fluid px-4 mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <div>
-            <a href="{{ url_for('admin.compras') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Volver</a>
+            <a href="{{ url_for('admin.compras') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Volver</a>
             <h2 class="fw-bold text-dark mb-0">Compra #{{ compra[0] }}</h2>
             <p class="text-muted small mb-0">{{ proveedor_nombre }} — {{ compra[2] or 'S/N' }}</p>
         </div>
+        {% if puede_gestionar_compras %}
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('admin.compras_editar', id=compra[0]) }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-primary rounded-pill"><i class="bi bi-pencil"></i> Editar</a>
+            <button type="button" class="btn btn-outline-danger rounded-pill" data-bs-toggle="modal" data-bs-target="#modalEliminarCompraVer"><i class="bi bi-trash"></i> Eliminar</button>
+        </div>
+        {% endif %}
     </div>
 
     <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
@@ -64,4 +70,11 @@
         </div>
     </div>
 </div>
+
+{% if puede_gestionar_compras %}
+{% set modal_id = 'modalEliminarCompraVer' %}
+{% set eliminar_action = url_for('admin.compras_eliminar', id=compra[0]) %}
+{% set compra_label = 'Compra #' ~ compra[0] ~ ' — Factura ' ~ (compra[2] or 'S/N') ~ ' (' ~ proveedor_nombre ~ ')' %}
+{% include '_modal_eliminar_compra.html' %}
+{% endif %}
 {% endblock %}

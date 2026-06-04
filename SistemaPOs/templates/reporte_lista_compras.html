@@ -1,178 +1,574 @@
 <!-- Programador: Oscar Amaya Romero -->
+
 {% extends "layout.html" %}
+
 {% block content %}
+
 <div class="container-fluid px-4 mt-4">
+
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+
         <div>
+
             <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
+
             <h2 class="fw-bold text-dark mb-0"><i class="bi bi-cart-check" style="color:#059669"></i> Lista de compras y precios sugeridos</h2>
-            <p class="text-muted small mb-0">Productos a reponer y fijación de precios justos (empresa y cliente)</p>
+
+            <p class="text-muted small mb-0">Reposición de stock y actualización de precios según costo real (última compra o historial)</p>
+
         </div>
+
         <div>
+
             <a href="{{ url_for('admin.proveedores') }}" class="btn btn-outline-secondary btn-sm rounded-pill me-2"><i class="bi bi-truck"></i> Proveedores</a>
+
             <a href="{{ url_for('admin.compras_cargar_dte') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-primary rounded-pill me-2"><i class="bi bi-file-earmark-code"></i> Cargar DTE</a>
+
             <a href="{{ url_for('admin.compras_nueva') }}" class="btn btn-primary rounded-pill"><i class="bi bi-receipt"></i> Registrar compra (factura)</a>
+
         </div>
+
     </div>
+
+
 
     <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
+
         <form method="GET" action="{{ url_for('admin.reporte_lista_compras') }}" class="row g-3 align-items-end">
+
             {% if es_super and empresas %}
+
             <div class="col-md-2">
+
                 <label class="form-label small fw-bold text-muted">Empresa</label>
+
                 <select name="empresa_id" class="form-select">
+
                     {% for e in empresas %}
+
                     <option value="{{ e[0] }}" {{ 'selected' if emp_id == e[0] else '' }}>{{ e[1] }}</option>
+
                     {% endfor %}
+
                 </select>
+
             </div>
+
             {% endif %}
+
             <div class="col-md-2">
+
                 <label class="form-label small fw-bold text-muted">Desde</label>
+
                 <input type="date" name="inicio" class="form-control" value="{{ inicio }}">
+
             </div>
+
             <div class="col-md-2">
+
                 <label class="form-label small fw-bold text-muted">Hasta</label>
+
                 <input type="date" name="fin" class="form-control" value="{{ fin }}">
+
             </div>
+
             <div class="col-md-2">
+
                 <label class="form-label small fw-bold text-muted">Stock menor a</label>
+
                 <input type="number" name="umbral" class="form-control" value="{{ umbral }}" min="1" step="1" placeholder="10">
+
             </div>
+
             <div class="col-md-2">
+
                 <label class="form-label small fw-bold text-muted">Margen %</label>
+
                 <input type="number" name="margen" class="form-control" value="{{ margen_sugerido }}" min="0" max="100" step="0.5" placeholder="25">
+
             </div>
+
+            <div class="col-md-3">
+
+                <label class="form-label small fw-bold text-muted">Buscar producto</label>
+
+                <input type="search" name="buscar" id="inpBuscarListaCompras" class="form-control" value="{{ buscar or '' }}" placeholder="Nombre o código de barras" autocomplete="off">
+
+            </div>
+
             <div class="col-md-2">
-                <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-filter"></i> Filtrar</button>
+
+                <button type="submit" class="btn btn-primary fw-bold w-100"><i class="bi bi-filter"></i> Filtrar</button>
+
             </div>
+
         </form>
+
         <p class="small text-muted mt-2 mb-0">
-            <i class="bi bi-info-circle"></i> <strong>Cantidad a comprar:</strong> el mayor entre (ventas del período) y (umbral − stock). <strong>Precio sugerido:</strong> costo × (1 + margen %).
+
+            <i class="bi bi-info-circle"></i> <strong>Cantidad a comprar:</strong> el mayor entre (ventas del período) y (umbral − stock).
+
+            <strong>Precio sugerido:</strong> costo base × (1 + margen %). El costo base prioriza la <strong>última factura de compra</strong>, luego historial y ficha del producto.
+
+            {% if buscar %}<span class="d-block mt-1">Búsqueda «<strong>{{ buscar }}</strong>»: también muestra coincidencias aunque el stock sea ≥ {{ umbral }}.</span>{% endif %}
+
         </p>
+
     </div>
 
+
+
+    {% if filas %}
+
+    <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}" id="formPreciosMasivo" class="card border-0 shadow-sm mb-3 p-3" style="border-radius: 12px; background: #f0fdf4;">
+
+        <input type="hidden" name="accion" value="aplicar_precios_masivo">
+
+        <input type="hidden" name="umbral" value="{{ umbral }}">
+
+        <input type="hidden" name="margen" value="{{ margen_sugerido }}">
+
+        <input type="hidden" name="inicio" value="{{ inicio }}">
+
+        <input type="hidden" name="fin" value="{{ fin }}">
+
+        <input type="hidden" name="buscar" value="{{ buscar or '' }}">
+
+        {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
+
+        <div class="d-flex flex-wrap align-items-center gap-2">
+
+            <span class="fw-bold text-success"><i class="bi bi-lightning-charge"></i> Actualizar precios</span>
+
+            <span class="small text-muted">{{ n_con_costo or 0 }} con costo · {{ n_sin_costo or 0 }} sin costo (registre compra primero)</span>
+
+            <div class="ms-auto d-flex flex-wrap gap-2">
+
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnSelTodosCosto">Seleccionar con costo</button>
+
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnSelNinguno">Quitar selección</button>
+
+                <button type="submit" class="btn btn-sm btn-success fw-bold" id="btnAplicarSeleccionados"
+
+                    onclick="return confirm('¿Aplicar precio sugerido (margen {{ margen_sugerido }}%) a los productos marcados?');">
+
+                    <i class="bi bi-check2-all"></i> Aplicar a seleccionados
+
+                </button>
+
+                <button type="submit" name="aplicar_todos" value="1" class="btn btn-sm btn-primary fw-bold"
+
+                    onclick="return confirm('¿Aplicar precio sugerido a TODOS los productos de esta lista que tengan costo ({{ n_con_costo or 0 }})?');">
+
+                    <i class="bi bi-arrow-repeat"></i> Aplicar a todos con costo
+
+                </button>
+
+            </div>
+
+        </div>
+
+    </form>
+
+    {% endif %}
+
+
+
     <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
+
         <div class="card-header bg-white py-3 border-bottom">
-            <h6 class="m-0 fw-bold text-primary">Productos a comprar (stock &lt; {{ umbral }}) — Ventas del {{ inicio }} al {{ fin }}</h6>
+
+            <h6 class="m-0 fw-bold text-primary">Productos a comprar (stock &lt; {{ umbral }}) — Ventas del {{ inicio }} al {{ fin }} <span id="listaComprasFilasVisibles" class="text-muted small fw-normal"></span></h6>
+
+            <p class="small text-muted mb-0 mt-1">Un clic en <strong>Aplicar</strong> guarda costo y precio sugerido. Use <strong>Ajustar</strong> solo si necesita valores distintos.</p>
+
         </div>
+
         <div class="table-responsive">
+
             <table class="table align-middle m-0 table-hover table-sm">
+
                 <thead class="table-light">
+
                     <tr>
-                        <th class="ps-4">Producto</th>
+
+                        <th class="ps-2" style="width:2rem" title="Seleccionar para actualización masiva"></th>
+
+                        <th class="ps-2">Producto</th>
+
                         <th>Código</th>
+
                         <th class="text-end">Stock</th>
-                        <th class="text-end">Ventas (período)</th>
+
+                        <th class="text-end">Ventas</th>
+
                         <th class="text-end">A comprar</th>
-                        <th class="text-end">Último costo</th>
-                        <th class="text-end">Costo prom.</th>
+
+                        <th class="text-end">Costo base</th>
+
                         <th class="text-end">Precio actual</th>
+
                         <th class="text-end">Margen %</th>
+
                         <th class="text-end">Precio sugerido</th>
+
                         <th>Acciones</th>
+
                     </tr>
+
                 </thead>
-                <tbody>
+
+                <tbody id="tbodyListaCompras">
+
                     {% for f in filas %}
-                    <tr>
-                        <td class="ps-4">{{ f.nombre or '—' }}</td>
-                        <td>{{ f.codigo or '—' }}</td>
+
+                    <tr data-nombre="{{ (f.nombre or '')|e }}" data-codigo="{{ (f.codigo or '')|e }}" data-tiene-costo="{{ '1' if f.puede_aplicar_precio else '0' }}" class="{% if f.stock >= umbral %}table-warning{% elif f.sin_costo %}table-light{% endif %}">
+
+                        <td class="ps-2">
+
+                            {% if f.puede_aplicar_precio %}
+
+                            <input type="checkbox" class="form-check-input chk-aplicar-precio" name="aplicar_pid" value="{{ f.id }}" form="formPreciosMasivo">
+
+                            {% endif %}
+
+                        </td>
+
+                        <td class="ps-2">
+
+                            {{ f.nombre or '—' }}
+
+                            {% if f.stock >= umbral %}<span class="badge bg-warning text-dark ms-1">Búsqueda</span>{% endif %}
+
+                            {% if f.sin_costo %}<span class="badge bg-secondary ms-1" title="Registre una compra con costo o edite en inventario">Sin costo</span>{% endif %}
+
+                        </td>
+
+                        <td><code class="small">{{ f.codigo or '—' }}</code></td>
+
                         <td class="text-end">{{ "%.1f"|format(f.stock) }}</td>
+
                         <td class="text-end">{{ "%.0f"|format(f.ventas_periodo) if f.ventas_periodo else "—" }}</td>
+
                         <td class="text-end fw-bold text-primary">{{ "%.0f"|format(f.cant_sugerida) if f.cant_sugerida else "—" }}</td>
-                        <td class="text-end">$ {{ "%.2f"|format(f.costo_ultimo) }}</td>
-                        <td class="text-end">$ {{ "%.2f"|format(f.costo_promedio) }}</td>
+
+                        <td class="text-end">
+
+                            {% if f.costo_base > 0 %}
+
+                            $ {{ "%.2f"|format(f.costo_base) }}
+
+                            <span class="badge bg-light text-muted border d-block mt-1" style="font-weight:normal;font-size:0.65rem">{{ f.origen_costo }}</span>
+
+                            {% else %}
+
+                            <span class="text-danger">—</span>
+
+                            {% endif %}
+
+                        </td>
+
                         <td class="text-end">$ {{ "%.2f"|format(f.precio_actual) }}</td>
+
                         <td class="text-end {{ 'text-success' if f.margen_actual >= f.margen_sugerido else 'text-warning' if f.margen_actual > 0 else 'text-danger' }}">
+
                             {{ "%.1f"|format(f.margen_actual) }}%
+
                         </td>
-                        <td class="text-end fw-bold text-success">$ {{ "%.2f"|format(f.precio_sugerido) }}</td>
-                        <td>
-                            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalPrecio{{ f.id }}">Aplicar precio</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalCompra{{ f.id }}">Registrar compra</button>
+
+                        <td class="text-end fw-bold {{ 'text-success' if f.puede_aplicar_precio else 'text-muted' }}">
+
+                            {% if f.puede_aplicar_precio %}$ {{ "%.2f"|format(f.precio_sugerido) }}{% else %}—{% endif %}
+
                         </td>
+
+                        <td class="text-nowrap">
+
+                            {% if f.puede_aplicar_precio %}
+
+                            <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}" class="d-inline" onsubmit="return confirm('¿Aplicar precio $ {{ "%.2f"|format(f.precio_sugerido) }} (costo $ {{ "%.2f"|format(f.costo_base) }} + {{ margen_sugerido }}%)?');">
+
+                                <input type="hidden" name="accion" value="aplicar_precio_rapido">
+
+                                <input type="hidden" name="producto_id" value="{{ f.id }}">
+
+                                <input type="hidden" name="umbral" value="{{ umbral }}">
+
+                                <input type="hidden" name="margen" value="{{ margen_sugerido }}">
+
+                                <input type="hidden" name="inicio" value="{{ inicio }}">
+
+                                <input type="hidden" name="fin" value="{{ fin }}">
+
+                                <input type="hidden" name="buscar" value="{{ buscar or '' }}">
+
+                                {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
+
+                                <button type="submit" class="btn btn-sm btn-success" title="Guardar precio sugerido sin abrir ventana"><i class="bi bi-check-lg"></i> Aplicar</button>
+
+                            </form>
+
+                            {% else %}
+
+                            <a href="{{ url_for('admin.compras_nueva') }}" class="btn btn-sm btn-outline-primary" title="Registrar factura con costo"><i class="bi bi-receipt"></i> Compra</a>
+
+                            {% endif %}
+
+                            <button type="button" class="btn btn-sm btn-link text-muted p-0 ms-1" data-bs-toggle="modal" data-bs-target="#modalPrecio{{ f.id }}">Ajustar</button>
+
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-1" data-bs-toggle="modal" data-bs-target="#modalCompra{{ f.id }}" title="Entrada rápida de stock">+ Stock</button>
+
+                        </td>
+
                     </tr>
-                    <!-- Modal aplicar precio -->
-                    <div class="modal fade" id="modalPrecio{{ f.id }}" tabindex="-1">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Actualizar precio — {{ f.nombre[:40] }}{% if f.nombre|length > 40 %}...{% endif %}</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                </div>
-                                <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}">
-                                    <input type="hidden" name="accion" value="actualizar_precio">
-                                    <input type="hidden" name="producto_id" value="{{ f.id }}">
-                                    <input type="hidden" name="umbral" value="{{ umbral }}">
-                                    <input type="hidden" name="margen" value="{{ margen_sugerido }}">
-                                    <input type="hidden" name="inicio" value="{{ inicio }}">
-                                    <input type="hidden" name="fin" value="{{ fin }}">
-                                    {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
-                                    <div class="modal-body">
-                                        <div class="mb-3">
-                                            <label class="form-label">Costo unitario actual</label>
-                                            <input type="text" name="costo_nuevo" class="form-control" value="{{ "%.2f"|format(f.costo_promedio) }}" placeholder="Costo">
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">Precio de venta sugerido ($ {{ "%.2f"|format(f.precio_sugerido) }})</label>
-                                            <input type="text" name="precio_nuevo" class="form-control" value="{{ "%.2f"|format(f.precio_sugerido) }}" placeholder="Precio">
-                                        </div>
-                                    </div>
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                        <button type="submit" class="btn btn-success"><i class="bi bi-check-lg"></i> Guardar</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Modal registrar compra -->
-                    <div class="modal fade" id="modalCompra{{ f.id }}" tabindex="-1">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header bg-info text-white">
-                                    <h5 class="modal-title">Registrar compra — {{ f.nombre[:35] }}{% if f.nombre|length > 35 %}...{% endif %}</h5>
-                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                                </div>
-                                <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}">
-                                    <input type="hidden" name="accion" value="registrar_compra">
-                                    <input type="hidden" name="producto_id" value="{{ f.id }}">
-                                    <input type="hidden" name="umbral" value="{{ umbral }}">
-                                    <input type="hidden" name="margen" value="{{ margen_sugerido }}">
-                                    <input type="hidden" name="inicio" value="{{ inicio }}">
-                                    <input type="hidden" name="fin" value="{{ fin }}">
-                                    {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
-                                    <div class="modal-body">
-                                        <p class="small text-muted">Se actualizará el costo del producto y se sumará la cantidad al stock (entrada en Kardex).</p>
-                                        <div class="mb-3">
-                                            <label class="form-label fw-bold">Costo de compra (por unidad) <span class="text-danger">*</span></label>
-                                            <input type="text" name="costo_compra" class="form-control" required placeholder="Ej: 2.50">
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">Cantidad comprada</label>
-                                            <input type="text" name="cantidad_compra" class="form-control" value="{{ "%.0f"|format(f.cant_sugerida) if f.cant_sugerida and f.cant_sugerida > 0 else '1' }}" placeholder="Sugerido: {{ "%.0f"|format(f.cant_sugerida) if f.cant_sugerida and f.cant_sugerida > 0 else '1' }}">
-                                        </div>
-                                    </div>
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                        <button type="submit" class="btn btn-info text-white"><i class="bi bi-cart-plus"></i> Registrar</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
+
                     {% else %}
+
                     <tr>
+
                         <td colspan="11" class="text-center py-5 text-muted">
+
                             <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                            No hay productos con stock menor a {{ umbral }}. Ajuste el umbral o registre productos.
+
+                            {% if buscar %}No se encontró «{{ buscar }}». Pruebe otro nombre o código, o suba el umbral de stock.{% else %}No hay productos con stock menor a {{ umbral }}. Ajuste el umbral o registre productos.{% endif %}
+
                         </td>
+
                     </tr>
+
                     {% endfor %}
+
                 </tbody>
+
             </table>
+
         </div>
+
     </div>
+
+
+
+    {% for f in filas %}
+
+    <div class="modal fade" id="modalPrecio{{ f.id }}" tabindex="-1">
+
+        <div class="modal-dialog">
+
+            <div class="modal-content">
+
+                <div class="modal-header">
+
+                    <h5 class="modal-title">Ajustar precio — {{ f.nombre[:40] }}{% if f.nombre|length > 40 %}...{% endif %}</h5>
+
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+
+                </div>
+
+                <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}">
+
+                    <input type="hidden" name="accion" value="actualizar_precio">
+
+                    <input type="hidden" name="producto_id" value="{{ f.id }}">
+
+                    <input type="hidden" name="umbral" value="{{ umbral }}">
+
+                    <input type="hidden" name="margen" value="{{ margen_sugerido }}">
+
+                    <input type="hidden" name="inicio" value="{{ inicio }}">
+
+                    <input type="hidden" name="fin" value="{{ fin }}">
+
+                    <input type="hidden" name="buscar" value="{{ buscar or '' }}">
+
+                    {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
+
+                    <div class="modal-body">
+
+                        <p class="small text-muted">Origen del costo: <strong>{{ f.origen_costo }}</strong></p>
+
+                        <div class="mb-3">
+
+                            <label class="form-label">Costo unitario</label>
+
+                            <input type="text" name="costo_nuevo" class="form-control" value="{{ "%.2f"|format(f.costo_base if f.costo_base > 0 else f.costo_promedio) }}" placeholder="Costo">
+
+                        </div>
+
+                        <div class="mb-3">
+
+                            <label class="form-label">Precio de venta</label>
+
+                            <input type="text" name="precio_nuevo" class="form-control" value="{% if f.precio_sugerido %}{{ '%.2f'|format(f.precio_sugerido) }}{% else %}{{ '%.2f'|format(f.precio_actual) }}{% endif %}" placeholder="Precio">
+
+                        </div>
+
+                    </div>
+
+                    <div class="modal-footer">
+
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+
+                        <button type="submit" class="btn btn-success"><i class="bi bi-check-lg"></i> Guardar</button>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="modal fade" id="modalCompra{{ f.id }}" tabindex="-1">
+
+        <div class="modal-dialog">
+
+            <div class="modal-content">
+
+                <div class="modal-header bg-info text-white">
+
+                    <h5 class="modal-title">Entrada de stock — {{ f.nombre[:35] }}{% if f.nombre|length > 35 %}...{% endif %}</h5>
+
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+
+                </div>
+
+                <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}">
+
+                    <input type="hidden" name="accion" value="registrar_compra">
+
+                    <input type="hidden" name="producto_id" value="{{ f.id }}">
+
+                    <input type="hidden" name="umbral" value="{{ umbral }}">
+
+                    <input type="hidden" name="margen" value="{{ margen_sugerido }}">
+
+                    <input type="hidden" name="inicio" value="{{ inicio }}">
+
+                    <input type="hidden" name="fin" value="{{ fin }}">
+
+                    <input type="hidden" name="buscar" value="{{ buscar or '' }}">
+
+                    {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
+
+                    <div class="modal-body">
+
+                        <p class="small text-muted">Actualiza costo y suma cantidad al stock (Kardex).</p>
+
+                        <div class="mb-3">
+
+                            <label class="form-label fw-bold">Costo de compra (por unidad) <span class="text-danger">*</span></label>
+
+                            <input type="text" name="costo_compra" class="form-control" required placeholder="Ej: 2.50" value="{{ "%.2f"|format(f.costo_base) if f.costo_base > 0 else '' }}">
+
+                        </div>
+
+                        <div class="mb-3">
+
+                            <label class="form-label">Cantidad</label>
+
+                            <input type="text" name="cantidad_compra" class="form-control" value="{{ "%.0f"|format(f.cant_sugerida) if f.cant_sugerida and f.cant_sugerida > 0 else '1' }}">
+
+                        </div>
+
+                    </div>
+
+                    <div class="modal-footer">
+
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+
+                        <button type="submit" class="btn btn-info text-white"><i class="bi bi-cart-plus"></i> Registrar</button>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    {% endfor %}
+
 </div>
+
+<script>
+
+(function() {
+
+    var inp = document.getElementById('inpBuscarListaCompras');
+
+    var tbody = document.getElementById('tbodyListaCompras');
+
+    if (inp && tbody) {
+
+        function filtrarFilas() {
+
+            var q = (inp.value || '').toLowerCase().trim();
+
+            var vis = 0;
+
+            tbody.querySelectorAll('tr[data-nombre]').forEach(function(tr) {
+
+                var nom = (tr.getAttribute('data-nombre') || '').toLowerCase();
+
+                var cod = (tr.getAttribute('data-codigo') || '').toLowerCase();
+
+                var ok = !q || nom.indexOf(q) !== -1 || cod.indexOf(q) !== -1;
+
+                tr.style.display = ok ? '' : 'none';
+
+                if (ok) vis++;
+
+            });
+
+            var hint = document.getElementById('listaComprasFilasVisibles');
+
+            if (hint) hint.textContent = q ? vis + ' fila(s) visibles' : '';
+
+        }
+
+        inp.addEventListener('input', filtrarFilas);
+
+        if ((inp.value || '').trim()) filtrarFilas();
+
+    }
+
+    var btnTodos = document.getElementById('btnSelTodosCosto');
+
+    var btnNinguno = document.getElementById('btnSelNinguno');
+
+    if (btnTodos) {
+
+        btnTodos.addEventListener('click', function() {
+
+            document.querySelectorAll('.chk-aplicar-precio').forEach(function(c) {
+
+                var tr = c.closest('tr');
+
+                if (tr && tr.style.display !== 'none') c.checked = true;
+
+            });
+
+        });
+
+    }
+
+    if (btnNinguno) {
+
+        btnNinguno.addEventListener('click', function() {
+
+            document.querySelectorAll('.chk-aplicar-precio').forEach(function(c) { c.checked = false; });
+
+        });
+
+    }
+
+})();
+
+</script>
+
 {% endblock %}
+

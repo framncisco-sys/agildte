@@ -845,10 +845,80 @@ def reporte_lista_compras():
         if not fin:
             fin = hoy.strftime("%Y-%m-%d")
 
+        buscar = (request.args.get("buscar") or request.form.get("buscar") or "").strip()
+
         ventas_por_prod = ventas_reports_repo.ventas_cantidad_por_producto(cur, emp_id, inicio, fin)
+
+        def _redirect_lista_compras():
+            q = {"umbral": umbral, "margen": margen_sugerido, "inicio": inicio, "fin": fin, "buscar": buscar}
+            if es_super and emp_id:
+                q["empresa_id"] = emp_id
+            return redirect(url_for("admin.reporte_lista_compras", **q))
 
         if request.method == "POST":
             accion = (request.form.get("accion") or "").strip()
+            if accion == "aplicar_precio_rapido":
+                prod_id = int((request.form.get("producto_id") or "0"))
+                if prod_id:
+                    ok, msg = lista_compras_repo.aplicar_precio_sugerido_producto(
+                        cur, prod_id, emp_id, margen_sugerido, session.get("user_id")
+                    )
+                    if ok:
+                        registrar_accion(
+                            cur,
+                            historial_usuarios_repo.EVENTO_PRODUCTO_EDITADO,
+                            f"Producto #{prod_id} lista compras: {msg}",
+                        )
+                        conn.commit()
+                        flash(msg, "success")
+                    else:
+                        conn.rollback()
+                        flash(msg, "warning")
+                return _redirect_lista_compras()
+            if accion == "aplicar_precios_masivo":
+                raw_ids = request.form.getlist("aplicar_pid") or []
+                aplicar_todos = request.form.get("aplicar_todos") == "1"
+                filas_tmp = lista_compras_repo.listar_productos_para_compra(
+                    cur, emp_id, umbral=umbral, busqueda=buscar or None
+                )
+                filas_ctx = lista_compras_repo.enriquecer_filas_lista_compra(
+                    cur, emp_id, filas_tmp, margen_sugerido, ventas_por_prod, umbral
+                )
+                ids_objetivo = set()
+                if aplicar_todos:
+                    for f in filas_ctx:
+                        if f.get("puede_aplicar_precio"):
+                            ids_objetivo.add(int(f["id"]))
+                else:
+                    for raw in raw_ids:
+                        if str(raw).isdigit():
+                            ids_objetivo.add(int(raw))
+                ok_n = 0
+                skip_n = 0
+                for pid in ids_objetivo:
+                    ok, _ = lista_compras_repo.aplicar_precio_sugerido_producto(
+                        cur, pid, emp_id, margen_sugerido, session.get("user_id")
+                    )
+                    if ok:
+                        ok_n += 1
+                    else:
+                        skip_n += 1
+                if ok_n:
+                    registrar_accion(
+                        cur,
+                        historial_usuarios_repo.EVENTO_PRODUCTO_EDITADO,
+                        f"Lista compras: {ok_n} precio(s) actualizados (margen {margen_sugerido:g}%)",
+                    )
+                    conn.commit()
+                    flash(
+                        f"Se actualizaron {ok_n} producto(s)."
+                        + (f" {skip_n} omitido(s) sin costo." if skip_n else ""),
+                        "success",
+                    )
+                else:
+                    conn.rollback()
+                    flash("Ningún producto con costo válido para aplicar precio.", "warning")
+                return _redirect_lista_compras()
             if accion == "actualizar_precio":
                 prod_id = int((request.form.get("producto_id") or "0"))
                 precio_new = None
@@ -867,7 +937,7 @@ def reporte_lista_compras():
                     pass
                 if prod_id and (precio_new is not None or costo_new is not None):
                     if lista_compras_repo.actualizar_costo_y_precio_producto(cur, prod_id, emp_id, costo_new, precio_new):
-                        if costo_new is not None and lista_compras_repo.tabla_costos_existe(cur):
+                        if costo_new is not None and costo_new > 0 and lista_compras_repo.tabla_costos_existe(cur):
                             lista_compras_repo.registrar_costo_compra(cur, prod_id, costo_new, 1, session.get("user_id"), "Actualización lista compras")
                         registrar_accion(cur, historial_usuarios_repo.EVENTO_PRODUCTO_EDITADO, f"Producto #{prod_id} (lista compras)")
                         conn.commit()
@@ -875,10 +945,7 @@ def reporte_lista_compras():
                     else:
                         conn.rollback()
                         flash("No se pudo actualizar el producto.", "warning")
-                q = {"umbral": umbral, "margen": margen_sugerido, "inicio": inicio, "fin": fin}
-                if es_super and emp_id:
-                    q["empresa_id"] = emp_id
-                return redirect(url_for("admin.reporte_lista_compras", **q))
+                return _redirect_lista_compras()
             if accion == "registrar_compra":
                 prod_id = int((request.form.get("producto_id") or "0"))
                 costo_compra = None
@@ -914,37 +981,16 @@ def reporte_lista_compras():
                     flash("Compra registrada. Costo y stock actualizados.", "success")
                 else:
                     flash("Ingrese costo de compra válido.", "warning")
-                q = {"umbral": umbral, "margen": margen_sugerido, "inicio": inicio, "fin": fin}
-                if es_super and emp_id:
-                    q["empresa_id"] = emp_id
-                return redirect(url_for("admin.reporte_lista_compras", **q))
+                return _redirect_lista_compras()
 
-        filas_raw = lista_compras_repo.listar_productos_para_compra(cur, emp_id, umbral=umbral)
-        filas = []
-        for r in filas_raw:
-            pid, codigo, nombre, stock, costo_actual, precio_actual = r[0], r[1], r[2], float(r[3] or 0), float(r[4] or 0), float(r[5] or 0)
-            costo_ultimo = lista_compras_repo.ultimo_costo_desde_historial(cur, pid) or costo_actual
-            costo_prom = lista_compras_repo.costo_promedio_historico(cur, pid) or costo_actual
-            margen_actual = ((precio_actual - costo_actual) / costo_actual * 100) if costo_actual and costo_actual > 0 else 0
-            precio_sugerido = costo_prom * (1 + margen_sugerido / 100) if costo_prom else precio_actual
-            ventas_periodo = ventas_por_prod.get(pid, 0.0)
-            cant_min_umbral = max(0, umbral - stock) if stock < umbral else 0
-            cant_sugerida = max(ventas_periodo, cant_min_umbral)
-            filas.append({
-                "id": pid,
-                "codigo": codigo,
-                "nombre": nombre,
-                "stock": stock,
-                "ventas_periodo": ventas_periodo,
-                "cant_sugerida": cant_sugerida,
-                "costo_actual": costo_actual,
-                "costo_ultimo": costo_ultimo,
-                "costo_promedio": costo_prom,
-                "precio_actual": precio_actual,
-                "margen_actual": margen_actual,
-                "precio_sugerido": precio_sugerido,
-                "margen_sugerido": margen_sugerido,
-            })
+        filas_raw = lista_compras_repo.listar_productos_para_compra(
+            cur, emp_id, umbral=umbral, busqueda=buscar or None
+        )
+        filas = lista_compras_repo.enriquecer_filas_lista_compra(
+            cur, emp_id, filas_raw, margen_sugerido, ventas_por_prod, umbral
+        )
+        n_con_costo = sum(1 for f in filas if f.get("puede_aplicar_precio"))
+        n_sin_costo = sum(1 for f in filas if f.get("sin_costo"))
         empresas = []
         if es_super:
             try:
@@ -958,6 +1004,9 @@ def reporte_lista_compras():
             margen_sugerido=margen_sugerido,
             inicio=inicio,
             fin=fin,
+            buscar=buscar,
+            n_con_costo=n_con_costo,
+            n_sin_costo=n_sin_costo,
             empresas=empresas,
             emp_id=emp_id,
             es_super=es_super,
@@ -4740,6 +4789,23 @@ def _entero_positivo_desde_formulario(raw: str | None) -> int | None:
         return None
 
 
+def _guardar_producto_es_ajax() -> bool:
+    return (
+        request.headers.get("X-Pos-Ajax") == "1"
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or (request.args.get("ajax") or "").strip() == "1"
+    )
+
+
+def _guardar_producto_respuesta(mensaje: str, ok: bool = False, status: int = 400, **extra):
+    if _guardar_producto_es_ajax():
+        payload = {"ok": ok, "mensaje": mensaje}
+        payload.update(extra)
+        return jsonify(payload), (200 if ok else status)
+    flash(mensaje, "success" if ok else "danger")
+    return redirect(url_for("admin.inventario"))
+
+
 @bp.route("/guardar_producto", methods=["POST"])
 @rol_requerido("GERENTE", "BODEGUERO")
 def guardar_producto():
@@ -4812,8 +4878,7 @@ def guardar_producto():
         costo_f = float(costo) if costo else 0
         stock_f = float(stock) if stock else 0
     except ValueError:
-        flash("Precio, costo y stock deben ser números.", "danger")
-        return redirect(url_for("admin.inventario"))
+        return _guardar_producto_respuesta("Precio, costo y stock deben ser números.", ok=False)
     fp_raw = (form.get("factor_presentacion_comercial") or "").strip().replace(",", ".")
     factor_pres: float | None = None
     if fp_raw:
@@ -4840,8 +4905,7 @@ def guardar_producto():
         costo_f,
     )
     if not nombre:
-        flash("El nombre del producto es requerido.", "danger")
-        return redirect(url_for("admin.inventario"))
+        return _guardar_producto_respuesta("El nombre del producto es requerido.", ok=False)
 
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
@@ -5031,19 +5095,60 @@ def guardar_producto():
                     "warning",
                 )
             kardex_repo.reemplazar_stock_unificado(cur, nid, suc_para_stock, stock_f, registrar_entrada=True)
-            registrar_accion(cur, historial_usuarios_repo.EVENTO_PRODUCTO_CREADO, f"Producto #{nid} registrado")
+            origen = (form.get("origen") or "").strip()
+            det_aud = f"Producto #{nid} registrado"
+            if origen == "compras":
+                det_aud += " (desde Registrar compra)"
+            registrar_accion(cur, historial_usuarios_repo.EVENTO_PRODUCTO_CREADO, det_aud)
             conn.commit()
+            if _guardar_producto_es_ajax():
+                from azdigital.services.compras_service import opciones_presentacion_compra
+
+                prod_row = None
+                try:
+                    rows = productos_repo.listar_inventario(cur, limit=1, empresa_id=target_emp)
+                    for r in rows or []:
+                        if int(r[0]) == int(nid):
+                            prod_row = r
+                            break
+                except Exception:
+                    pass
+                if prod_row is None:
+                    cur.execute(
+                        """
+                        SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0),
+                               empresa_id, sucursal_id, '', '',
+                               COALESCE(NULLIF(costo_unitario, 0), 0), '', 0,
+                               FALSE, unidades_por_caja, COALESCE(unidades_por_docena, 12),
+                               COALESCE(NULLIF(TRIM(mh_codigo_unidad), ''), '59')
+                        FROM productos WHERE id = %s
+                        """,
+                        (nid,),
+                    )
+                    prod_row = cur.fetchone()
+                pres = opciones_presentacion_compra(cur, int(nid), prod_row)
+                return _guardar_producto_respuesta(
+                    "Producto registrado.",
+                    ok=True,
+                    producto_id=int(nid),
+                    nombre=nombre,
+                    codigo=codigo or str(nid),
+                    presentaciones=pres,
+                )
             flash("Producto registrado.", "success")
         return redirect(url_for("admin.inventario"))
     except Exception as e:
         conn.rollback()
         err = str(e)
         if "productos_codigo_barra_key" in err or "productos_empresa_codigo_uniq" in err or ("codigo_barra" in err and "duplicad" in err.lower()):
-            flash("Ya existe un producto con ese código. Use un código distinto o edite el existente.", "danger")
+            msg = "Ya existe un producto con ese código. Use un código distinto o edite el existente."
         elif "uq_producto_presentacion_codigo_barra" in err or "producto_presentacion_codigo_barra" in err:
-            flash("Ese código de barras ya está en otra presentación o producto. Use otro código.", "danger")
+            msg = "Ese código de barras ya está en otra presentación o producto. Use otro código."
         else:
-            flash(f"Error al guardar: {err}", "danger")
+            msg = f"Error al guardar: {err}"
+        if _guardar_producto_es_ajax():
+            return _guardar_producto_respuesta(msg, ok=False)
+        flash(msg, "danger")
         return redirect(url_for("admin.inventario"))
     finally:
         cur.close()
@@ -5826,6 +5931,163 @@ def compras_registrar_desde_dte():
     return redirect(url_for("admin.compras") + (f"?empresa_id={emp_id}" if str(session.get("rol", "")).upper() in ("ADMIN", "SUPERADMIN") and emp_id else ""))
 
 
+def _compras_lineas_desde_form(form):
+    """Parsea líneas válidas del formulario. Retorna lista de dicts con cant_umb, costo_umb, etc."""
+    from azdigital.services.compras_service import linea_compra_a_unidad_base
+
+    pids = form.getlist("producto_id")
+    cants = form.getlist("cantidad")
+    costos = form.getlist("costo")
+    factors = form.getlist("factor_compra")
+    pres_noms = form.getlist("presentacion_nombre")
+    lineas = []
+    for i, pid_raw in enumerate(pids):
+        try:
+            pid = int(pid_raw)
+            cant = float((cants[i] if i < len(cants) else "0").replace(",", "."))
+            costo = float((costos[i] if i < len(costos) else "0").replace(",", "."))
+            fac_s = (factors[i] if i < len(factors) else "1").strip().replace(",", ".")
+            try:
+                factor = float(fac_s)
+            except ValueError:
+                factor = 1.0
+            if factor <= 0:
+                factor = 1.0
+            pres_nom = (pres_noms[i] if i < len(pres_noms) else "").strip() or None
+            if pid and cant > 0 and costo >= 0:
+                cant_umb, costo_umb, subtotal = linea_compra_a_unidad_base(cant, costo, factor)
+                lineas.append(
+                    {
+                        "pid": pid,
+                        "cant": cant,
+                        "costo": costo,
+                        "factor": factor,
+                        "pres_nom": pres_nom,
+                        "cant_umb": cant_umb,
+                        "costo_umb": costo_umb,
+                        "subtotal": subtotal,
+                    }
+                )
+        except (ValueError, TypeError):
+            continue
+    return lineas
+
+
+def _compras_persistir_detalle_linea(cur, compra_id: int, emp_id: int, ln: dict, user_id) -> None:
+    """Guarda línea en compra_detalles y actualiza costos (sin tocar stock)."""
+    pid = ln["pid"]
+    compras_repo.agregar_detalle(
+        cur,
+        compra_id,
+        pid,
+        ln["cant_umb"],
+        ln["costo_umb"],
+        cantidad_recibida_presentacion=ln["cant"],
+        factor_conversion=ln["factor"],
+        presentacion_nombre=ln["pres_nom"],
+    )
+    lista_compras_repo.registrar_costo_compra(
+        cur, pid, ln["costo_umb"], ln["cant_umb"], user_id, f"Compra #{compra_id}"
+    )
+    lista_compras_repo.actualizar_costo_y_precio_producto(cur, pid, emp_id, ln["costo_umb"], None)
+
+
+def _compras_ingresar_stock_linea(cur, compra_id: int, emp_id: int, ln: dict, user_id) -> None:
+    """Entrada completa a inventario (compra nueva)."""
+    from azdigital.services.compras_service import movimiento_stock_delta_compra
+
+    notas_k = f"Compra #{compra_id}"
+    if abs(ln["factor"] - 1.0) > 1e-9:
+        pn = ln["pres_nom"] or "empaque"
+        notas_k += f": {ln['cant']:g} {pn} × {ln['factor']:g} = +{ln['cant_umb']:g} UMB"
+    movimiento_stock_delta_compra(
+        cur, ln["pid"], ln["cant_umb"], compra_id, emp_id, user_id, motivo=notas_k
+    )
+
+
+def _compras_aplicar_lineas_form(cur, compra_id: int, emp_id: int, form, user_id) -> float:
+    """Compra nueva: detalle, costos y entrada total a inventario."""
+    total_compra = 0.0
+    for ln in _compras_lineas_desde_form(form):
+        total_compra += ln["subtotal"]
+        _compras_persistir_detalle_linea(cur, compra_id, emp_id, ln, user_id)
+        _compras_ingresar_stock_linea(cur, compra_id, emp_id, ln, user_id)
+    return total_compra
+
+
+def _compras_aplicar_lineas_edicion(
+    cur, compra_id: int, emp_id: int, form, user_id, detalles_anteriores: list
+) -> float:
+    """Edición: solo ajusta stock por diferencia de cantidad (UMB)."""
+    from azdigital.services.compras_service import (
+        aplicar_delta_stock_edicion_compra,
+        cantidades_umb_por_producto_desde_detalles,
+    )
+
+    lineas = _compras_lineas_desde_form(form)
+    cant_antes = cantidades_umb_por_producto_desde_detalles(detalles_anteriores)
+    cant_despues: dict[int, float] = {}
+    for ln in lineas:
+        pid = ln["pid"]
+        cant_despues[pid] = cant_despues.get(pid, 0.0) + ln["cant_umb"]
+    aplicar_delta_stock_edicion_compra(
+        cur, compra_id, emp_id, user_id, cant_antes, cant_despues, motivo="Edición de factura"
+    )
+    total_compra = 0.0
+    for ln in lineas:
+        total_compra += ln["subtotal"]
+        _compras_persistir_detalle_linea(cur, compra_id, emp_id, ln, user_id)
+    return total_compra
+
+
+def _compras_presentaciones_opts(cur, productos_lista) -> dict:
+    from azdigital.services.compras_service import opciones_presentacion_compra
+
+    compra_pres_opts = {}
+    for prod in productos_lista or []:
+        try:
+            pid_o = int(prod[0])
+        except (TypeError, ValueError):
+            continue
+        compra_pres_opts[str(pid_o)] = opciones_presentacion_compra(cur, pid_o, prod)
+    return compra_pres_opts
+
+
+def _compras_tpl_context(cur, emp_id, es_super, **kw):
+    from azdigital.decorators import puede_gestionar_compras_factura, rol_efectivo_usuario
+
+    proveedores_lista = proveedores_repo.listar(cur, emp_id)
+    productos_lista = productos_repo.listar_inventario(cur, limit=500, empresa_id=emp_id)
+    empresas = (empresas_repo.listar_empresas(cur) or []) if es_super else []
+    rol = rol_efectivo_usuario()
+    sucursales_empresa = (
+        sucursales_repo.listar_sucursales_min(cur, empresa_id=emp_id) or [] if not es_super else []
+    )
+    sucursales_todas = (
+        sucursales_repo.listar_sucursales_con_empresa(cur) or [] if es_super else []
+    )
+    catalogo_mh = mh_unidades_repo.listar_todas(cur) or []
+    catalogo_mh_grupos = catalogo_para_select_optgroups(dict(catalogo_mh))
+    return dict(
+        proveedores=proveedores_lista,
+        productos=productos_lista,
+        empresas=empresas,
+        emp_id=emp_id,
+        es_super=es_super,
+        es_superadmin=es_super,
+        today=hoy_sv_str(),
+        compra_presentaciones_opts=_compras_presentaciones_opts(cur, productos_lista),
+        puede_gestionar_compras=puede_gestionar_compras_factura(rol),
+        sucursales_empresa=sucursales_empresa,
+        sucursales_todas=sucursales_todas,
+        catalogo_mh=catalogo_mh,
+        catalogo_mh_grupos=catalogo_mh_grupos,
+        requiere_clave_supervisor=False,
+        modo_compras=True,
+        **kw,
+    )
+
+
 @bp.route("/compras")
 @rol_requerido("GERENTE")
 def compras():
@@ -5841,7 +6103,17 @@ def compras():
                 emp_id = int(emp_raw)
         lista = compras_repo.listar(cur, emp_id)
         empresas = (empresas_repo.listar_empresas(cur) or []) if es_super else []
-        return render_template("compras.html", compras=lista, empresas=empresas, emp_id=emp_id, es_super=es_super)
+        from azdigital.decorators import puede_gestionar_compras_factura, rol_efectivo_usuario
+
+        rol = rol_efectivo_usuario()
+        return render_template(
+            "compras.html",
+            compras=lista,
+            empresas=empresas,
+            emp_id=emp_id,
+            es_super=es_super,
+            puede_gestionar_compras=puede_gestionar_compras_factura(rol),
+        )
     finally:
         cur.close()
         conn.close()
@@ -5860,96 +6132,20 @@ def compras_nueva():
             emp_raw = (request.args.get("empresa_id") or request.form.get("empresa_id") or "").strip()
             if emp_raw.isdigit():
                 emp_id = int(emp_raw)
-        proveedores_lista = proveedores_repo.listar(cur, emp_id)
-        productos_lista = productos_repo.listar_inventario(cur, limit=500, empresa_id=emp_id)
-        empresas = (empresas_repo.listar_empresas(cur) or []) if es_super else []
-        from azdigital.services.compras_service import (
-            calcular_retencion_iva_compras,
-            linea_compra_a_unidad_base,
-            opciones_presentacion_compra,
-        )
-
-        compra_pres_opts = {}
-        for prod in productos_lista or []:
-            try:
-                pid_o = int(prod[0])
-            except (TypeError, ValueError):
-                continue
-            compra_pres_opts[str(pid_o)] = opciones_presentacion_compra(cur, pid_o, prod)
-        _tpl_compra_nueva = lambda **kw: render_template(
-            "compras_nueva.html",
-            proveedores=proveedores_lista,
-            productos=productos_lista,
-            empresas=empresas,
-            emp_id=emp_id,
-            es_super=es_super,
-            today=hoy_sv_str(),
-            compra_presentaciones_opts=compra_pres_opts,
-            **kw,
-        )
+        ctx = _compras_tpl_context(cur, emp_id, es_super)
+        _tpl = lambda **kw: render_template("compras_nueva.html", **ctx, **kw)
         if request.method == "POST":
+            from azdigital.services.compras_service import calcular_retencion_iva_compras
+
             prov_id = int((request.form.get("proveedor_id") or "0"))
             num_fact = (request.form.get("numero_factura") or "").strip() or "S/N"
             fecha = (request.form.get("fecha") or hoy_sv_str())[:10]
             notas = (request.form.get("notas") or "").strip()
             if not prov_id:
                 flash("Seleccione un proveedor.", "danger")
-                return _tpl_compra_nueva()
+                return _tpl()
             compra_id = compras_repo.crear(cur, emp_id, prov_id, num_fact, fecha, session.get("user_id"), notas)
-            pids = request.form.getlist("producto_id")
-            cants = request.form.getlist("cantidad")
-            costos = request.form.getlist("costo")
-            factors = request.form.getlist("factor_compra")
-            pres_noms = request.form.getlist("presentacion_nombre")
-            total_compra = 0.0
-            for i, pid_raw in enumerate(pids):
-                try:
-                    pid = int(pid_raw)
-                    cant = float((cants[i] if i < len(cants) else "0").replace(",", "."))
-                    costo = float((costos[i] if i < len(costos) else "0").replace(",", "."))
-                    fac_s = (factors[i] if i < len(factors) else "1").strip().replace(",", ".")
-                    try:
-                        factor = float(fac_s)
-                    except ValueError:
-                        factor = 1.0
-                    if factor <= 0:
-                        factor = 1.0
-                    pres_nom = (pres_noms[i] if i < len(pres_noms) else "").strip() or None
-                    if pid and cant > 0 and costo >= 0:
-                        cant_umb, costo_umb, subtotal = linea_compra_a_unidad_base(cant, costo, factor)
-                        total_compra += subtotal
-                        compras_repo.agregar_detalle(
-                            cur,
-                            compra_id,
-                            pid,
-                            cant_umb,
-                            costo_umb,
-                            cantidad_recibida_presentacion=cant,
-                            factor_conversion=factor,
-                            presentacion_nombre=pres_nom,
-                        )
-                        lista_compras_repo.registrar_costo_compra(
-                            cur, pid, costo_umb, cant_umb, session.get("user_id"), f"Compra #{compra_id}"
-                        )
-                        lista_compras_repo.actualizar_costo_y_precio_producto(cur, pid, emp_id, costo_umb, None)
-                        notas_k = f"Compra #{compra_id}"
-                        if abs(factor - 1.0) > 1e-9:
-                            pn = pres_nom or "empaque"
-                            notas_k += f": {cant:g} {pn} × {factor:g} = +{cant_umb:g} UMB"
-                        try:
-                            cur.execute("SELECT sucursal_id FROM productos WHERE id = %s", (pid,))
-                            rp = cur.fetchone()
-                            suc_id = int(rp[0]) if rp and rp[0] else kardex_repo.primera_sucursal_empresa(cur, emp_id)
-                            if suc_id:
-                                kardex_repo.registrar_entrada(
-                                    cur, pid, suc_id, cant_umb, session.get("user_id"), notas_k
-                                )
-                            else:
-                                productos_repo.incrementar_stock(cur, pid, cant_umb)
-                        except Exception:
-                            productos_repo.incrementar_stock(cur, pid, cant_umb)
-                except (ValueError, Exception):
-                    pass
+            total_compra = _compras_aplicar_lineas_form(cur, compra_id, emp_id, request.form, session.get("user_id"))
             emp_gran = empresas_repo.get_empresa_es_gran_contribuyente(cur, emp_id)
             prov = proveedores_repo.get(cur, prov_id, emp_id)
             prov_gran = bool(prov[13]) if prov and len(prov) > 13 else False
@@ -5962,7 +6158,7 @@ def compras_nueva():
                 msg += f" Retención IVA 1%: ${ret_iva:,.2f}."
             flash(msg, "success")
             return redirect(url_for("admin.compras") + (f"?empresa_id={emp_id}" if es_super and emp_id else ""))
-        return _tpl_compra_nueva()
+        return _tpl()
     except Exception as e:
         conn.rollback()
         flash(f"Error: {e}", "danger")
@@ -5970,6 +6166,134 @@ def compras_nueva():
         cur.close()
         conn.close()
     return redirect(url_for("admin.compras"))
+
+
+@bp.route("/compras/editar/<int:id>", methods=["GET", "POST"])
+@rol_requerido("GERENTE")
+def compras_editar(id):
+    from azdigital.decorators import puede_gestionar_compras_factura, rol_efectivo_usuario
+    from azdigital.services.compras_service import calcular_retencion_iva_compras
+
+    rol = rol_efectivo_usuario()
+    if not puede_gestionar_compras_factura(rol):
+        flash("Solo Gerente o superusuario puede editar facturas de compra.", "danger")
+        return redirect(url_for("admin.compras"))
+    emp_id = _empresa_id()
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        es_super = _es_superadmin_db(cur)
+        if es_super:
+            emp_raw = (request.args.get("empresa_id") or request.form.get("empresa_id") or "").strip()
+            if emp_raw.isdigit():
+                emp_id = int(emp_raw)
+        c = compras_repo.get(cur, id, emp_id)
+        if not c:
+            flash("Compra no encontrada.", "danger")
+            return redirect(url_for("admin.compras"))
+        detalles = compras_repo.get_detalles(cur, id)
+        ctx = _compras_tpl_context(cur, emp_id, es_super, compra_editar=c, detalles_editar=detalles)
+        _tpl = lambda **kw: render_template("compras_nueva.html", **ctx, **kw)
+        if request.method == "POST":
+            prov_id = int((request.form.get("proveedor_id") or "0"))
+            num_fact = (request.form.get("numero_factura") or "").strip() or "S/N"
+            fecha = (request.form.get("fecha") or hoy_sv_str())[:10]
+            notas = (request.form.get("notas") or "").strip()
+            if not prov_id:
+                flash("Seleccione un proveedor.", "danger")
+                return _tpl()
+            compras_repo.actualizar_cabecera(cur, id, emp_id, prov_id, num_fact, fecha, notas)
+            compras_repo.borrar_detalles(cur, id)
+            total_compra = _compras_aplicar_lineas_edicion(
+                cur, id, emp_id, request.form, session.get("user_id"), detalles
+            )
+            emp_gran = empresas_repo.get_empresa_es_gran_contribuyente(cur, emp_id)
+            prov = proveedores_repo.get(cur, prov_id, emp_id)
+            prov_gran = bool(prov[13]) if prov and len(prov) > 13 else False
+            ret_iva = calcular_retencion_iva_compras(emp_gran, prov_gran, total_compra)
+            compras_repo.actualizar_total(cur, id, retencion_iva=ret_iva)
+            registrar_accion(
+                cur,
+                historial_usuarios_repo.EVENTO_COMPRA_EDITADA,
+                f"Compra #{id} editada (factura {num_fact})",
+            )
+            conn.commit()
+            flash(
+                f"Compra #{id} actualizada. El inventario solo cambió donde modificó cantidades.",
+                "success",
+            )
+            q = f"?empresa_id={emp_id}" if es_super and emp_id else ""
+            return redirect(url_for("admin.compras_ver", id=id) + q)
+        return _tpl()
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error: {e}", "danger")
+    finally:
+        cur.close()
+        conn.close()
+    return redirect(url_for("admin.compras"))
+
+
+@bp.route("/compras/eliminar/<int:id>", methods=["POST"])
+@rol_requerido("GERENTE")
+def compras_eliminar(id):
+    from azdigital.decorators import puede_gestionar_compras_factura, rol_efectivo_usuario
+    from azdigital.services.compras_service import (
+        aplicar_delta_stock_edicion_compra,
+        cantidades_umb_por_producto_desde_detalles,
+    )
+
+    rol = rol_efectivo_usuario()
+    if not puede_gestionar_compras_factura(rol):
+        flash("Solo Gerente o superusuario puede eliminar facturas de compra.", "danger")
+        return redirect(url_for("admin.compras"))
+    motivo = (
+        request.form.get("observacion_eliminacion")
+        or request.form.get("motivo_eliminacion")
+        or ""
+    ).strip()
+    if len(motivo) < 5:
+        flash("Indique la observación de eliminación (mínimo 5 caracteres).", "warning")
+        return redirect(request.referrer or url_for("admin.compras"))
+    emp_id = _empresa_id()
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        es_super = _es_superadmin_db(cur)
+        if es_super:
+            emp_raw = (request.form.get("empresa_id") or "").strip()
+            if emp_raw.isdigit():
+                emp_id = int(emp_raw)
+        c = compras_repo.get(cur, id, emp_id)
+        if not c:
+            flash("Compra no encontrada.", "danger")
+            return redirect(url_for("admin.compras"))
+        detalles = compras_repo.get_detalles(cur, id)
+        num_fact = c[2] or "S/N"
+        cant_antes = cantidades_umb_por_producto_desde_detalles(detalles)
+        aplicar_delta_stock_edicion_compra(
+            cur, id, emp_id, session.get("user_id"), cant_antes, {}, motivo=motivo
+        )
+        compras_repo.eliminar(cur, id, emp_id)
+        registrar_accion(
+            cur,
+            historial_usuarios_repo.EVENTO_COMPRA_ELIMINADA,
+            f"Compra #{id} eliminada (factura {num_fact}). Observación: {motivo[:1500]}",
+        )
+        conn.commit()
+        flash(f"Compra #{id} eliminada. El inventario fue revertido.", "success")
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error al eliminar: {e}", "danger")
+    finally:
+        cur.close()
+        conn.close()
+    q = ""
+    if str(session.get("rol", "")).upper() in ("ADMIN", "SUPERADMIN") and emp_id:
+        q = f"?empresa_id={emp_id}"
+    return redirect(url_for("admin.compras") + q)
 
 
 @bp.route("/compras/ver/<int:id>")
@@ -5992,7 +6316,18 @@ def compras_ver(id):
         detalles = compras_repo.get_detalles(cur, id)
         cur.execute("SELECT nombre FROM proveedores WHERE id = %s", (c[1],))
         prov_nom = (cur.fetchone() or ("—",))[0]
-        return render_template("compras_ver.html", compra=c, detalles=detalles, proveedor_nombre=prov_nom, emp_id=emp_id)
+        from azdigital.decorators import puede_gestionar_compras_factura, rol_efectivo_usuario
+
+        rol = rol_efectivo_usuario()
+        return render_template(
+            "compras_ver.html",
+            compra=c,
+            detalles=detalles,
+            proveedor_nombre=prov_nom,
+            emp_id=emp_id,
+            es_super=es_super,
+            puede_gestionar_compras=puede_gestionar_compras_factura(rol),
+        )
     finally:
         cur.close()
         conn.close()

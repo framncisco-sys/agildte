@@ -2,16 +2,16 @@
 {% extends "layout.html" %}
 {% block content %}
 <div class="container-fluid px-4 mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <div>
             <h2 class="fw-bold text-dark"><i class="bi bi-receipt text-primary"></i> Compras</h2>
-            <p class="text-muted small mb-0">Facturas de proveedores. Al registrar una compra se actualiza stock y costos en inventario.</p>
+            <p class="text-muted small mb-0">Facturas de proveedores. {% if puede_gestionar_compras|default(false) %}<strong>Gerente / superusuario:</strong> puede editar o eliminar desde esta lista (eliminar pide observación).{% else %}Use <strong>Ver</strong> para consultar cada factura.{% endif %}</p>
         </div>
-        <div>
-            <a href="{{ url_for('admin.proveedores') }}" class="btn btn-outline-secondary btn-sm rounded-pill me-2"><i class="bi bi-truck"></i> Proveedores</a>
-            <a href="{{ url_for('admin.reporte_lista_compras') }}" class="btn btn-outline-success btn-sm rounded-pill me-2"><i class="bi bi-cart-check"></i> Lista de compras</a>
-            <a href="{{ url_for('admin.compras_cargar_dte') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-primary rounded-pill me-2"><i class="bi bi-file-earmark-code"></i> Cargar DTE</a>
-            <a href="{{ url_for('admin.compras_nueva') }}" class="btn btn-primary rounded-pill"><i class="bi bi-plus-lg"></i> Registrar compra</a>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('admin.proveedores') }}" class="btn btn-outline-secondary btn-sm rounded-pill"><i class="bi bi-truck"></i> Proveedores</a>
+            <a href="{{ url_for('admin.reporte_lista_compras') }}" class="btn btn-outline-success btn-sm rounded-pill"><i class="bi bi-cart-check"></i> Lista de compras</a>
+            <a href="{{ url_for('admin.compras_cargar_dte') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-primary rounded-pill"><i class="bi bi-file-earmark-code"></i> Cargar DTE</a>
+            <a href="{{ url_for('admin.compras_nueva') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-primary rounded-pill"><i class="bi bi-plus-lg"></i> Registrar compra</a>
         </div>
     </div>
 
@@ -37,7 +37,7 @@
                         <th>Proveedor</th>
                         <th>N° Factura</th>
                         <th class="text-end">Total</th>
-                        <th class="text-end">Acciones</th>
+                        <th class="text-end" style="min-width: 200px;">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -48,8 +48,12 @@
                         <td>{{ c[2] }}</td>
                         <td>{{ c[3] }}</td>
                         <td class="text-end fw-bold">${{ "{:,.2f}".format(c[4]|float) }}</td>
-                        <td class="text-end">
+                        <td class="text-end text-nowrap">
                             <a href="{{ url_for('admin.compras_ver', id=c[0]) }}{% if es_super %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-sm btn-outline-primary">Ver</a>
+                            {% if puede_gestionar_compras|default(false) %}
+                            <a href="{{ url_for('admin.compras_editar', id=c[0]) }}{% if es_super %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-sm btn-outline-secondary" title="Editar factura"><i class="bi bi-pencil me-1"></i>Editar</a>
+                            <button type="button" class="btn btn-sm btn-outline-danger btn-eliminar-compra" data-id="{{ c[0] }}" data-factura="{{ c[3] }}" title="Eliminar factura"><i class="bi bi-trash me-1"></i>Eliminar</button>
+                            {% endif %}
                         </td>
                     </tr>
                     {% else %}
@@ -60,4 +64,29 @@
         </div>
     </div>
 </div>
+
+{% if puede_gestionar_compras|default(false) %}
+{% set eliminar_action = '#' %}
+{% set show_factura_label = true %}
+{% include '_modal_eliminar_compra.html' %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var modal = document.getElementById('modalEliminarCompra');
+    var form = document.getElementById('formEliminarCompra');
+    var lbl = document.getElementById('elimCompraFacturaLabel');
+    if (!modal || !form) return;
+    document.querySelectorAll('.btn-eliminar-compra').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = btn.getAttribute('data-id');
+            var fac = btn.getAttribute('data-factura') || 'S/N';
+            if (lbl) lbl.textContent = '#' + id + ' — ' + fac;
+            form.action = '{{ url_for("admin.compras_eliminar", id=999999) }}'.replace('999999', String(id));
+            var ta = form.querySelector('textarea[name=observacion_eliminacion]');
+            if (ta) ta.value = '';
+            if (window.bootstrap) new bootstrap.Modal(modal).show();
+        });
+    });
+});
+</script>
+{% endif %}
 {% endblock %}

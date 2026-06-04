@@ -143,3 +143,13 @@ def puede_dar_baja_producto(rol: str | None) -> bool:
     r = (rol or "").strip().upper()
     return r in ROLES_SUPER or r == "GERENTE"
 
+
+def puede_gestionar_compras_factura(rol: str | None) -> bool:
+    """Editar o eliminar facturas de compra: Gerente o superusuario (ADMIN/SUPERADMIN)."""
+    return _rol_tiene_acceso(rol, ROLES_GERENTE)
+
+
+def rol_efectivo_usuario() -> str:
+    """Rol vigente: primero BD (como el decorador), luego sesión."""
+    return (_rol_desde_bd() or session.get("rol") or "").strip().upper()
+

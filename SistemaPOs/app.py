@@ -268,6 +268,7 @@ def create_app() -> Flask:
             puede_ver_reportes_contables,
             puede_ver_administracion,
             puede_gestionar_ventas,
+            puede_gestionar_compras_factura,
             puede_dar_baja_producto,
         )
         ctx = {
@@ -279,6 +280,7 @@ def create_app() -> Flask:
             "puede_ver_reportes_contables": False,
             "puede_ver_administracion": False,
             "puede_gestionar_ventas": False,
+            "puede_gestionar_compras": False,
             "puede_dar_baja_producto": False,
             "es_super": False,
         }
@@ -308,6 +310,7 @@ def create_app() -> Flask:
         ctx["puede_ver_reportes_contables"] = puede_ver_reportes_contables(rol)
         ctx["puede_ver_administracion"] = puede_ver_administracion(rol)
         ctx["puede_gestionar_ventas"] = puede_gestionar_ventas(rol)
+        ctx["puede_gestionar_compras"] = puede_gestionar_compras_factura(rol)
         ctx["puede_dar_baja_producto"] = puede_dar_baja_producto(rol)
         ctx["es_super"] = rol in ("ADMIN", "SUPERADMIN")
         try:

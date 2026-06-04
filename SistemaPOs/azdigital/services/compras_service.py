@@ -114,3 +114,122 @@ def calcular_retencion_iva_compras(
     if empresa_es_gran_contribuyente == proveedor_es_gran_contribuyente:
         return 0.0
     return round(iva * 0.01, 2)
+
+
+def cantidades_umb_por_producto_desde_detalles(detalles: list[tuple]) -> dict[int, float]:
+    """Suma cantidades UMB (detalle[3]) por producto_id (detalle[0])."""
+    out: dict[int, float] = {}
+    for d in detalles or []:
+        try:
+            pid = int(d[0])
+            cant = float(d[3] or 0)
+        except (TypeError, ValueError, IndexError):
+            continue
+        if pid > 0 and cant > 0:
+            out[pid] = out.get(pid, 0.0) + cant
+    return out
+
+
+def _sucursal_stock_compra(cur, producto_id: int, empresa_id: int) -> int | None:
+    from azdigital.repositories import kardex_repo
+
+    cur.execute("SELECT sucursal_id FROM productos WHERE id = %s", (producto_id,))
+    rp = cur.fetchone()
+    if rp and rp[0]:
+        return int(rp[0])
+    return kardex_repo.primera_sucursal_empresa(cur, empresa_id)
+
+
+def movimiento_stock_delta_compra(
+    cur,
+    producto_id: int,
+    delta_umb: float,
+    compra_id: int,
+    empresa_id: int,
+    usuario_id: int | None,
+    *,
+    motivo: str = "",
+) -> None:
+    """
+    Ajusta inventario por la diferencia entre cantidad anterior y nueva (UMB).
+    delta > 0: entrada; delta < 0: salida. delta == 0: sin movimiento.
+    """
+    from azdigital.repositories import kardex_repo, productos_repo
+
+    if abs(float(delta_umb)) < 1e-9:
+        return
+    delta = float(delta_umb)
+    notas_k = f"Compra #{compra_id}"
+    if motivo:
+        notas_k += f": {motivo[:500]}"
+    suc_id = _sucursal_stock_compra(cur, producto_id, empresa_id)
+    usa_kardex = bool(suc_id) and kardex_repo.tabla_existe(cur, kardex_repo.TABLA_STOCK)
+    if delta > 0:
+        if usa_kardex:
+            kardex_repo.registrar_entrada(cur, producto_id, suc_id, delta, usuario_id, notas_k)
+        else:
+            productos_repo.incrementar_stock(cur, producto_id, delta)
+        return
+    qty = abs(delta)
+    notas_sal = notas_k + " (ajuste − cantidad)"
+    if usa_kardex:
+        try:
+            kardex_repo.registrar_salida(cur, producto_id, suc_id, qty, usuario_id, notas_sal)
+        except ValueError as e:
+            raise ValueError(
+                f"Stock insuficiente para descontar {qty:g} UMB del producto #{producto_id}. {e}"
+            ) from e
+    else:
+        productos_repo.incrementar_stock(cur, producto_id, -qty)
+
+
+def aplicar_delta_stock_edicion_compra(
+    cur,
+    compra_id: int,
+    empresa_id: int,
+    usuario_id: int | None,
+    cantidades_anteriores: dict[int, float],
+    cantidades_nuevas: dict[int, float],
+    *,
+    motivo: str = "Edición de factura",
+) -> None:
+    """Solo mueve inventario por diferencias entre el detalle guardado y el nuevo."""
+    todos = set(cantidades_anteriores) | set(cantidades_nuevas)
+    for pid in todos:
+        antes = float(cantidades_anteriores.get(pid, 0.0))
+        despues = float(cantidades_nuevas.get(pid, 0.0))
+        delta = despues - antes
+        movimiento_stock_delta_compra(
+            cur, pid, delta, compra_id, empresa_id, usuario_id, motivo=motivo
+        )
+
+
+def revertir_stock_detalle_compra(
+    cur,
+    detalle: tuple,
+    compra_id: int,
+    empresa_id: int,
+    usuario_id: int | None,
+    *,
+    motivo: str = "",
+) -> None:
+    """
+    Revierte el stock de una línea (eliminar factura).
+    Preferir ``aplicar_delta_stock_edicion_compra`` con cantidades_nuevas vacías al editar.
+    """
+    try:
+        pid = int(detalle[0])
+        cant_umb = float(detalle[3])
+    except (TypeError, ValueError, IndexError):
+        return
+    if pid <= 0 or cant_umb <= 0:
+        return
+    movimiento_stock_delta_compra(
+        cur,
+        pid,
+        -cant_umb,
+        compra_id,
+        empresa_id,
+        usuario_id,
+        motivo=motivo or "Reversión compra",
+    )

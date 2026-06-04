@@ -1,0 +1,560 @@
+﻿<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var requiereClaveSupervisor = {{ (requiere_clave_supervisor|default(false))|tojson }};
+    var modoCompras = {{ (modo_compras|default(false))|tojson }};
+    var guardarProductoUrl = {{ (url_for('admin.guardar_producto') + '?ajax=1')|tojson }};
+    var pendienteAccion = null;
+
+    var buscar = document.getElementById('buscar_inventario');
+    if (buscar) buscar.addEventListener('input', function() {
+        var q = this.value.toLowerCase().trim();
+        document.querySelectorAll('#tbody_productos tr').forEach(function(tr) {
+            var cod = (tr.dataset.codigo || '');
+            var nom = (tr.dataset.nombre || '');
+            tr.style.display = (!q || cod.indexOf(q) !== -1 || nom.indexOf(q) !== -1) ? '' : 'none';
+        });
+    });
+
+    var modalProdEl = document.getElementById('modalProducto');
+    if (modalProdEl) {
+        modalProdEl.addEventListener('shown.bs.modal', function() {
+            var mb = modalProdEl.querySelector('.modal-body');
+            if (mb) mb.scrollTop = 0;
+        });
+    }
+
+    var esSuper = {{ ((es_superadmin if es_superadmin is defined else es_super)|default(false)) | tojson }};
+    var empresaIdContext = {{ ((emp_id if emp_id is defined else none) or session.get('empresa_id') or 1) | tojson }};
+    var sessionEmpresaId = empresaIdContext;
+    var sucursalesData = {{ (sucursales_todas or []) | tojson }};
+
+    function fillSucursalesSuper(empId, selectedSucId) {
+        var sel = document.getElementById('select_sucursal_prod');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">— Todas las sucursales (empresa) —</option>';
+        var eid = String(empId);
+        sucursalesData.forEach(function(s) {
+            if (String(s[2]) !== eid) return;
+            var opt = document.createElement('option');
+            opt.value = s[0];
+            opt.textContent = s[1];
+            if (selectedSucId && String(s[0]) === String(selectedSucId)) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    }
+
+    /** Igual que servidor: acepta '60', '60.0' (parseInt fallaba y no rellenaba presentación comercial). */
+    function parseUnidadesCajaDocena(raw) {
+        if (raw == null || String(raw).trim() === '') return 0;
+        var v = parseFloat(String(raw).replace(',', '.'));
+        if (isNaN(v) || v <= 0) return 0;
+        return Math.round(v);
+    }
+
+    function inferirUnidadesPorCajaDesdeNombre(nom) {
+        if (!nom) return 0;
+        var m = String(nom).toUpperCase().match(/(\d+)\s*SOBRES?\b/);
+        if (!m) return 0;
+        var n = parseInt(m[1], 10);
+        return n > 0 ? n : 0;
+    }
+
+    function factorPresentacionEfectivo() {
+        var fEl = document.getElementById('factor_presentacion_comercial');
+        var raw = fEl && fEl.value ? String(fEl.value).trim().replace(',', '.') : '';
+        var f = parseFloat(raw);
+        if (!isNaN(f) && f > 0) return f;
+        var upEl = document.getElementById('prod_upcaja');
+        var n = upEl ? parseUnidadesCajaDocena(upEl.value) : 0;
+        return n > 0 ? n : 0;
+    }
+
+    function recalcUmbDesdePresentacion() {
+        var n = factorPresentacionEfectivo();
+        var ppcRaw = document.getElementById('precio_por_presentacion');
+        var cpcRaw = document.getElementById('costo_por_presentacion');
+        var pp = document.getElementById('prod_precio');
+        var cc = document.getElementById('prod_costo');
+        var hint = document.getElementById('umb_derivado_hint');
+        var ppc = parseFloat(String(ppcRaw && ppcRaw.value ? ppcRaw.value : '').replace(',', '.'));
+        var cpc = parseFloat(String(cpcRaw && cpcRaw.value ? cpcRaw.value : '').replace(',', '.'));
+        /* No derivar si el monto es 0: parseFloat("0") al tipear el primer cero pisaba el precio UMB con 0.0000. */
+        if (n > 0 && !isNaN(ppc) && Math.abs(ppc) > 1e-12 && pp) {
+            pp.value = (ppc / n).toFixed(4);
+        }
+        if (n > 0 && !isNaN(cpc) && Math.abs(cpc) > 1e-12 && cc) {
+            cc.value = (cpc / n).toFixed(4);
+        }
+        if (hint) {
+            if (n > 0 && (!isNaN(ppc) || !isNaN(cpc))) {
+                hint.textContent = 'Se guardará: precio UMB = (precio presentación ÷ ' + n + ')' + (!isNaN(cpc) ? '; costo UMB = (costo presentación ÷ ' + n + ')' : '') + '. Vacíe los montos por presentación si prefiere editar solo los valores UMB.';
+            } else if (n > 0) {
+                hint.textContent = 'Indique precio y/o costo por presentación para calcular automáticamente los valores por UMB, o rellene directamente precio/costo UMB.';
+            } else if (!isNaN(ppc) || !isNaN(cpc)) {
+                hint.textContent = 'Indique el factor UMB por presentación (ej. 60 caja, 100 quintal→libra) o «Unidades por caja» como respaldo.';
+            } else {
+                hint.textContent = '';
+            }
+        }
+        if (typeof syncPrecioUmbMirror === 'function') syncPrecioUmbMirror();
+        if (typeof actualizarAvisoRecuperacionUmb === 'function') actualizarAvisoRecuperacionUmb();
+    }
+
+    function actualizarAvisoRecuperacionUmb() {
+        var av = document.getElementById('modal_umb_aviso_recuperacion');
+        if (!av) return;
+        var pid = String(document.getElementById('producto_id').value || '').trim();
+        if (!pid) {
+            av.classList.add('d-none');
+            av.textContent = '';
+            return;
+        }
+        var prRaw = String(document.getElementById('prod_precio').value || '').replace(',', '.').trim();
+        var pr = parseFloat(prRaw);
+        if (isNaN(pr)) pr = 0;
+        if (pr > 1e-12) {
+            av.classList.add('d-none');
+            av.textContent = '';
+            return;
+        }
+        var co = parseFloat(String(document.getElementById('prod_costo').value || '').replace(',', '.')) || 0;
+        var st = parseFloat(String(document.getElementById('prod_stock').value || '').replace(',', '.')) || 0;
+        if (co > 1e-12 || st > 0) {
+            av.classList.remove('d-none');
+            av.innerHTML = '<i class="bi bi-info-circle me-1"></i><strong>Precio de venta UMB en $0:</strong> por eso, al recuperar el producto la casilla de <em>precio por presentación</em> queda vacía (0 × factor no se muestra). Si ya cargaste <em>costo</em> UMB, sí puede verse el costo por presentación (costo UMB × factor). Completá <strong>Precio por UMB</strong> o el <strong>precio de venta por esa presentación</strong> y guardá; sin precio UMB el POS cobrará $0.';
+        } else {
+            av.classList.add('d-none');
+            av.textContent = '';
+        }
+    }
+
+    ['prod_precio', 'prod_costo', 'prod_stock'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', actualizarAvisoRecuperacionUmb);
+    });
+
+    ['prod_upcaja', 'factor_presentacion_comercial'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', recalcUmbDesdePresentacion);
+            el.addEventListener('change', recalcUmbDesdePresentacion);
+        }
+    });
+    ['precio_por_presentacion', 'costo_por_presentacion'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', recalcUmbDesdePresentacion);
+        }
+    });
+
+    /** Si el usuario edita precio/costo UMB a mano, vaciar montos por presentación para que el guardado no los pise (servidor también divide si vienen llenos). */
+    function limpiarPrecioPresentacionSiUmbManual() {
+        var ppc = document.getElementById('precio_por_presentacion');
+        if (ppc) ppc.value = '';
+        recalcUmbDesdePresentacion();
+    }
+    function limpiarCostoPresentacionSiUmbManual() {
+        var cpc = document.getElementById('costo_por_presentacion');
+        if (cpc) cpc.value = '';
+        recalcUmbDesdePresentacion();
+    }
+    function syncPrecioUmbMirror() {
+        var pe = document.getElementById('prod_precio');
+        var m = document.getElementById('precio_umb_mirror');
+        if (pe && m) m.value = String(pe.value || '').trim().replace(',', '.');
+    }
+    var prUmb = document.getElementById('prod_precio');
+    if (prUmb) {
+        prUmb.addEventListener('input', limpiarPrecioPresentacionSiUmbManual);
+        prUmb.addEventListener('input', syncPrecioUmbMirror);
+    }
+    var coUmb = document.getElementById('prod_costo');
+    if (coUmb) {
+        coUmb.addEventListener('input', limpiarCostoPresentacionSiUmbManual);
+    }
+
+    function syncPresExtraJson() {
+        var rows = document.querySelectorAll('#pres_extra_rows .pres-extra-row');
+        var arr = [];
+        rows.forEach(function(row) {
+            var n = row.querySelector('.pres-extra-nombre');
+            var f = row.querySelector('.pres-extra-factor');
+            var c = row.querySelector('.pres-extra-codigo');
+            var d = row.querySelector('.pres-extra-desde');
+            var h = row.querySelector('.pres-extra-hasta');
+            var p = row.querySelector('.pres-extra-precio');
+            if (n && f && n.value.trim()) {
+                var fac = parseFloat(f.value);
+                if (fac > 0) {
+                    var o = { nombre: n.value.trim(), factor: fac };
+                    if (c && c.value.trim()) o.codigo_barra = c.value.trim().slice(0, 64);
+                    var dVal = d && String(d.value || '').trim() !== '' ? parseFloat(d.value) : NaN;
+                    var hVal = h && String(h.value || '').trim() !== '' ? parseFloat(h.value) : NaN;
+                    var pVal = p && String(p.value || '').trim() !== '' ? parseFloat(String(p.value).replace(',', '.')) : NaN;
+                    if (!isNaN(dVal) && dVal >= 0) o.cantidad_desde = dVal;
+                    if (!isNaN(hVal) && hVal > 0) o.cantidad_hasta = hVal;
+                    if (!isNaN(pVal) && pVal >= 0) o.precio_regla = pVal;
+                    arr.push(o);
+                }
+            }
+        });
+        var hid = document.getElementById('presentaciones_extra_json');
+        if (hid) hid.value = JSON.stringify(arr);
+    }
+
+    function addPresExtraRow(nombre, factor, codigo, cantidadDesde, cantidadHasta, precioRegla) {
+        var wrap = document.getElementById('pres_extra_rows');
+        if (!wrap) return;
+        var div = document.createElement('div');
+        div.className = 'pres-extra-row row g-1 mb-1 align-items-center';
+        var nv = (nombre || '').replace(/"/g, '&quot;');
+        var fv = factor != null && factor !== '' ? String(factor) : '';
+        var cv = (codigo != null && codigo !== undefined && String(codigo).trim() !== '') ? String(codigo).replace(/"/g, '&quot;') : '';
+        var dv = (cantidadDesde != null && cantidadDesde !== '' && !isNaN(parseFloat(cantidadDesde))) ? String(cantidadDesde) : '';
+        var hv = '';
+        if (cantidadHasta != null && cantidadHasta !== '' && !isNaN(parseFloat(cantidadHasta)) && parseFloat(cantidadHasta) > 0) {
+            hv = String(cantidadHasta);
+        }
+        var pv = (precioRegla != null && precioRegla !== '' && !isNaN(parseFloat(precioRegla))) ? String(precioRegla) : '';
+        div.innerHTML = '<div class="col-12 col-md-2"><input type="text" class="form-control form-control-sm pres-extra-nombre" placeholder="Nombre (ej. Bolsa)" value="' + nv + '" required></div>' +
+            '<div class="col-6 col-md-1"><input type="number" min="0.0001" step="any" class="form-control form-control-sm pres-extra-factor" placeholder="Factor UMB" title="Unidades base por presentación" value="' + fv + '" required></div>' +
+            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-desde" placeholder="Desde" title="Cantidad mínima para este precio (ej. 2 = de 2 en adelante)" value="' + dv + '"></div>' +
+            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-hasta" placeholder="∞ sin tope" title="Tope máximo inclusive. Vacío o 0 = sin límite (∞)" value="' + hv + '"></div>' +
+            '<div class="col-6 col-md-2"><input type="number" min="0" step="any" class="form-control form-control-sm pres-extra-precio" placeholder="Precio $" value="' + pv + '"></div>' +
+            '<div class="col-12 col-md-2"><input type="text" class="form-control form-control-sm pres-extra-codigo" maxlength="64" placeholder="Código barras" value="' + cv + '" autocomplete="off"></div>' +
+            '<div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger pres-extra-remove" title="Quitar">&times;</button></div>';
+        div.querySelector('.pres-extra-remove').addEventListener('click', function() { div.remove(); syncPresExtraJson(); });
+        wrap.appendChild(div);
+    }
+
+    var presExtraHost = document.getElementById('pres_extra_rows');
+    if (presExtraHost) {
+        presExtraHost.addEventListener('input', function() { syncPresExtraJson(); });
+        presExtraHost.addEventListener('change', function() { syncPresExtraJson(); });
+    }
+
+    var btnPresAdd = document.getElementById('btn_pres_extra_add');
+    if (btnPresAdd) btnPresAdd.addEventListener('click', function() { addPresExtraRow('', '', '', '', '', ''); });
+
+    function limpiarFormProductoNuevo() {
+        var formProducto = document.getElementById('formProducto');
+        if (formProducto) formProducto.dataset.stockOriginal = '';
+        var tit = document.getElementById('modalProductoTitulo');
+        if (tit) tit.textContent = 'Nuevo producto';
+        var pidEl = document.getElementById('producto_id');
+        if (pidEl) pidEl.value = '';
+        var pc = document.getElementById('prod_codigo');
+        if (pc) pc.value = '';
+        var pn = document.getElementById('prod_nombre');
+        if (pn) pn.value = '';
+        var pp = document.getElementById('prod_precio');
+        if (pp) pp.value = '0.00';
+        var pmNuevo = document.getElementById('precio_umb_mirror');
+        if (pmNuevo) pmNuevo.value = '';
+        var pco = document.getElementById('prod_costo');
+        if (pco) pco.value = '0.00';
+        var pst = document.getElementById('prod_stock');
+        if (pst) pst.value = modoCompras ? '0' : '0';
+        var mh = document.getElementById('prod_mh_unidad');
+        if (mh) mh.value = '59';
+        var pfr = document.getElementById('prod_fraccionable');
+        if (pfr) pfr.checked = false;
+        var upc = document.getElementById('prod_upcaja');
+        if (upc) upc.value = '';
+        var upd = document.getElementById('prod_updocena');
+        if (upd) upd.value = '12';
+        var fpc = document.getElementById('factor_presentacion_comercial');
+        if (fpc) fpc.value = '';
+        var ppcn = document.getElementById('precio_por_presentacion');
+        var cpcn = document.getElementById('costo_por_presentacion');
+        if (ppcn) ppcn.value = '';
+        if (cpcn) cpcn.value = '';
+        var udh = document.getElementById('umb_derivado_hint');
+        if (udh) udh.textContent = '';
+        var avRec = document.getElementById('modal_umb_aviso_recuperacion');
+        if (avRec) {
+            avRec.classList.add('d-none');
+            avRec.textContent = '';
+        }
+        var umb = document.getElementById('umb_nombre');
+        if (umb) umb.value = 'Unidad base';
+        var umbCb = document.getElementById('umb_codigo_barra');
+        if (umbCb) umbCb.value = '';
+        var docCb = document.getElementById('docena_codigo_barra');
+        if (docCb) docCb.value = '';
+        var cajaCb = document.getElementById('caja_codigo_barra');
+        if (cajaCb) cajaCb.value = '';
+        var pr = document.getElementById('pres_extra_rows');
+        if (pr) pr.innerHTML = '';
+        var pj = document.getElementById('presentaciones_extra_json');
+        if (pj) pj.value = '[]';
+        var pth = document.getElementById('promocion_tipo_hidden');
+        var pvh = document.getElementById('promocion_valor_hidden');
+        if (pth) pth.value = '';
+        if (pvh) pvh.value = '';
+        if (esSuper) {
+            var se = document.getElementById('select_empresa_prod');
+            if (se) {
+                se.value = String(empresaIdContext);
+                fillSucursalesSuper(empresaIdContext, null);
+            }
+        } else {
+            var ss = document.getElementById('select_sucursal_prod_emp');
+            if (ss) ss.value = '';
+        }
+    }
+    window.limpiarFormProductoNuevo = limpiarFormProductoNuevo;
+
+    var btnNuevo = document.getElementById('btnNuevoProducto');
+    if (btnNuevo) btnNuevo.addEventListener('click', limpiarFormProductoNuevo);
+
+    var selEmpresa = document.getElementById('select_empresa_prod');
+    if (selEmpresa) {
+        selEmpresa.addEventListener('change', function() {
+            fillSucursalesSuper(this.value, null);
+        });
+    }
+
+    var tbody = document.getElementById('tbody_productos');
+    if (tbody) tbody.addEventListener('click', function(e) {
+        var btn = e.target.closest('.btn-editar-producto');
+        if (!btn) return;
+        e.preventDefault();
+        var modalEl = document.getElementById('modalProducto');
+        document.getElementById('modalProductoTitulo').textContent = 'Editar producto';
+        var formProducto = document.getElementById('formProducto');
+        formProducto.dataset.stockOriginal = btn.getAttribute('data-stock') || '0';
+        document.getElementById('producto_id').value = btn.getAttribute('data-id') || '';
+        var pthEd = document.getElementById('promocion_tipo_hidden');
+        var pvhEd = document.getElementById('promocion_valor_hidden');
+        if (pthEd) pthEd.value = (btn.getAttribute('data-promocion-tipo') || '').trim();
+        if (pvhEd) {
+            var pvRaw = btn.getAttribute('data-promocion-valor');
+            pvhEd.value = (pvRaw !== null && pvRaw !== undefined && String(pvRaw).trim() !== '') ? String(pvRaw).trim() : '';
+        }
+        document.getElementById('prod_codigo').value = btn.getAttribute('data-codigo') || '';
+        document.getElementById('prod_nombre').value = btn.getAttribute('data-nombre') || '';
+        document.getElementById('prod_precio').value = btn.getAttribute('data-precio') || '0.00';
+        syncPrecioUmbMirror();
+        document.getElementById('prod_costo').value = btn.getAttribute('data-costo') || '0.00';
+        document.getElementById('prod_stock').value = btn.getAttribute('data-stock') || '0';
+        var mhEl = document.getElementById('prod_mh_unidad');
+        if (mhEl) {
+            var mhc = (btn.getAttribute('data-mh-codigo') || '59').trim();
+            if (mhEl.querySelector('option[value="' + mhc + '"]')) mhEl.value = mhc;
+            else mhEl.value = '59';
+        }
+        document.getElementById('prod_fraccionable').checked = btn.getAttribute('data-fraccionable') === '1';
+        var nomProdBtn = (btn.getAttribute('data-nombre') || '').trim();
+        var upFromDb = parseUnidadesCajaDocena(btn.getAttribute('data-unidades-por-caja'));
+        var upInfer = inferirUnidadesPorCajaDesdeNombre(nomProdBtn);
+        var upcn = upFromDb > 0 ? upFromDb : upInfer;
+        var upcajaField = document.getElementById('prod_upcaja');
+        if (upcajaField) {
+            if (upFromDb > 0) upcajaField.value = String(upFromDb);
+            else if (upInfer > 0) upcajaField.value = String(upInfer);
+            else upcajaField.value = '';
+        }
+        var updParsed = parseUnidadesCajaDocena(btn.getAttribute('data-unidades-por-docena'));
+        if (updParsed < 2) updParsed = 12;
+        document.getElementById('prod_updocena').value = String(updParsed);
+        var prn = parseFloat(String(btn.getAttribute('data-precio') || '0').replace(',', '.')) || 0;
+        var con = parseFloat(String(btn.getAttribute('data-costo') || '0').replace(',', '.')) || 0;
+        var facEl = document.getElementById('factor_presentacion_comercial');
+        if (facEl) facEl.value = upcn > 0 ? String(upcn) : '';
+        var ppcEl = document.getElementById('precio_por_presentacion');
+        var cpcEl = document.getElementById('costo_por_presentacion');
+        if (ppcEl && cpcEl) {
+            if (upcn > 0) {
+                ppcEl.value = prn > 0 ? (prn * upcn).toFixed(2) : '';
+                cpcEl.value = con > 0 ? (con * upcn).toFixed(2) : '';
+            } else {
+                ppcEl.value = '';
+                cpcEl.value = '';
+            }
+        }
+        recalcUmbDesdePresentacion();
+        actualizarAvisoRecuperacionUmb();
+        var prEl = document.getElementById('pres_extra_rows');
+        if (prEl) prEl.innerHTML = '';
+        var umbEl = document.getElementById('umb_nombre');
+        if (umbEl) umbEl.value = 'Unidad base';
+        var pidEdit = document.getElementById('producto_id').value;
+        if (pidEdit) {
+            fetch('/inventario/presentaciones/' + pidEdit).then(function(r) { return r.json(); }).then(function(d) {
+                if (d && d.umb_nombre && umbEl) umbEl.value = d.umb_nombre;
+                var ucb = document.getElementById('umb_codigo_barra');
+                if (ucb) ucb.value = (d && d.umb_codigo_barra) ? String(d.umb_codigo_barra) : '';
+                var dcb = document.getElementById('docena_codigo_barra');
+                if (dcb) dcb.value = (d && d.docena_codigo_barra) ? String(d.docena_codigo_barra) : '';
+                var ccb = document.getElementById('caja_codigo_barra');
+                if (ccb) ccb.value = (d && d.caja_codigo_barra) ? String(d.caja_codigo_barra) : '';
+                if (d && d.extras && d.extras.length) {
+                    d.extras.forEach(function(ex) {
+                        addPresExtraRow(
+                            ex.nombre,
+                            ex.factor,
+                            ex.codigo_barra || '',
+                            ex.cantidad_desde,
+                            ex.cantidad_hasta,
+                            ex.precio_regla
+                        );
+                    });
+                }
+                syncPresExtraJson();
+                if (typeof actualizarAvisoRecuperacionUmb === 'function') actualizarAvisoRecuperacionUmb();
+            }).catch(function() {});
+        }
+        var eid = btn.getAttribute('data-empresa-id') || '';
+        var sid = btn.getAttribute('data-sucursal-id') || '';
+        if (esSuper) {
+            var se = document.getElementById('select_empresa_prod');
+            if (se && eid) se.value = eid;
+            fillSucursalesSuper(eid || sessionEmpresaId, sid || null);
+            var ssel = document.getElementById('select_sucursal_prod');
+            if (ssel && sid) ssel.value = sid;
+        } else {
+            var ss = document.getElementById('select_sucursal_prod_emp');
+            if (ss) ss.value = sid || '';
+        }
+        if (typeof bootstrap !== 'undefined') {
+            var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        } else {
+            modalEl.classList.add('show');
+            modalEl.style.display = 'block';
+        }
+    });
+
+    if (esSuper && document.getElementById('select_empresa_prod')) {
+        fillSucursalesSuper(sessionEmpresaId, null);
+    }
+
+    function solicitarAutorizacion(descripcion, accion) {
+        if (!requiereClaveSupervisor) {
+            accion();
+            return;
+        }
+        pendienteAccion = accion;
+        var descEl = document.getElementById('modalClaveDescripcion');
+        if (descEl && descripcion) descEl.textContent = descripcion;
+        document.getElementById('supervisor_username').value = '';
+        document.getElementById('supervisor_password').value = '';
+        document.getElementById('modal_clave_error').classList.add('d-none');
+        var modal = new bootstrap.Modal(document.getElementById('modalClaveSupervisor'));
+        modal.show();
+        document.getElementById('supervisor_username').focus();
+    }
+
+    var btnAutInv = document.getElementById('btnAutorizarInventario');
+    if (btnAutInv) btnAutInv.addEventListener('click', async function() {
+        var username = document.getElementById('supervisor_username').value.trim();
+        var password = document.getElementById('supervisor_password').value;
+        var errEl = document.getElementById('modal_clave_error');
+        if (!username || !password) {
+            errEl.textContent = 'Ingrese usuario y contraseña.';
+            errEl.classList.remove('d-none');
+            return;
+        }
+        try {
+            var resp = await fetch('/autorizar_eliminar_item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username, password: password })
+            });
+            var data = await resp.json();
+            if (data.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('modalClaveSupervisor')).hide();
+                if (pendienteAccion) {
+                    pendienteAccion(username, password);
+                    pendienteAccion = null;
+                }
+            } else {
+                errEl.textContent = data.msg || 'No autorizado.';
+                errEl.classList.remove('d-none');
+            }
+        } catch (e) {
+            errEl.textContent = 'Error de conexión.';
+            errEl.classList.remove('d-none');
+        }
+    });
+
+    var formProductoEl = document.getElementById('formProducto');
+    if (formProductoEl) formProductoEl.addEventListener('submit', function(e) {
+        syncPrecioUmbMirror();
+        syncPresExtraJson();
+        var pjCheck = document.getElementById('presentaciones_extra_json');
+        if (pjCheck && document.querySelectorAll('#pres_extra_rows .pres-extra-row').length > 0) {
+            var parsed = [];
+            try { parsed = JSON.parse(pjCheck.value || '[]'); } catch (err) { parsed = []; }
+            if (!parsed.length) {
+                e.preventDefault();
+                alert('Complete el nombre y el factor UMB de cada presentación (factor mayor a 0).');
+                return;
+            }
+        }
+        if (modoCompras) {
+            e.preventDefault();
+            var btnSub = formProductoEl.querySelector('button[type=submit]');
+            if (btnSub) btnSub.disabled = true;
+            var fd = new FormData(formProductoEl);
+            if (!fd.get('origen')) fd.set('origen', 'compras');
+            fetch(guardarProductoUrl, {
+                method: 'POST',
+                body: fd,
+                headers: { 'X-Pos-Ajax': '1', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (btnSub) btnSub.disabled = false;
+                if (!data.ok) {
+                    alert(data.mensaje || 'No se pudo guardar el producto.');
+                    return;
+                }
+                var modalEl = document.getElementById('modalProducto');
+                if (modalEl && window.bootstrap) {
+                    var inst = bootstrap.Modal.getInstance(modalEl);
+                    if (inst) inst.hide();
+                }
+                limpiarFormProductoNuevo();
+                document.dispatchEvent(new CustomEvent('producto-compra-guardado', { detail: data }));
+            })
+            .catch(function() {
+                if (btnSub) btnSub.disabled = false;
+                alert('Error de conexión al guardar el producto.');
+            });
+            return;
+        }
+        if (!requiereClaveSupervisor) return;
+        var pid = document.getElementById('producto_id').value;
+        if (!pid || !pid.trim()) return;
+        var stockOrig = parseFloat(String(formProductoEl.dataset.stockOriginal || '0').replace(',', '.')) || 0;
+        var stockNuevo = parseFloat(String(document.getElementById('prod_stock').value || '0').replace(',', '.')) || 0;
+        var riesgoStock = stockOrig > 0 && (stockNuevo < stockOrig || stockNuevo === 0);
+        if (!riesgoStock) return;
+        e.preventDefault();
+        solicitarAutorizacion('Para modificar el stock se requieren credenciales de Gerente.', function(user, pass) {
+            document.getElementById('supervisor_user_hidden').value = user || '';
+            document.getElementById('supervisor_password_hidden').value = pass || '';
+            syncPrecioUmbMirror();
+            syncPresExtraJson();
+            formProductoEl.submit();
+        });
+    });
+
+    document.querySelectorAll('.btn-nuevo-producto-compra').forEach(function(btn) {
+        btn.addEventListener('click', limpiarFormProductoNuevo);
+    });
+
+    if (modoCompras && formProductoEl) {
+        var origenInp = formProductoEl.querySelector('input[name=origen]');
+        if (!origenInp) {
+            origenInp = document.createElement('input');
+            origenInp.type = 'hidden';
+            origenInp.name = 'origen';
+            origenInp.value = 'compras';
+            formProductoEl.appendChild(origenInp);
+        }
+    }
+});
+</script>

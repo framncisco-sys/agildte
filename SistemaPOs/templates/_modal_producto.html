@@ -1,0 +1,195 @@
+﻿{# Modal producto compartido: inventario y registrar compra #}
+{% set es_superadmin = es_superadmin if es_superadmin is defined else (es_super|default(false)) %}
+<div class="modal fade" id="modalProducto" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-light border-bottom">
+                <div>
+                    <h5 class="modal-title mb-0" id="modalProductoTitulo">Nuevo producto</h5>
+                    <p class="small text-muted mb-0 d-none d-md-block">Paso 1 = bodega · Paso 2 = cómo cobra caja</p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <form action="{{ url_for('admin.guardar_producto') }}" method="POST" id="formProducto" class="modal-producto-form">
+                <input type="hidden" name="producto_id" id="producto_id" value="">
+                <input type="hidden" name="supervisor_user" id="supervisor_user_hidden" value="">
+                <input type="hidden" name="supervisor_password" id="supervisor_password_hidden" value="">
+                <input type="hidden" name="precio_umb_mirror" id="precio_umb_mirror" value="">
+                <div class="modal-body">
+                    {% if es_superadmin and empresas %}
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold"><i class="bi bi-building me-1"></i>Empresa</label>
+                            <select name="empresa_id" id="select_empresa_prod" class="form-select form-select-sm" required>
+                                {% set def_e = (emp_id if emp_id is defined else (session.get('empresa_id') or 1)) | int %}
+                                {% for e in empresas %}
+                                <option value="{{ e[0] }}" {% if e[0] == def_e %}selected{% endif %}>{{ e[1] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold"><i class="bi bi-geo-alt me-1"></i>Sucursal</label>
+                            <select name="sucursal_id" id="select_sucursal_prod" class="form-select form-select-sm">
+                                <option value="">Todas las sucursales</option>
+                            </select>
+                            <span class="text-muted small">Opcional: solo una tienda</span>
+                        </div>
+                    </div>
+                    {% else %}
+                    {% if session.get('empresa_nombre') %}
+                    <p class="small text-muted mb-2"><i class="bi bi-building me-1"></i><strong>{{ session.empresa_nombre }}</strong></p>
+                    {% endif %}
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold"><i class="bi bi-geo-alt me-1"></i>Sucursal</label>
+                        <select name="sucursal_id" id="select_sucursal_prod_emp" class="form-select form-select-sm">
+                            <option value="">Todas las sucursales</option>
+                            {% for s in (sucursales_empresa or []) %}
+                            <option value="{{ s[0] }}">{{ s[1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" for="prod_codigo">Código o barra</label>
+                            <input type="text" name="codigo" id="prod_codigo" class="form-control" placeholder="Ej. 7501234567890" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" for="prod_nombre">Nombre del producto <span class="text-danger">*</span></label>
+                            <input type="text" name="nombre" id="prod_nombre" class="form-control" placeholder="Ej. Café listo 60 sobres" required>
+                        </div>
+                    </div>
+
+                    <div class="card border-primary shadow-sm mb-3">
+                        <div class="card-header bg-primary text-white py-2">
+                            <span class="fw-bold"><i class="bi bi-1-circle me-1"></i>Medida base — bodega y Kardex</span>
+                            <span class="small fw-normal opacity-90 d-block d-md-inline ms-md-2">(siempre la unidad más chica)</span>
+                        </div>
+                        <div class="card-body">
+                            <p class="small text-muted mb-3">Ej.: café en <strong>sobre</strong>, queso en <strong>libra</strong>, refresco en <strong>botella</strong>. El stock de abajo va en esa unidad.</p>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold" for="umb_nombre">Nombre de esa unidad</label>
+                                    <input type="text" name="umb_nombre" id="umb_nombre" class="form-control" maxlength="80" placeholder="Sobre, Libra, Unidad…" value="Unidad base">
+                                    <span class="text-muted small">Así lo verá el cajero en el POS</span>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold" for="umb_codigo_barra">Código de barras de 1 UMB (opcional)</label>
+                                    <input type="text" name="umb_codigo_barra" id="umb_codigo_barra" class="form-control" maxlength="64" placeholder="Si difiere del «Código o barra» de arriba" autocomplete="off">
+                                    <span class="text-muted small">El POS puede leer este EAN al vender 1 unidad base</span>
+                                </div>
+                            </div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-12">
+                                    <label class="form-label fw-bold" for="prod_mh_unidad">Tipo según Ministerio de Hacienda (DTE)</label>
+                                    <select name="mh_codigo_unidad" id="prod_mh_unidad" class="form-select form-select-sm">
+                                        {% if catalogo_mh_grupos %}
+                                        {% for titulo, opciones in catalogo_mh_grupos %}
+                                        <optgroup label="{{ titulo }}">
+                                            {% for c, d in opciones %}
+                                            <option value="{{ c }}">{{ c }} — {{ d[:72] }}{% if d|length > 72 %}…{% endif %}</option>
+                                            {% endfor %}
+                                        </optgroup>
+                                        {% endfor %}
+                                        {% else %}
+                                        {% for c, d in (catalogo_mh or []) %}
+                                        <option value="{{ c }}">{{ c }} — {{ d[:72] }}{% if d|length > 72 %}…{% endif %}</option>
+                                        {% endfor %}
+                                        {% endif %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row g-3 align-items-end mb-2">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold" for="prod_precio">Precio de venta por 1 unidad ($)</label>
+                                    <input type="text" name="precio" id="prod_precio" class="form-control" inputmode="decimal" placeholder="0.00" value="0.00" autocomplete="off">
+                                    <span class="text-muted small">1 sobre, 1 lb, etc.</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold" for="prod_costo">Costo por 1 unidad ($)</label>
+                                    <input type="text" name="costo" id="prod_costo" class="form-control" inputmode="decimal" placeholder="0.00" value="0.00" autocomplete="off">
+                                    <span class="text-muted small">Opcional, para márgenes</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold" for="prod_stock">Stock ahora (en esa unidad)</label>
+                                    <input type="text" name="stock" id="prod_stock" class="form-control" inputmode="decimal" placeholder="0" value="0" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="form-check form-switch border-top pt-3 mt-2">
+                                <input class="form-check-input" type="checkbox" name="fraccionable" value="1" id="prod_fraccionable" role="switch">
+                                <label class="form-check-label" for="prod_fraccionable"><strong>Venta con decimales</strong> — ej. queso: 0,25 lb o cobrar por monto ($1 de queso)</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-success shadow-sm mb-3">
+                        <div class="card-header bg-success text-white py-2">
+                            <span class="fw-bold"><i class="bi bi-2-circle me-1"></i>Cómo se vende en caja (POS)</span>
+                        </div>
+                        <div class="card-body">
+                            <p class="small text-muted mb-3">Si solo vendés por unidad, podés dejar «caja» vacío. Si vendés por <strong>caja</strong> o <strong>docena</strong>, completá cuántas unidades equivalen.</p>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold" for="prod_upcaja">¿Cuántas unidades trae una caja?</label>
+                                    <input type="number" name="unidades_por_caja" id="prod_upcaja" class="form-control" min="1" step="1" placeholder="Ej. 60 sobres — vacío si no hay caja">
+                                    <span class="text-muted small">Al vender 1 caja, el stock baja esa cantidad</span>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold" for="prod_updocena">Unidades por docena</label>
+                                    <input type="number" name="unidades_por_docena" id="prod_updocena" class="form-control" min="1" step="1" value="12">
+                                    <span class="text-muted small">Normalmente 12</span>
+                                </div>
+                            </div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold" for="docena_codigo_barra">Código de barras — docena (opcional)</label>
+                                    <input type="text" name="docena_codigo_barra" id="docena_codigo_barra" class="form-control form-control-sm" maxlength="64" placeholder="EAN al escanear 1 docena" autocomplete="off">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold" for="caja_codigo_barra">Código de barras — caja (opcional)</label>
+                                    <input type="text" name="caja_codigo_barra" id="caja_codigo_barra" class="form-control form-control-sm" maxlength="64" placeholder="EAN al escanear 1 caja" autocomplete="off">
+                                </div>
+                            </div>
+
+                            <div class="rounded border bg-light p-3 mb-3">
+                                <p class="small fw-bold text-secondary mb-2 mb-md-0"><i class="bi bi-calculator me-1"></i>Si pensás en precio de <strong>caja completa</strong> (opcional)</p>
+                                <p class="small text-muted mb-2">Poné el precio de la caja aquí; el sistema calcula el precio por 1 unidad. Si ya cargaste el precio arriba, podés dejar esto vacío.</p>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-12 col-md-4">
+                                        <label class="form-label small mb-0" for="factor_presentacion_comercial">Unidades que entran en esa caja</label>
+                                        <input type="number" name="factor_presentacion_comercial" id="factor_presentacion_comercial" class="form-control form-control-sm" min="0.0001" step="any" placeholder="Igual que arriba o ej. 60">
+                                    </div>
+                                    <div class="col-6 col-md-4">
+                                        <label class="form-label small mb-0" for="precio_por_presentacion">Precio venta caja ($)</label>
+                                        <input type="text" name="precio_por_presentacion" id="precio_por_presentacion" class="form-control form-control-sm" placeholder="Ej. 40" autocomplete="off">
+                                    </div>
+                                    <div class="col-6 col-md-4">
+                                        <label class="form-label small mb-0" for="costo_por_presentacion">Costo compra caja ($)</label>
+                                        <input type="text" name="costo_por_presentacion" id="costo_por_presentacion" class="form-control form-control-sm" placeholder="Opcional" autocomplete="off">
+                                    </div>
+                                </div>
+                                <p class="small text-primary mb-0" id="umb_derivado_hint" aria-live="polite"></p>
+                                <p class="small text-secondary mb-0 mt-2"><i class="bi bi-info-circle me-1"></i>Al reabrir el producto, estos montos de caja se recalculan desde el precio/costo por unidad guardado.</p>
+                            </div>
+
+                            <label class="form-label fw-bold">Otras formas de vender</label>
+                            <p class="small text-muted mb-2">Ej. «Tira», «Six pack», «Bolsa». <strong>Factor UMB</strong> = unidades base por presentación. <strong>Precio $</strong> por presentación o por rango: <strong>Desde</strong> = cantidad mínima (ej. 2 → de 2 en adelante); <strong>Hasta</strong> vacío o <strong>0</strong> = sin tope (<strong>∞</strong>). Ej. cora: Desde <strong>2</strong>, Hasta <strong>∞</strong>, $0.25. Código de barras opcional.</p>
+                            <div id="pres_extra_rows" class="small"></div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_pres_extra_add"><i class="bi bi-plus-lg"></i> Agregar presentación</button>
+                            <input type="hidden" name="presentaciones_extra_json" id="presentaciones_extra_json" value="[]">
+                        </div>
+                    </div>
+
+                    <div id="modal_umb_aviso_recuperacion" class="alert alert-warning small py-2 mb-0 d-none" role="status"></div>
+                    <input type="hidden" name="promocion_tipo" id="promocion_tipo_hidden" value="">
+                    <input type="hidden" name="promocion_valor" id="promocion_valor_hidden" value="">
+                </div>
+                <div class="modal-footer bg-light border-top">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar sin guardar</button>
+                    <button type="submit" class="btn btn-success px-4"><i class="bi bi-check-lg me-1"></i>Guardar producto</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

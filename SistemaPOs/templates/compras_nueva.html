@@ -1,16 +1,34 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
+{% set es_edicion = compra_editar is defined and compra_editar %}
 <div class="container-fluid px-4 mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <div>
-            <a href="{{ url_for('admin.compras') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Volver</a>
-            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-cart-plus text-primary"></i> Registrar compra</h2>
-            <p class="text-muted small mb-0">Factura de proveedor. La cantidad puede ir en cajas u otra presentación; el stock y Kardex se actualizan en <strong>unidad base</strong> (UMB).</p>
+            <a href="{{ url_for('admin.compras') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Volver</a>
+            <h2 class="fw-bold text-dark mb-0">
+                <i class="bi bi-{{ 'pencil-square' if es_edicion else 'cart-plus' }} text-primary"></i>
+                {{ 'Editar compra #' ~ compra_editar[0] if es_edicion else 'Registrar compra' }}
+            </h2>
+            <p class="text-muted small mb-0">
+                Factura de proveedor. Cantidad en cajas u otra presentación; stock y Kardex en <strong>UMB</strong>.
+                {% if es_edicion %}<span class="d-block mt-1 text-primary"><i class="bi bi-info-circle"></i> Al guardar, el inventario solo cambia si modifica la <strong>cantidad recibida</strong> (más o menos). Cambiar proveedor, fecha o costo no duplica stock.</span>{% endif %}
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            {% if es_edicion and puede_gestionar_compras %}
+            <a href="{{ url_for('admin.compras_ver', id=compra_editar[0]) }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-secondary rounded-pill"><i class="bi bi-eye"></i> Ver</a>
+            <button type="button" class="btn btn-outline-danger rounded-pill" data-bs-toggle="modal" data-bs-target="#modalEliminarCompraEditar"><i class="bi bi-trash"></i> Eliminar factura</button>
+            {% elif not es_edicion %}
+            <a href="{{ url_for('admin.compras') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-secondary rounded-pill"><i class="bi bi-list-ul"></i> Listado de compras</a>
+            {% endif %}
+            <button type="button" class="btn btn-outline-primary rounded-pill btn-nuevo-producto-compra" data-bs-toggle="modal" data-bs-target="#modalProducto">
+                <i class="bi bi-box-seam"></i> Nuevo producto
+            </button>
         </div>
     </div>
 
-    <form method="POST" action="{{ url_for('admin.compras_nueva') }}" id="formCompra">
+    <form method="POST" action="{{ url_for('admin.compras_editar', id=compra_editar[0]) if es_edicion else url_for('admin.compras_nueva') }}" id="formCompra">
         {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
         <div class="row mb-4">
             <div class="col-md-6">
@@ -22,7 +40,7 @@
                             <select name="proveedor_id" class="form-select" required>
                                 <option value="">— Seleccione proveedor —</option>
                                 {% for p in proveedores %}
-                                <option value="{{ p[0] }}">{{ p[1] }}{% if p[2] %} ({{ p[2] }}){% endif %}</option>
+                                <option value="{{ p[0] }}" {% if es_edicion and compra_editar[1] == p[0] %}selected{% endif %}>{{ p[1] }}{% if p[2] %} ({{ p[2] }}){% endif %}</option>
                                 {% endfor %}
                             </select>
                             {% if not proveedores %}<small class="text-danger">Cree proveedores primero.</small>{% endif %}
@@ -30,16 +48,16 @@
                         <div class="row g-2">
                             <div class="col-6">
                                 <label class="form-label fw-bold">N° Factura</label>
-                                <input type="text" name="numero_factura" class="form-control" placeholder="S/N">
+                                <input type="text" name="numero_factura" class="form-control" placeholder="S/N" value="{{ compra_editar[2] if es_edicion else '' }}">
                             </div>
                             <div class="col-6">
                                 <label class="form-label fw-bold">Fecha</label>
-                                <input type="date" name="fecha" class="form-control" value="{{ today }}">
+                                <input type="date" name="fecha" class="form-control" value="{{ (compra_editar[3]|string)[:10] if es_edicion else today }}">
                             </div>
                         </div>
                         <div class="mb-0 mt-3">
                             <label class="form-label fw-bold">Notas</label>
-                            <textarea name="notas" class="form-control" rows="2" placeholder="Opcional"></textarea>
+                            <textarea name="notas" class="form-control" rows="2" placeholder="Opcional">{% if es_edicion and compra_editar[5] %}{{ compra_editar[5] }}{% endif %}</textarea>
                         </div>
                     </div>
                 </div>
@@ -49,7 +67,10 @@
         <div class="card border-0 shadow-sm rounded-4 mb-4">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h6 class="mb-0 fw-bold">Detalle de productos</h6>
-                <button type="button" class="btn btn-sm btn-success" id="btnAgregarLinea"><i class="bi bi-plus-lg"></i> Agregar línea</button>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary btn-nuevo-producto-compra" data-bs-toggle="modal" data-bs-target="#modalProducto"><i class="bi bi-box-seam"></i> Nuevo producto</button>
+                    <button type="button" class="btn btn-sm btn-success" id="btnAgregarLinea"><i class="bi bi-plus-lg"></i> Agregar línea</button>
+                </div>
             </div>
             <div class="table-responsive">
                 <table class="table align-middle mb-0" id="tablaDetalle">
@@ -65,6 +86,36 @@
                         </tr>
                     </thead>
                     <tbody id="tbodyDetalle">
+                        {% if es_edicion and detalles_editar %}
+                        {% for d in detalles_editar %}
+                        {% set fac = (d[7]|float) if (d|length > 7 and d[7] is not none) else 1.0 %}
+                        {% if fac <= 0 %}{% set fac = 1.0 %}{% endif %}
+                        {% set cant_pres = (d[6]|float) if (d|length > 6 and d[6] is not none) else (d[3]|float) %}
+                        {% set costo_pres = (d[4]|float) * fac %}
+                        <tr class="fila-detalle">
+                            <td>
+                                <select name="producto_id" class="form-select form-select-sm producto-select">
+                                    <option value="">— Producto —</option>
+                                    {% for prod in productos %}
+                                    <option value="{{ prod[0] }}" {% if prod[0] == d[0] %}selected{% endif %}>{{ prod[2] }} ({{ prod[1] or prod[0] }})</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm pres-select">
+                                    <option value="">— Elija producto —</option>
+                                </select>
+                                <input type="hidden" name="factor_compra" class="factor-hidden" value="{{ fac }}">
+                                <input type="hidden" name="presentacion_nombre" class="pres-nombre-hidden" value="{{ d[8] or '' if d|length > 8 else '' }}">
+                            </td>
+                            <td><input type="text" name="cantidad" class="form-control form-control-sm inp-cant" value="{{ cant_pres }}" inputmode="decimal"></td>
+                            <td><input type="text" name="costo" class="form-control form-control-sm inp-costo" value="{{ '%.4f'|format(costo_pres) }}" inputmode="decimal"></td>
+                            <td class="text-end small text-muted td-equiv"><span class="equiv-val">—</span></td>
+                            <td class="text-end small fw-bold td-sub">$0.00</td>
+                            <td></td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
                         <tr class="fila-detalle">
                             <td>
                                 <select name="producto_id" class="form-select form-select-sm producto-select">
@@ -87,6 +138,7 @@
                             <td class="text-end small fw-bold td-sub">$0.00</td>
                             <td></td>
                         </tr>
+                        {% endif %}
                     </tbody>
                 </table>
             </div>
@@ -95,12 +147,23 @@
             </div>
         </div>
 
-        <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary px-4"><i class="bi bi-check-lg"></i> Guardar compra</button>
-            <a href="{{ url_for('admin.compras') }}" class="btn btn-outline-secondary">Cancelar</a>
+        <div class="d-flex gap-2 flex-wrap">
+            <button type="submit" class="btn btn-primary px-4"><i class="bi bi-check-lg"></i> {{ 'Guardar cambios' if es_edicion else 'Guardar compra' }}</button>
+            <a href="{{ url_for('admin.compras') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-secondary">Cancelar</a>
         </div>
     </form>
 </div>
+
+{% if es_edicion and puede_gestionar_compras %}
+{% set modal_id = 'modalEliminarCompraEditar' %}
+{% set eliminar_action = url_for('admin.compras_eliminar', id=compra_editar[0]) %}
+{% set compra_label = 'Compra #' ~ compra_editar[0] ~ ' — Factura ' ~ (compra_editar[2] or 'S/N') %}
+{% include '_modal_eliminar_compra.html' %}
+{% endif %}
+
+{% include '_modal_producto_estilos.html' %}
+{% include '_modal_producto.html' %}
+{% include '_modal_producto_scripts.html' %}
 
 <script>
 (function() {
@@ -113,26 +176,35 @@
         if (s == null || s === '') return NaN;
         return parseFloat(String(s).replace(',', '.'));
     }
-    function fillPresSelect(sel, pid) {
+    function fillPresSelect(sel, pid, factorPreferido, nombrePreferido) {
         sel.innerHTML = '';
         var opts = COMPRA_PRES[String(pid)] || [];
         if (!opts.length) {
             var o = document.createElement('option');
-            o.value = '';
-            o.textContent = 'Sin presentaciones';
+            o.value = '1';
+            o.setAttribute('data-nombre', 'Unidad base');
+            o.textContent = 'Unidad base (×1)';
             sel.appendChild(o);
-            sel.disabled = true;
+            sel.disabled = false;
             return;
         }
         sel.disabled = false;
-        opts.forEach(function(p) {
+        var idxSel = 0;
+        opts.forEach(function(p, idx) {
             var o = document.createElement('option');
             o.value = String(p.factor);
             o.setAttribute('data-nombre', p.nombre || '');
             o.textContent = p.nombre + ' (×' + p.factor + ')';
             sel.appendChild(o);
+            if (factorPreferido != null && Math.abs(parseFloat(p.factor) - parseFloat(factorPreferido)) < 1e-6) {
+                idxSel = idx;
+            }
         });
-        sel.selectedIndex = 0;
+        sel.selectedIndex = idxSel;
+        if (nombrePreferido && sel.selectedOptions.length) {
+            var opt = sel.selectedOptions[0];
+            if (!opt.getAttribute('data-nombre')) opt.setAttribute('data-nombre', nombrePreferido);
+        }
     }
     function syncRow(tr) {
         var hidF = tr.querySelector('.factor-hidden');
@@ -166,8 +238,25 @@
             syncRow(tr);
             return;
         }
-        fillPresSelect(psel, pid);
+        var facH = tr.querySelector('.factor-hidden');
+        var nomH = tr.querySelector('.pres-nombre-hidden');
+        fillPresSelect(psel, pid, facH ? parseFloat(facH.value) : null, nomH ? nomH.value : null);
         syncRow(tr);
+    }
+    function agregarOpcionProducto(pid, nombre, codigo) {
+        var label = nombre + ' (' + (codigo || pid) + ')';
+        document.querySelectorAll('.producto-select').forEach(function(sel) {
+            var exists = false;
+            for (var i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].value === String(pid)) { exists = true; break; }
+            }
+            if (!exists) {
+                var o = document.createElement('option');
+                o.value = String(pid);
+                o.textContent = label;
+                sel.appendChild(o);
+            }
+        });
     }
     document.addEventListener('DOMContentLoaded', function() {
         var tbody = document.getElementById('tbodyDetalle');
@@ -182,7 +271,10 @@
             tr.querySelector('.inp-cant').addEventListener('input', function() { syncRow(tr); });
             tr.querySelector('.inp-costo').addEventListener('input', function() { syncRow(tr); });
         }
-        tbody.querySelectorAll('.fila-detalle').forEach(bindRow);
+        tbody.querySelectorAll('.fila-detalle').forEach(function(tr) {
+            bindRow(tr);
+            onProductChange(tr);
+        });
 
         document.getElementById('btnAgregarLinea').addEventListener('click', function() {
             var first = tbody.querySelector('.fila-detalle');
@@ -190,14 +282,16 @@
             tr.querySelectorAll('input.inp-cant, input.inp-costo').forEach(function(inp) { inp.value = ''; });
             tr.querySelector('.equiv-val').textContent = '—';
             tr.querySelector('.td-sub').textContent = '$0.00';
+            tr.querySelector('.factor-hidden').value = '1';
+            tr.querySelector('.pres-nombre-hidden').value = '';
+            var psel = tr.querySelector('.pres-select');
+            psel.innerHTML = '<option value="">— Elija producto —</option>';
+            psel.disabled = true;
+            tr.querySelector('.producto-select').value = '';
             var lastTd = tr.querySelector('td:last-child');
             lastTd.innerHTML = '<button type="button" class="btn btn-sm btn-outline-danger btn-quitar"><i class="bi bi-trash"></i></button>';
             tbody.appendChild(tr);
             bindRow(tr);
-            onProductChange(tr);
-            tr.querySelector('.btn-quitar').addEventListener('click', function() {
-                if (tbody.querySelectorAll('.fila-detalle').length > 1) tr.remove();
-            });
         });
 
         tbody.addEventListener('click', function(e) {
@@ -213,7 +307,6 @@
             filas.forEach(function(tr) {
                 var prod = tr.querySelector('.producto-select').value;
                 var cant = (tr.querySelector('.inp-cant').value || '').trim();
-                var costo = (tr.querySelector('.inp-costo').value || '').trim();
                 syncRow(tr);
                 if (prod && parseFloat(cant.replace(',', '.')) > 0) {
                     tr.querySelector('.producto-select').name = 'producto_id';
@@ -233,6 +326,19 @@
             if (!tieneDatos) {
                 alert('Agregue al menos un producto con cantidad mayor a 0.');
                 return false;
+            }
+        });
+
+        document.addEventListener('producto-compra-guardado', function(ev) {
+            var data = ev.detail || {};
+            if (!data.producto_id) return;
+            var pid = data.producto_id;
+            COMPRA_PRES[String(pid)] = data.presentaciones || [{ nombre: 'Unidad base', factor: 1 }];
+            agregarOpcionProducto(pid, data.nombre, data.codigo);
+            var primera = tbody.querySelector('.fila-detalle .producto-select');
+            if (primera) {
+                primera.value = String(pid);
+                onProductChange(primera.closest('tr'));
             }
         });
     });

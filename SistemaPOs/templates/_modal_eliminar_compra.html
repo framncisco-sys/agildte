@@ -1,0 +1,30 @@
+{# Modal eliminar factura de compra — solo Gerente / superusuario (puede_gestionar_compras) #}
+{% if puede_gestionar_compras %}
+<div class="modal fade" id="{{ modal_id|default('modalEliminarCompra') }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ eliminar_action }}" id="{{ form_id|default('formEliminarCompra') }}">
+                {% if es_super and emp_id %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
+                <div class="modal-header border-0">
+                    <h5 class="modal-title text-danger"><i class="bi bi-exclamation-triangle"></i> Eliminar factura de compra</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2 {% if not compra_label and not show_factura_label %}d-none{% endif %}">
+                        {% if compra_label %}{{ compra_label }}{% else %}Factura: <strong id="{{ label_id|default('elimCompraFacturaLabel') }}">—</strong>{% endif %}
+                    </p>
+                    <p class="small">Se revertirá el stock ingresado por esta factura. El registro se elimina de forma permanente.</p>
+                    <p class="small text-warning mb-2"><i class="bi bi-shield-lock me-1"></i>Solo Gerente o superusuario puede eliminar. La observación queda en el historial de auditoría.</p>
+                    <label class="form-label fw-bold">Observación <span class="text-danger">*</span></label>
+                    <textarea name="observacion_eliminacion" class="form-control" rows="3" required minlength="5" placeholder="Indique por qué se elimina esta factura (ej: duplicado, error de captura, anulación del proveedor...)"></textarea>
+                    <span class="text-muted small">Mínimo 5 caracteres. Obligatorio para auditoría.</span>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger"><i class="bi bi-trash me-1"></i> Eliminar factura</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}

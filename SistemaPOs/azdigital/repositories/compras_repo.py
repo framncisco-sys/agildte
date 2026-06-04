@@ -168,3 +168,33 @@ def actualizar_total(cur, compra_id: int, retencion_iva: float = 0) -> None:
         "UPDATE compras SET total = %s, retencion_iva = COALESCE(%s, 0) WHERE id = %s",
         (total, retencion_iva, compra_id),
     )
+
+
+def actualizar_cabecera(
+    cur,
+    compra_id: int,
+    empresa_id: int,
+    proveedor_id: int,
+    numero_factura: str,
+    fecha: str,
+    notas: str,
+) -> bool:
+    """Actualiza datos de cabecera. Retorna False si no existe la compra."""
+    cur.execute(
+        """
+        UPDATE compras
+        SET proveedor_id = %s, numero_factura = %s, fecha = %s, notas = %s
+        WHERE id = %s AND empresa_id = %s
+        """,
+        (proveedor_id, numero_factura.strip(), fecha, (notas or "").strip(), compra_id, empresa_id),
+    )
+    return cur.rowcount > 0
+
+
+def borrar_detalles(cur, compra_id: int) -> None:
+    cur.execute("DELETE FROM compra_detalles WHERE compra_id = %s", (compra_id,))
+
+
+def eliminar(cur, compra_id: int, empresa_id: int) -> bool:
+    cur.execute("DELETE FROM compras WHERE id = %s AND empresa_id = %s", (compra_id, empresa_id))
+    return cur.rowcount > 0
