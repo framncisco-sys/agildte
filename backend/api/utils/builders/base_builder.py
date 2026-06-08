@@ -221,7 +221,11 @@ class BaseDTEBuilder(ABC):
             self.venta.codigo_generacion = str(uuid.uuid4()).upper()
 
         ahora_sv = datetime.now(TZ_EL_SALVADOR)
-        hora_actual = ahora_sv.strftime('%H:%M:%S')
+        hora_guardada = (getattr(self.venta, 'hora_emision', None) or '').strip()
+        if hora_guardada and len(hora_guardada) >= 5:
+            hora_actual = hora_guardada[:8] if len(hora_guardada) >= 8 else hora_guardada
+        else:
+            hora_actual = ahora_sv.strftime('%H:%M:%S')
         if usar_fecha_actual:
             fecha_str = ahora_sv.strftime('%Y-%m-%d')
         elif getattr(self.venta, 'fecha_emision', None):

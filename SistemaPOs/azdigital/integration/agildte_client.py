@@ -96,6 +96,7 @@ def _datetime_el_salvador() -> datetime:
 def _fecha_hora_periodo_para_agildte(
     fecha_emision: str | None,
     periodo_aplicado: str | None,
+    hora_emision: str | None = None,
 ) -> tuple[str, str, str]:
     """
     Devuelve (fecha_emision YYYY-MM-DD, hora_emision HH:MM:SS, periodo_aplicado YYYY-MM).
@@ -103,7 +104,11 @@ def _fecha_hora_periodo_para_agildte(
     de El Salvador aunque el servidor POS esté en otra zona.
     """
     dt_sv = _datetime_el_salvador()
-    hora = dt_sv.strftime("%H:%M:%S")
+    hora_raw = (hora_emision or "").strip()
+    if hora_raw and len(hora_raw) >= 5:
+        hora = hora_raw[:8] if len(hora_raw) >= 8 else hora_raw
+    else:
+        hora = dt_sv.strftime("%H:%M:%S")
     if fecha_emision and str(fecha_emision).strip():
         fe = str(fecha_emision).strip()[:10]
     else:
@@ -828,6 +833,7 @@ def build_crear_venta_con_detalles_payload(
     receptor: dict[str, Any] | None = None,
     venta_local_id: int | None = None,
     fecha_emision: str | None = None,
+    hora_emision: str | None = None,
     periodo_aplicado: str | None = None,
 ) -> dict[str, Any]:
     """
@@ -893,7 +899,9 @@ def build_crear_venta_con_detalles_payload(
     else:
         nombre_rec = (cliente_nombre_ticket or "Consumidor Final").strip() or "Consumidor Final"
 
-    fe_iso, hora_sv, periodo = _fecha_hora_periodo_para_agildte(fecha_emision, periodo_aplicado)
+    fe_iso, hora_sv, periodo = _fecha_hora_periodo_para_agildte(
+        fecha_emision, periodo_aplicado, hora_emision=hora_emision
+    )
 
     body: dict[str, Any] = {
         "empresa_id": empresa_id,

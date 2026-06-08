@@ -3,6 +3,15 @@ from __future__ import annotations
 
 import uuid
 
+from azdigital.utils.fecha_sv import ahora_sv_naive
+
+
+def get_fecha_registro(cur, venta_id: int):
+    """Fecha/hora de registro de la venta (naive = hora local SV en BD)."""
+    cur.execute("SELECT fecha_registro FROM ventas WHERE id = %s", (int(venta_id),))
+    row = cur.fetchone()
+    return row[0] if row else None
+
 
 def crear_venta(
     cur,
@@ -29,6 +38,7 @@ def crear_venta(
     cg = (codigo_generacion or "").strip() or None
     nc = (numero_control or "").strip() or None
     ed = (estado_dte or "RESPALDO").strip().upper()[:32] or "RESPALDO"
+    ts_sv = ahora_sv_naive()
     try:
         cur.execute(
             """
@@ -37,12 +47,12 @@ def crear_venta(
                 empresa_id, sucursal_id, tipo_comprobante, cliente_id, retencion_iva, estado_cobro,
                 descuento, total_bruto, codigo_generacion, numero_control, estado_dte
             )
-            VALUES (CURRENT_TIMESTAMP, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 CASE WHEN %s IN ('CREDITO', 'CRÉDITO') THEN 'PENDIENTE' ELSE 'COBRADO' END,
                 %s, %s, %s, %s, %s)
             RETURNING id
             """,
-            (total_pagar, usuario_id, cliente_nombre, tipo_pago, empresa_id, sucursal_id, tc, cliente_id, ret_iva, tipo_pago, desc, tb, cg, nc, ed),
+            (ts_sv, total_pagar, usuario_id, cliente_nombre, tipo_pago, empresa_id, sucursal_id, tc, cliente_id, ret_iva, tipo_pago, desc, tb, cg, nc, ed),
         )
     except Exception:
         cur.connection.rollback()
@@ -54,12 +64,12 @@ def crear_venta(
                     empresa_id, sucursal_id, tipo_comprobante, cliente_id, retencion_iva, estado_cobro,
                     descuento, total_bruto, codigo_generacion, numero_control, estado_dte
                 )
-                VALUES (CURRENT_TIMESTAMP, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     CASE WHEN %s IN ('CREDITO', 'CRÉDITO') THEN 'PENDIENTE' ELSE 'COBRADO' END,
                     %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (total_pagar, usuario_id, cliente_nombre, tipo_pago, empresa_id, sucursal_id, tc, cliente_id, ret_iva, tipo_pago, desc, tb, cg, nc, ed),
+                (ts_sv, total_pagar, usuario_id, cliente_nombre, tipo_pago, empresa_id, sucursal_id, tc, cliente_id, ret_iva, tipo_pago, desc, tb, cg, nc, ed),
             )
         except Exception:
             cur.connection.rollback()
@@ -70,20 +80,20 @@ def crear_venta(
                         fecha_registro, total_pagar, usuario_id, cliente_nombre, tipo_pago,
                         empresa_id, sucursal_id, tipo_comprobante, cliente_id
                     )
-                    VALUES (CURRENT_TIMESTAMP, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
-                    (total_pagar, usuario_id, cliente_nombre, tipo_pago, empresa_id, sucursal_id, tc, cliente_id),
+                    (ts_sv, total_pagar, usuario_id, cliente_nombre, tipo_pago, empresa_id, sucursal_id, tc, cliente_id),
                 )
             except Exception:
                 cur.connection.rollback()
                 cur.execute(
                     """
                     INSERT INTO ventas (fecha_registro, total_pagar, usuario_id, cliente_nombre, tipo_pago, empresa_id, sucursal_id, tipo_comprobante, cliente_id)
-                    VALUES (CURRENT_TIMESTAMP, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
-                    (total_pagar, usuario_id, cliente_nombre, tipo_pago, empresa_id, sucursal_id, tc, cliente_id),
+                    (ts_sv, total_pagar, usuario_id, cliente_nombre, tipo_pago, empresa_id, sucursal_id, tc, cliente_id),
                 )
     return int(cur.fetchone()[0])
 

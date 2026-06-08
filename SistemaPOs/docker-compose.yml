@@ -26,6 +26,7 @@ services:
     container_name: posagil_db
     restart: unless-stopped
     environment:
+      TZ: America/El_Salvador
       POSTGRES_USER: "${AZ_DB_USER:-postgres}"
       POSTGRES_PASSWORD: "${AZ_DB_PASSWORD:-postgres}"
       POSTGRES_DB: "${AZ_DB_NAME:-posagil}"

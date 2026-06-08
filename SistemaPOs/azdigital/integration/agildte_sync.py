@@ -24,6 +24,7 @@ from azdigital.integration.agildte_client import (
     public_sync_result,
 )
 from azdigital.repositories import ventas_repo
+from azdigital.utils.fecha_sv import fecha_hora_desde_registro
 
 
 def _truthy_env(name: str, default: bool = False) -> bool:
@@ -154,6 +155,8 @@ def sync_venta_a_agildte(
                     ) or {"ok": False, "error": "nrc_igual_documento"}
 
         # No enviar cliente_id local: el PK de PosAgil no existe en AgilDTE (provoca "Cliente no encontrado").
+        fr = ventas_repo.get_fecha_registro(cur, venta_id_local)
+        fe_iso, hora_sv, periodo = fecha_hora_desde_registro(fr)
         body = build_crear_venta_con_detalles_payload(
             empresa_id=eid,
             tipo_comprobante_pos=tipo_comprobante,
@@ -166,6 +169,9 @@ def sync_venta_a_agildte(
             cliente_nombre_ticket=cliente_nombre_ticket,
             receptor=receptor,
             venta_local_id=venta_id_local,
+            fecha_emision=fe_iso,
+            hora_emision=hora_sv,
+            periodo_aplicado=periodo,
         )
         creado = cli.procesar_venta_pos(body)
         venta_payload = creado.get("venta") if isinstance(creado, dict) else None
