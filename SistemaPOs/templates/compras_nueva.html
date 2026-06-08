@@ -94,11 +94,8 @@
                         {% set costo_pres = (d[4]|float) * fac %}
                         <tr class="fila-detalle">
                             <td>
-                                <select name="producto_id" class="form-select form-select-sm producto-select">
+                                <select name="producto_id" class="form-select form-select-sm producto-select" data-selected="{{ d[0] }}">
                                     <option value="">— Producto —</option>
-                                    {% for prod in productos %}
-                                    <option value="{{ prod[0] }}" {% if prod[0] == d[0] %}selected{% endif %}>{{ prod[2] }} ({{ prod[1] or prod[0] }})</option>
-                                    {% endfor %}
                                 </select>
                             </td>
                             <td>
@@ -120,9 +117,6 @@
                             <td>
                                 <select name="producto_id" class="form-select form-select-sm producto-select">
                                     <option value="">— Producto —</option>
-                                    {% for prod in productos %}
-                                    <option value="{{ prod[0] }}">{{ prod[2] }} ({{ prod[1] or prod[0] }})</option>
-                                    {% endfor %}
                                 </select>
                             </td>
                             <td>
@@ -168,6 +162,32 @@
 <script>
 (function() {
     var COMPRA_PRES = {{ compra_presentaciones_opts|tojson }};
+    var PRODUCTOS = {{ productos_json|tojson }};
+    var productoOptionsFragment = null;
+    function buildProductoOptionsFragment() {
+        if (productoOptionsFragment) return productoOptionsFragment;
+        var frag = document.createDocumentFragment();
+        var o0 = document.createElement('option');
+        o0.value = '';
+        o0.textContent = '— Producto —';
+        frag.appendChild(o0);
+        (PRODUCTOS || []).forEach(function(p) {
+            var o = document.createElement('option');
+            o.value = String(p.id);
+            o.textContent = (p.nombre || '') + ' (' + (p.codigo || p.id) + ')';
+            frag.appendChild(o);
+        });
+        productoOptionsFragment = frag;
+        return frag;
+    }
+    function initProductoSelect(sel) {
+        if (!sel) return;
+        var selected = sel.getAttribute('data-selected') || sel.value || '';
+        sel.innerHTML = '';
+        sel.appendChild(buildProductoOptionsFragment().cloneNode(true));
+        if (selected) sel.value = String(selected);
+        sel.removeAttribute('data-selected');
+    }
     function fmtMoney(n) {
         var x = isNaN(n) ? 0 : n;
         return '$' + x.toFixed(2);
@@ -244,18 +264,16 @@
         syncRow(tr);
     }
     function agregarOpcionProducto(pid, nombre, codigo) {
-        var label = nombre + ' (' + (codigo || pid) + ')';
+        var sid = String(pid);
+        var found = (PRODUCTOS || []).some(function(p) { return String(p.id) === sid; });
+        if (!found) {
+            PRODUCTOS.push({ id: Number(pid), nombre: nombre, codigo: codigo || pid });
+            productoOptionsFragment = null;
+        }
         document.querySelectorAll('.producto-select').forEach(function(sel) {
-            var exists = false;
-            for (var i = 0; i < sel.options.length; i++) {
-                if (sel.options[i].value === String(pid)) { exists = true; break; }
-            }
-            if (!exists) {
-                var o = document.createElement('option');
-                o.value = String(pid);
-                o.textContent = label;
-                sel.appendChild(o);
-            }
+            var cur = sel.value;
+            initProductoSelect(sel);
+            if (cur) sel.value = cur;
         });
     }
     document.addEventListener('DOMContentLoaded', function() {
@@ -272,6 +290,7 @@
             tr.querySelector('.inp-costo').addEventListener('input', function() { syncRow(tr); });
         }
         tbody.querySelectorAll('.fila-detalle').forEach(function(tr) {
+            initProductoSelect(tr.querySelector('.producto-select'));
             bindRow(tr);
             onProductChange(tr);
         });
@@ -287,7 +306,11 @@
             var psel = tr.querySelector('.pres-select');
             psel.innerHTML = '<option value="">— Elija producto —</option>';
             psel.disabled = true;
-            tr.querySelector('.producto-select').value = '';
+            var prodSel = tr.querySelector('.producto-select');
+            prodSel.innerHTML = '<option value="">— Producto —</option>';
+            prodSel.value = '';
+            prodSel.removeAttribute('data-selected');
+            initProductoSelect(prodSel);
             var lastTd = tr.querySelector('td:last-child');
             lastTd.innerHTML = '<button type="button" class="btn btn-sm btn-outline-danger btn-quitar"><i class="bi bi-trash"></i></button>';
             tbody.appendChild(tr);

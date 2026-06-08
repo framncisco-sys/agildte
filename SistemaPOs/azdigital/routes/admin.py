@@ -6041,16 +6041,9 @@ def _compras_aplicar_lineas_edicion(
 
 
 def _compras_presentaciones_opts(cur, productos_lista) -> dict:
-    from azdigital.services.compras_service import opciones_presentacion_compra
+    from azdigital.services.compras_service import opciones_presentacion_compra_bulk
 
-    compra_pres_opts = {}
-    for prod in productos_lista or []:
-        try:
-            pid_o = int(prod[0])
-        except (TypeError, ValueError):
-            continue
-        compra_pres_opts[str(pid_o)] = opciones_presentacion_compra(cur, pid_o, prod)
-    return compra_pres_opts
+    return opciones_presentacion_compra_bulk(cur, productos_lista)
 
 
 def _compras_tpl_context(cur, emp_id, es_super, **kw):
@@ -6068,9 +6061,19 @@ def _compras_tpl_context(cur, emp_id, es_super, **kw):
     )
     catalogo_mh = mh_unidades_repo.listar_todas(cur) or []
     catalogo_mh_grupos = catalogo_para_select_optgroups(dict(catalogo_mh))
+    productos_json = [
+        {
+            "id": int(p[0]),
+            "nombre": str(p[2] or ""),
+            "codigo": str(p[1] or p[0]),
+        }
+        for p in (productos_lista or [])
+        if p and p[0] is not None
+    ]
     return dict(
         proveedores=proveedores_lista,
         productos=productos_lista,
+        productos_json=productos_json,
         empresas=empresas,
         emp_id=emp_id,
         es_super=es_super,

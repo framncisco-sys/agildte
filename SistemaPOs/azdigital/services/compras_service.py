@@ -30,14 +30,26 @@ def linea_compra_a_unidad_base(
     return (cant_umb, costo_umb, subtotal)
 
 
-def opciones_presentacion_compra(cur, producto_id: int, prod_row: tuple | None = None) -> list[dict[str, Any]]:
+def opciones_presentacion_compra(
+    cur,
+    producto_id: int,
+    prod_row: tuple | None = None,
+    pres_rows: list[tuple[Any, ...]] | None = None,
+) -> list[dict[str, Any]]:
     """
     Opciones para el select «Presentación» al registrar compra (nombre + factor respecto a UMB).
     Incluye filas de producto_presentación y, si aplica, Caja/Docena desde columnas legacy del producto.
     """
     opts: list[dict[str, Any]] = []
     seen: set[tuple[str, float]] = set()
-    rows = presentaciones_repo.listar_por_producto(cur, producto_id) if presentaciones_repo.tabla_existe(cur) else []
+    if pres_rows is not None:
+        rows = pres_rows
+    else:
+        rows = (
+            presentaciones_repo.listar_por_producto(cur, producto_id)
+            if presentaciones_repo.tabla_existe(cur)
+            else []
+        )
     for r in rows:
         try:
             fac = float(r[2])
@@ -82,11 +94,42 @@ def opciones_presentacion_compra(cur, producto_id: int, prod_row: tuple | None =
     _add_synthetic("Docena", uxd or 0)
 
     if not opts:
-        umb = presentaciones_repo.nombre_umb_producto(cur, producto_id)
+        umb = "Unidad base"
+        if rows:
+            for r in rows:
+                if len(r) > 3 and r[3]:
+                    umb = str(r[1] or "").strip() or umb
+                    break
+        else:
+            umb = presentaciones_repo.nombre_umb_producto(cur, producto_id)
         opts.append({"nombre": umb or "Unidad base", "factor": 1.0})
 
     opts.sort(key=lambda o: (0 if abs(float(o["factor"]) - 1.0) < 1e-9 else 1, float(o["factor"])))
     return opts
+
+
+def opciones_presentacion_compra_bulk(cur, productos_lista) -> dict[str, list[dict[str, Any]]]:
+    """Mapa producto_id → opciones de presentación (una sola consulta a producto_presentacion)."""
+    prod_by_id: dict[int, tuple] = {}
+    pids: list[int] = []
+    for prod in productos_lista or []:
+        try:
+            pid = int(prod[0])
+        except (TypeError, ValueError):
+            continue
+        if pid in prod_by_id:
+            continue
+        prod_by_id[pid] = prod
+        pids.append(pid)
+    pres_map = (
+        presentaciones_repo.listar_por_productos(cur, pids)
+        if pids and presentaciones_repo.tabla_existe(cur)
+        else {}
+    )
+    return {
+        str(pid): opciones_presentacion_compra(cur, pid, prod_by_id[pid], pres_map.get(pid, []))
+        for pid in pids
+    }
 
 
 def calcular_retencion_iva_compras(

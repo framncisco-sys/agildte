@@ -3,15 +3,21 @@
 
 from __future__ import annotations
 
+_columnas_detalle_presentacion: bool | None = None
+
 
 def columnas_detalle_presentacion_existen(cur) -> bool:
+    global _columnas_detalle_presentacion
+    if _columnas_detalle_presentacion is not None:
+        return _columnas_detalle_presentacion
     cur.execute(
         """
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'compra_detalles' AND column_name = 'factor_conversion'
         """
     )
-    return cur.fetchone() is not None
+    _columnas_detalle_presentacion = cur.fetchone() is not None
+    return _columnas_detalle_presentacion
 
 
 def listar(cur, empresa_id: int, limit: int = 100) -> list[tuple]:
