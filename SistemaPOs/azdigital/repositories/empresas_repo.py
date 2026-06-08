@@ -391,7 +391,9 @@ def actualizar_empresa(
 
 
 def get_ambiente_mh(cur, empresa_id: int) -> str | None:
-    try:
+    from azdigital.utils.db_savepoint import sql_opcional
+
+    def _q():
         cur.execute(
             "SELECT ambiente_mh FROM empresas WHERE id = %s",
             (int(empresa_id),),
@@ -399,9 +401,9 @@ def get_ambiente_mh(cur, empresa_id: int) -> str | None:
         row = cur.fetchone()
         if row and row[0]:
             return str(row[0]).strip()
-    except Exception:
-        pass
-    return None
+        return None
+
+    return sql_opcional(cur, _q, default=None)
 
 
 def contar_empresas(cur) -> int:
@@ -417,14 +419,17 @@ def eliminar_empresa(cur, empresa_id: int) -> bool:
 
 
 def set_ambiente_mh(cur, empresa_id: int, ambiente: str) -> None:
+    from azdigital.utils.db_savepoint import sql_opcional
+
     amb = (ambiente or "01").strip()[:2]
     if amb not in ("00", "01"):
         amb = "01"
-    try:
+
+    def _upd() -> None:
         cur.execute(
             "UPDATE empresas SET ambiente_mh = %s WHERE id = %s",
             (amb, int(empresa_id)),
         )
-    except Exception:
-        pass
+
+    sql_opcional(cur, _upd)
 

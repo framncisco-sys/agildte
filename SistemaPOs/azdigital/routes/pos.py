@@ -1196,11 +1196,8 @@ def guardar_venta():
                     emp_row = empresas_repo.get_empresa(cur, emp_id)
                     if emp_row and len(emp_row) > 1:
                         nombre_neg = (emp_row[1] or "").strip()
-                except Exception:
-                    try:
-                        conn.rollback()
-                    except Exception:
-                        pass
+                except Exception as ex:
+                    current_app.logger.warning("get_empresa venta #%s: %s", venta_id, ex)
                 try:
                     whatsapp_info = preparar_envio_whatsapp_venta(
                         cur,
@@ -1213,10 +1210,7 @@ def guardar_venta():
                         nombre_neg,
                     )
                 except Exception as ex:
-                    try:
-                        conn.rollback()
-                    except Exception:
-                        pass
+                    current_app.logger.warning("WhatsApp venta #%s: %s", venta_id, ex)
                     whatsapp_info = {
                         "ok": False,
                         "motivo": "error_preparacion",

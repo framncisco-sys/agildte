@@ -95,7 +95,9 @@ def actualizar_numero_caja(
     empresa_id: int | None = None,
 ) -> None:
     """Número correlativo de caja (ticket/factura) por ambiente."""
-    try:
+    from azdigital.utils.db_savepoint import sql_opcional
+
+    def _upd() -> None:
         if empresa_id is not None:
             cur.execute(
                 "UPDATE ventas SET numero_caja = %s WHERE id = %s AND empresa_id = %s",
@@ -106,8 +108,8 @@ def actualizar_numero_caja(
                 "UPDATE ventas SET numero_caja = %s WHERE id = %s",
                 (int(numero_caja), int(venta_id)),
             )
-    except Exception:
-        pass
+
+    sql_opcional(cur, _upd)
 
 
 def actualizar_dte_desde_respuesta_agildte(

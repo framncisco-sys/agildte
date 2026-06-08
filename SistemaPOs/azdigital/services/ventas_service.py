@@ -307,22 +307,29 @@ def crear_venta_desde_carrito(
                 f"Si usó cantidad, recuerde que es en libras/unidad base, no en dólares."
             )
 
-        try:
-            promo_activa = promociones_repo.get_promocion_activa_producto(cur, producto_id, empresa_id, fecha)
-            if promo_activa:
-                promo_tipo = promo_activa[0]
-                promo_val = float(promo_activa[1] or 0)
-                if len(promo_activa) > 2:
-                    promo_comprar = float(promo_activa[2] or 2)
-                    promo_pagar = float(promo_activa[3] or 1)
-                    promo_desc_monto = float(promo_activa[4]) if promo_activa[4] is not None else None
-                    promo_regalo_id = int(promo_activa[5]) if promo_activa[5] else None
-                    promo_min_compra = float(promo_activa[6] or 1)
-                    promo_cant_regalo = float(promo_activa[7] or 1)
-                    if promo_tipo == "DESCUENTO_CANTIDAD":
-                        promo_comprar = promo_min_compra
-        except Exception:
-            pass
+        from azdigital.utils.db_savepoint import sql_opcional
+
+        def _cargar_promo():
+            nonlocal promo_tipo, promo_val, promo_comprar, promo_pagar, promo_desc_monto
+            nonlocal promo_regalo_id, promo_min_compra, promo_cant_regalo
+            promo_activa = promociones_repo.get_promocion_activa_producto(
+                cur, producto_id, empresa_id, fecha
+            )
+            if not promo_activa:
+                return
+            promo_tipo = promo_activa[0]
+            promo_val = float(promo_activa[1] or 0)
+            if len(promo_activa) > 2:
+                promo_comprar = float(promo_activa[2] or 2)
+                promo_pagar = float(promo_activa[3] or 1)
+                promo_desc_monto = float(promo_activa[4]) if promo_activa[4] is not None else None
+                promo_regalo_id = int(promo_activa[5]) if promo_activa[5] else None
+                promo_min_compra = float(promo_activa[6] or 1)
+                promo_cant_regalo = float(promo_activa[7] or 1)
+                if promo_tipo == "DESCUENTO_CANTIDAD":
+                    promo_comprar = promo_min_compra
+
+        sql_opcional(cur, _cargar_promo)
 
         if promo_tipo == "REGALO" and promo_regalo_id and cantidad >= promo_min_compra:
             grupos_regalo = int(cantidad // promo_min_compra)
@@ -465,15 +472,16 @@ def persistir_venta(
     )
     try:
         from azdigital.services.modo_operacion_service import obtener_ambiente_empresa
+        from azdigital.utils.db_savepoint import sql_opcional
 
-        amb_em = obtener_ambiente_empresa(empresa_id, cur=cur)
-        ventas_repo.actualizar_ambiente_emision(
-            cur,
-            venta_id,
-            amb_em,
-            empresa_id=empresa_id,
-        )
-        try:
+        def _meta_post_crear() -> None:
+            amb_em = obtener_ambiente_empresa(empresa_id, cur=cur)
+            ventas_repo.actualizar_ambiente_emision(
+                cur,
+                venta_id,
+                amb_em,
+                empresa_id=empresa_id,
+            )
             from azdigital.repositories import secuencia_comprobante_repo
 
             num_caja = secuencia_comprobante_repo.siguiente_numero(
@@ -482,8 +490,8 @@ def persistir_venta(
             ventas_repo.actualizar_numero_caja(
                 cur, venta_id, num_caja, empresa_id=empresa_id
             )
-        except Exception:
-            pass
+
+        sql_opcional(cur, _meta_post_crear)
     except Exception:
         pass
     # codigo_generacion, numero_control y sello: solo los asigna AgilDTE (sync tras POST /api/pos/procesar-venta/).
