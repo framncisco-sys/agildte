@@ -273,6 +273,7 @@ def create_app() -> Flask:
         )
         ctx = {
             "alertas_inventario": [],
+            "alertas_inventario_total": 0,
             "suscripcion": None,
             "rol_actual": session.get("rol"),
             "puede_ver_ventas": False,
@@ -324,8 +325,10 @@ def create_app() -> Flask:
             ctx["suscripcion"] = empresas_repo.get_suscripcion_detalle(cur, emp_id)
             try:
                 ctx["alertas_inventario"] = productos_repo.productos_stock_bajo(cur, umbral=5, empresa_id=emp_id) or []
+                ctx["alertas_inventario_total"] = productos_repo.contar_productos_stock_bajo(cur, umbral=5, empresa_id=emp_id)
             except Exception:
                 ctx["alertas_inventario"] = []
+                ctx["alertas_inventario_total"] = 0
             cur.close()
             conn.close()
         except Exception:

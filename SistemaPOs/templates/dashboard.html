@@ -89,8 +89,8 @@
         <div class="col-md-3">
             <div class="card border-0 rounded-4 shadow-sm p-4 h-100 acceso-rapido">
                 <span class="text-uppercase small fw-bold mb-2 d-block opacity-90">Acceso rápido</span>
-                <button class="btn btn-light w-100 fw-bold py-2 rounded-3" style="color: #4f46e5;" onclick="location.href='/ventas_pos'">
-                    <i class="bi bi-cart-plus me-2"></i>Nueva venta (F1)
+                <button type="button" class="btn btn-light w-100 fw-bold py-2 rounded-3" style="color: #4f46e5;" onclick="window.PosAgilAtajos && PosAgilAtajos.irVentasPos()">
+                    <i class="bi bi-cart-plus me-2"></i>Nueva venta (F9)
                 </button>
             </div>
         </div>
@@ -172,11 +172,30 @@
             <div class="card border-0 rounded-4 shadow-sm p-4">
                 <h6 class="fw-bold mb-3" style="color: #475569;"><i class="bi bi-percent text-primary me-1"></i> Posición IVA (mes)</h6>
                 <div class="small">
-                    <div class="d-flex justify-content-between py-2 border-bottom"><span>IVA Débito (Ventas)</span><strong class="text-success">${{ "{:,.2f}".format(iva_debito|default(0)|float) }}</strong></div>
+                    <div class="d-flex justify-content-between py-2 border-bottom">
+                        <span title="Solo Crédito Fiscal — Libro contribuyentes">Débito CCF (contribuyentes)</span>
+                        <strong class="text-success">${{ "{:,.2f}".format(iva_debito_ccf|default(0)|float) }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between py-1 ps-2 text-muted" style="font-size:0.8rem">
+                        <span>↳ Factura CF (DTE-01)</span>
+                        <span>${{ "{:,.2f}".format(iva_debito_cf|default(0)|float) }} ({{ n_ventas_cf|default(0) }})</span>
+                    </div>
+                    <div class="d-flex justify-content-between py-1 ps-2 text-muted border-bottom" style="font-size:0.8rem">
+                        <span>↳ Tickets / otros</span>
+                        <span>${{ "{:,.2f}".format(iva_debito_ticket|default(0)|float) }} ({{ n_ventas_ticket|default(0) }})</span>
+                    </div>
+                    <div class="d-flex justify-content-between py-2 border-bottom fw-semibold">
+                        <span>Total IVA débito ventas</span>
+                        <strong class="text-success">${{ "{:,.2f}".format(iva_debito|default(0)|float) }}</strong>
+                    </div>
                     <div class="d-flex justify-content-between py-2 border-bottom"><span>IVA Crédito (Compras)</span><strong class="text-info">${{ "{:,.2f}".format(iva_credito|default(0)|float) }}</strong></div>
                     <div class="d-flex justify-content-between py-2"><span>Estimado a pagar</span><strong class="{% if (iva_estimado|default(0)|float) > 0 %}text-danger{% else %}text-secondary{% endif %}">${{ "{:,.2f}".format(iva_estimado|default(0)|float) }}</strong></div>
                 </div>
-                <a href="/reporte/facturacion/libro_iva" class="btn btn-sm btn-outline-primary mt-2 w-100">Ver Libro IVA</a>
+                <p class="small text-muted mt-2 mb-2">El <strong>Libro CCF</strong> solo lista créditos fiscales ({{ n_ventas_ccf|default(0) }} este mes). Los ${{ "{:,.2f}".format(iva_debito|default(0)|float) }} incluyen facturas y tickets.</p>
+                <div class="d-flex gap-1 flex-wrap">
+                    <a href="/reporte/facturacion/libro_iva" class="btn btn-sm btn-outline-primary flex-grow-1">Libro CCF</a>
+                    <a href="/reporte/facturacion/libro_iva_compras" class="btn btn-sm btn-outline-secondary flex-grow-1">Libro compras</a>
+                </div>
             </div>
         </div>
         <div class="col-lg-4">

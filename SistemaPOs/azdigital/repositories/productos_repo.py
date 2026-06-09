@@ -1196,3 +1196,23 @@ def productos_stock_bajo(cur, umbral: float = 5, empresa_id: int = None):
         )
     return cur.fetchall()
 
+
+def contar_productos_stock_bajo(cur, umbral: float = 5, empresa_id: int = None):
+    fa = _filtro_activos_sql(cur, None, solo_activos=True)
+    if empresa_id:
+        cur.execute(
+            f"""SELECT COUNT(*)
+               FROM productos
+               WHERE empresa_id = %s AND COALESCE(stock_actual, 0) < %s{fa}""",
+            (empresa_id, umbral),
+        )
+    else:
+        cur.execute(
+            f"""SELECT COUNT(*)
+               FROM productos
+               WHERE COALESCE(stock_actual, 0) < %s{fa}""",
+            (umbral,),
+        )
+    row = cur.fetchone()
+    return int(row[0]) if row else 0
+

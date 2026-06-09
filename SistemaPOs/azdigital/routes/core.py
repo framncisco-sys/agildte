@@ -72,10 +72,14 @@ def entrar_empresa(empresa_id):
 def _render_dashboard():
     """Renderiza el dashboard de administración para la empresa actual."""
     emp_id = session.get("empresa_id", 1)
+    hoy = hoy_sv()
     db = ConexionDB()
     v_hoy = db.ejecutar_sql(
-        "SELECT SUM(total_pagar) FROM ventas WHERE fecha_registro::date = CURRENT_DATE AND (empresa_id IS NULL OR empresa_id = %s) AND COALESCE(estado, 'ACTIVO') = 'ACTIVO'",
-        (emp_id,),
+        """SELECT COALESCE(SUM(total_pagar), 0) FROM ventas
+           WHERE fecha_registro::date = %s
+           AND (empresa_id IS NULL OR empresa_id = %s)
+           AND COALESCE(estado, 'ACTIVO') = 'ACTIVO'""",
+        (hoy, emp_id),
         es_select=True,
     )
     try:
@@ -96,7 +100,6 @@ def _render_dashboard():
         "total_empresas": e_count[0][0] if e_count else 0,
         "total_sucursales": s_count[0][0] if s_count else 0,
     }
-    hoy = hoy_sv()
     mes_actual = hoy.month
     ano_actual = hoy.year
     primer_dia_mes = date(ano_actual, mes_actual, 1)
@@ -140,15 +143,42 @@ def _render_dashboard():
         es_select=True,
     )
     dte_pendientes_cnt = dte_pendientes[0][0] if dte_pendientes and dte_pendientes[0][0] else 0
-    iva_ventas = db.ejecutar_sql(
-        """SELECT COALESCE(SUM(total_pagar - (total_pagar/1.13)), 0), COALESCE(SUM(retencion_iva), 0)
-           FROM ventas WHERE fecha_registro::date >= %s AND fecha_registro::date <= %s
-           AND (empresa_id IS NULL OR empresa_id = %s) AND COALESCE(estado, 'ACTIVO') = 'ACTIVO'""",
+    iva_por_tipo = db.ejecutar_sql(
+        """SELECT COALESCE(UPPER(TRIM(tipo_comprobante)), 'TICKET'),
+                  COALESCE(SUM(total_pagar - (total_pagar/1.13)), 0),
+                  COALESCE(SUM(retencion_iva), 0),
+                  COUNT(*)
+           FROM ventas
+           WHERE fecha_registro::date >= %s AND fecha_registro::date <= %s
+             AND (empresa_id IS NULL OR empresa_id = %s)
+             AND COALESCE(estado, 'ACTIVO') = 'ACTIVO'
+           GROUP BY COALESCE(UPPER(TRIM(tipo_comprobante)), 'TICKET')""",
         (primer_dia_mes, hoy, emp_id),
         es_select=True,
-    )
-    iva_debito = round(float(iva_ventas[0][0]), 2) if iva_ventas and iva_ventas[0][0] else 0
-    retenciones_ventas = round(float(iva_ventas[0][1]), 2) if iva_ventas and len(iva_ventas[0]) > 1 and iva_ventas[0][1] else 0
+    ) or []
+    iva_debito_ccf = iva_debito_cf = iva_debito_ticket = 0.0
+    retenciones_ventas = 0.0
+    n_ventas_ccf = n_ventas_cf = n_ventas_ticket = 0
+    for row in iva_por_tipo:
+        tipo = (row[0] or "TICKET").upper()
+        iva_row = float(row[1] or 0)
+        ret_row = float(row[2] or 0) if len(row) > 2 else 0.0
+        cnt = int(row[3] or 0) if len(row) > 3 else 0
+        retenciones_ventas += ret_row
+        if tipo == "CREDITO_FISCAL":
+            iva_debito_ccf += iva_row
+            n_ventas_ccf += cnt
+        elif tipo == "FACTURA":
+            iva_debito_cf += iva_row
+            n_ventas_cf += cnt
+        else:
+            iva_debito_ticket += iva_row
+            n_ventas_ticket += cnt
+    iva_debito_ccf = round(iva_debito_ccf, 2)
+    iva_debito_cf = round(iva_debito_cf, 2)
+    iva_debito_ticket = round(iva_debito_ticket, 2)
+    iva_debito = round(iva_debito_ccf + iva_debito_cf + iva_debito_ticket, 2)
+    retenciones_ventas = round(retenciones_ventas, 2)
     iva_compras = db.ejecutar_sql(
         """SELECT COALESCE(SUM(c.total - (c.total/1.13)), 0), COALESCE(SUM(c.retencion_iva), 0)
            FROM compras c WHERE c.fecha::date >= %s AND c.fecha::date <= %s AND c.empresa_id = %s""",
@@ -243,6 +273,12 @@ def _render_dashboard():
         dias_en_mes=dias_en_mes,
         dte_rechazados=dte_rechazados_cnt,
         iva_debito=iva_debito,
+        iva_debito_ccf=iva_debito_ccf,
+        iva_debito_cf=iva_debito_cf,
+        iva_debito_ticket=iva_debito_ticket,
+        n_ventas_ccf=n_ventas_ccf,
+        n_ventas_cf=n_ventas_cf,
+        n_ventas_ticket=n_ventas_ticket,
         iva_credito=iva_credito,
         iva_estimado=iva_estimado,
         retenciones_acumuladas=retenciones_ventas,

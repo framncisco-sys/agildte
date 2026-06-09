@@ -11,13 +11,13 @@ def listar_libro_iva(
     fecha_fin: str,
 ) -> list[tuple]:
     """
-    Libro de IVA: ventas por tipo DTE (contribuyente vs consumidor final).
-    Retorna: (id, fecha, tipo_dte, cliente, doc_cliente, venta_gravada, iva, total, es_contribuyente)
-    IVA 13%: venta_gravada = total/1.13, iva = total - venta_gravada
+    Libro de ventas a contribuyentes: solo Crédito Fiscal (CCF / DTE clase 03).
+    Retorna: (id, fecha, tipo_dte, cliente, doc_cliente, venta_gravada, iva, total, es_contribuyente, retencion_iva)
     """
+    filtro_ccf = "AND UPPER(COALESCE(v.tipo_comprobante, '')) = 'CREDITO_FISCAL'"
     try:
         cur.execute(
-            """
+            f"""
             SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY'), COALESCE(v.tipo_comprobante, 'TICKET'),
                    COALESCE(c.nombre_cliente, v.cliente_nombre, 'Consumidor Final'),
                    COALESCE(c.tipo_documento || ': ' || c.numero_documento, c.numero_documento, '—'),
@@ -30,6 +30,7 @@ def listar_libro_iva(
             LEFT JOIN clientes c ON c.id = v.cliente_id
             WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
               AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
+              {filtro_ccf}
               AND v.fecha_registro::date BETWEEN %s AND %s
             ORDER BY v.fecha_registro, v.id
             """,
@@ -39,7 +40,7 @@ def listar_libro_iva(
     except Exception:
         cur.connection.rollback()
         cur.execute(
-            """
+            f"""
             SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY'), COALESCE(v.tipo_comprobante, 'TICKET'),
                    COALESCE(c.nombre_cliente, v.cliente_nombre, 'Consumidor Final'),
                    COALESCE(c.tipo_documento || ': ' || c.numero_documento, c.numero_documento, '—'),
@@ -51,6 +52,7 @@ def listar_libro_iva(
             LEFT JOIN clientes c ON c.id = v.cliente_id
             WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
               AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
+              {filtro_ccf}
               AND v.fecha_registro::date BETWEEN %s AND %s
             ORDER BY v.fecha_registro, v.id
             """,

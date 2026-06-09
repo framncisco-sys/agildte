@@ -1,0 +1,115 @@
+{# Pantalla de carga — texto AgilDTE (colores del logo, sin imagen) #}
+<style>
+    .agildte-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+        transition: opacity 0.3s ease;
+    }
+    .agildte-splash.is-done {
+        opacity: 0;
+        pointer-events: none;
+    }
+    body.agildte-splash-active { overflow: hidden; }
+    .agildte-splash-card {
+        text-align: center;
+        width: min(380px, 90vw);
+        padding: 0 1rem;
+    }
+    .agildte-splash-word {
+        font-size: 2.35rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        margin-bottom: 0.35rem;
+        font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+    }
+    .agildte-splash-word .w-agil { color: #3d7ab8; }
+    .agildte-splash-word .w-dte { color: #2f3a45; }
+    .agildte-splash-tagline {
+        font-size: 0.82rem;
+        font-weight: 500;
+        color: #6b7280;
+        margin-bottom: 1.4rem;
+        font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+    }
+    .agildte-splash-track {
+        height: 5px;
+        border-radius: 3px;
+        background: #e8edf2;
+        overflow: hidden;
+    }
+    .agildte-splash-fill {
+        height: 100%;
+        width: 0%;
+        border-radius: 3px;
+        background: #f7931e;
+        transition: width 0.12s linear;
+    }
+    .agildte-splash-status {
+        margin-top: 0.7rem;
+        font-size: 0.8rem;
+        color: #6b7280;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+</style>
+<div id="agildteSplash" class="agildte-splash" role="status" aria-live="polite">
+    <div class="agildte-splash-card">
+        <div class="agildte-splash-word">
+            <span class="w-agil">Agil</span><span class="w-dte">DTE</span>
+        </div>
+        <div class="agildte-splash-tagline">Facturación Electrónica Simple y Rápida</div>
+        <div class="agildte-splash-track">
+            <div class="agildte-splash-fill" id="agildteSplashFill"></div>
+        </div>
+        <div class="agildte-splash-status">Cargando sistema…</div>
+    </div>
+</div>
+<script>
+(function () {
+    if (window.AgilDteSplashInit) return;
+    window.AgilDteSplashInit = true;
+
+    var splash = document.getElementById('agildteSplash');
+    var fill = document.getElementById('agildteSplashFill');
+    if (!splash || !fill) return;
+
+    document.body.classList.add('agildte-splash-active');
+
+    var progress = 0;
+    var done = false;
+    var started = Date.now();
+    var minMs = 280;
+
+    var tick = setInterval(function () {
+        if (done) return;
+        var max = document.readyState === 'complete' ? 100 : 90;
+        if (progress < max) progress += 4;
+        fill.style.width = progress + '%';
+    }, 25);
+
+    function cerrar() {
+        if (done) return;
+        done = true;
+        clearInterval(tick);
+        fill.style.width = '100%';
+        var wait = Math.max(0, minMs - (Date.now() - started));
+        setTimeout(function () {
+            splash.classList.add('is-done');
+            document.body.classList.remove('agildte-splash-active');
+            setTimeout(function () { splash.remove(); }, 180);
+        }, wait);
+    }
+
+    if (document.readyState === 'complete') {
+        cerrar();
+    } else {
+        window.addEventListener('load', cerrar, { once: true });
+    }
+    setTimeout(cerrar, 12000);
+})();
+</script>

@@ -85,6 +85,46 @@
             margin-right: 6px;
             margin-top: -2px;
         }
+        /* Alerta inventario — barra warning, se oculta sola */
+        .inv-toast-wrap {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.35rem 0.5rem;
+            padding: 0.65rem 1rem;
+            margin: 0 0 1rem;
+            border-radius: 6px;
+            background: #fef9e7;
+            border: 1px solid #f5e6b8;
+            color: #7c5e10;
+            font-size: 0.875rem;
+            line-height: 1.4;
+            transition: opacity 0.35s ease, max-height 0.35s ease, margin 0.35s ease, padding 0.35s ease;
+            max-height: 80px;
+            overflow: hidden;
+        }
+        .inv-toast-wrap.inv-toast-hide {
+            opacity: 0;
+            max-height: 0;
+            margin: 0;
+            padding: 0;
+            border-width: 0;
+            pointer-events: none;
+        }
+        .inv-toast-wrap .inv-toast-icon {
+            flex-shrink: 0;
+            font-size: 1rem;
+            color: #92700c;
+        }
+        .inv-toast-wrap .inv-toast-msg { flex: 1; min-width: 0; }
+        .inv-toast-wrap .inv-toast-msg strong { font-weight: 700; color: #6b4f0a; }
+        .inv-toast-wrap .inv-toast-link {
+            font-weight: 700;
+            color: #6b4f0a;
+            text-decoration: underline;
+            white-space: nowrap;
+        }
+        .inv-toast-wrap .inv-toast-link:hover { color: #4a3607; }
         .sidebar-toggle { display: none; }
         @media (max-width: 992px) {
             .sidebar { transform: translateX(-100%); transition: transform 0.3s; }
@@ -340,8 +380,43 @@
             body.device-tv .sidebar { width: min(300px, 90vw); }
         }
     </style>
+    <script>
+    (function () {
+        if (window.PosAgilAtajos) return;
+        var POS_URL_PREFIX = {{ (POS_URL_PREFIX or '') | tojson }};
+        function posBasePrefix() {
+            var p = (POS_URL_PREFIX || '').replace(/\/$/, '');
+            if (p) return p;
+            var path = window.location.pathname || '';
+            if (path.indexOf('/pos/') === 0 || path === '/pos') return '/pos';
+            return '';
+        }
+        function posUrl(rel) {
+            var r = (rel && rel.charAt(0) === '/') ? rel : '/' + (rel || '');
+            var base = posBasePrefix();
+            if (!base) return r;
+            if (r === base || r.indexOf(base + '/') === 0) return r;
+            return base + r;
+        }
+        function esF9(e) {
+            return e.key === 'F9' || e.code === 'F9' || e.which === 120 || e.keyCode === 120;
+        }
+        function irVentasPos() {
+            window.location.assign(posUrl('/ventas_pos'));
+        }
+        function onAtajo(e) {
+            if (!esF9(e)) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            irVentasPos();
+        }
+        window.addEventListener('keydown', onAtajo, true);
+        window.PosAgilAtajos = { irVentasPos: irVentasPos };
+    })();
+    </script>
 </head>
 <body class="layout-{% if es_super %}superuser{% elif (rol_actual or session.get('rol')) == 'GERENTE' %}gerente{% elif (rol_actual or session.get('rol')) == 'CONTADOR' %}contador{% elif (rol_actual or session.get('rol')) == 'BODEGUERO' %}bodeguero{% else %}cajero{% endif %}">
+{% include '_splash_carga.html' %}
 <script>
 (function () {
     function detectDevice(w, h, ua) {
@@ -603,23 +678,21 @@
         {% endfor %}
         {% endif %}
         {% endwith %}
-        {% if alertas_inventario and puede_ver_inventario %}
-        <div class="alert alert-warning alert-dismissible fade show mx-4 mt-2 mb-0" role="alert">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i>
-            <strong>Inventario bajo:</strong> {{ alertas_inventario|length }} producto(s) con stock &lt; 5.
-            <a href="/inventario" class="alert-link ms-1">Ver inventario</a>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        {% if puede_ver_inventario and (alertas_inventario_total|default(0) > 0) %}
+        {% set total_inv = alertas_inventario_total|default(0) %}
+        <div class="inv-toast-wrap" role="alert" id="invAlertToast" aria-live="polite">
+            <i class="bi bi-exclamation-triangle-fill inv-toast-icon" aria-hidden="true"></i>
+            <span class="inv-toast-msg">
+                <strong>Inventario bajo:</strong>
+                {{ total_inv }} producto{{ 's' if total_inv != 1 else '' }} con stock &lt; 5.
+            </span>
+            <a href="/inventario" class="inv-toast-link">Ver inventario</a>
         </div>
         {% endif %}
         <div class="top-bar d-flex justify-content-end align-items-center">
             <button class="btn btn-outline-secondary btn-sm sidebar-toggle me-auto" type="button" onclick="document.getElementById('sidebar').classList.toggle('show')" aria-label="Menú">
                 <i class="bi bi-list"></i>
             </button>
-            {% if alertas_inventario and puede_ver_inventario %}
-            <a href="/inventario" class="btn btn-sm btn-warning me-2" title="Productos con stock bajo">
-                <i class="bi bi-exclamation-triangle"></i> {{ alertas_inventario|length }}
-            </a>
-            {% endif %}
             <div class="user-pill">
                 <span class="avatar"><i class="bi bi-person-fill"></i></span>
                 <span class="user-active-dot" title="Sesión activa" aria-hidden="true"></span>
@@ -635,9 +708,14 @@
     {% include '_modal_buscador_actividad_script.html' %}
     <script src="https://cdn.jsdelivr.net/npm/imask@7.6.1/dist/imask.min.js"></script>
     <script>
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'F1') { e.preventDefault(); window.location.href = '/ventas_pos'; }
-    });
+    (function () {
+        var toast = document.getElementById('invAlertToast');
+        if (!toast) return;
+        setTimeout(function () {
+            toast.classList.add('inv-toast-hide');
+            setTimeout(function () { toast.remove(); }, 380);
+        }, 9000);
+    })();
     </script>
     {% block scripts %}{% endblock %}
 </body>
