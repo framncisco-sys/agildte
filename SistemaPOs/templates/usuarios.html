@@ -1,47 +1,219 @@
 {% extends "layout.html" %}
 {% block content %}
+{% set n_filas = usuarios|length %}
 <style>
-    .card { border: none; border-radius: 15px; box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.1); }
-    .table thead { background-color: #4e73df; color: white; }
+    .usr-wrap {
+        --usr-blue: #2563eb;
+        --usr-blue-soft: #eff6ff;
+        --usr-green: #16a34a;
+        --usr-green-soft: #dcfce7;
+        --usr-purple: #7c3aed;
+        --usr-purple-soft: #f3e8ff;
+        --usr-amber: #d97706;
+        --usr-amber-soft: #fef3c7;
+        --usr-red: #dc2626;
+        --usr-red-soft: #fee2e2;
+    }
+    .usr-header {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start;
+        gap: 0.85rem; margin-bottom: 1rem;
+    }
+    .usr-header-icon {
+        width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem; color: #fff; flex-shrink: 0;
+        background: linear-gradient(145deg, #6366f1 0%, #4f46e5 100%);
+        box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+    }
+    .usr-header h2 { font-size: 1.85rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .usr-header p { font-size: 1.12rem; font-weight: 600; color: #64748b; margin: 0; max-width: 42rem; line-height: 1.45; }
+    .usr-back {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.45rem 0.85rem;
+        border-radius: 999px; background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+        font-size: 0.95rem; font-weight: 700; color: #fff; text-decoration: none; transition: transform 0.15s ease;
+    }
+    .usr-back:hover { transform: translateY(-1px); color: #fff; }
+    .usr-alert {
+        border-radius: 10px; padding: 0.85rem 1rem; margin-bottom: 1rem;
+        font-size: 1.02rem; font-weight: 600; line-height: 1.45;
+        background: var(--usr-blue-soft); border: 1px solid #bfdbfe; color: #1e40af;
+    }
+    .usr-kpi-row { --bs-gutter-x: 0.55rem; margin-bottom: 1rem; }
+    .usr-kpi {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important; padding: 0.95rem 1rem !important;
+        height: 100%; transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .usr-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(15,23,42,0.1) !important; }
+    .usr-kpi-label { font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; }
+    .usr-kpi-val { font-size: 1.75rem; font-weight: 900; line-height: 1.1; }
+    .usr-kpi-sub { font-size: 0.88rem; font-weight: 600; color: #94a3b8; margin-top: 0.15rem; }
+    .usr-form-card, .usr-table-card {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important;
+        box-shadow: 0 4px 20px rgba(15,23,42,0.06) !important; overflow: hidden;
+    }
+    .usr-form-card { padding: 1.15rem 1.2rem !important; }
+    .usr-form-card--edit { border: 2px solid #6366f1 !important; background: linear-gradient(180deg, #eef2ff 0%, #fff 14%); }
+    .usr-form-card h5 { font-size: 1.32rem; font-weight: 800; color: #0f172a; margin-bottom: 0.75rem; }
+    .usr-wrap .form-label { font-size: 1.05rem; font-weight: 800; color: #334155; margin-bottom: 0.35rem; }
+    .usr-wrap .form-control, .usr-wrap .form-select { font-size: 1.12rem; font-weight: 600; padding: 0.62rem 0.8rem; border-radius: 9px; border-color: #e2e8f0; }
+    .usr-empresa-box {
+        border-radius: 10px; padding: 0.75rem 0.9rem; margin-bottom: 0.85rem;
+        background: #f8fafc; border: 1px solid #e2e8f0; font-size: 1rem; font-weight: 600; color: #475569; line-height: 1.5;
+    }
+    .usr-btn-save {
+        display: flex; align-items: center; justify-content: center; gap: 0.35rem; width: 100%;
+        padding: 0.7rem 1rem; border-radius: 10px; font-size: 1.08rem; font-weight: 800; border: none; cursor: pointer;
+        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #fff;
+        box-shadow: 0 4px 14px rgba(99,102,241,0.3); transition: transform 0.15s ease;
+    }
+    .usr-btn-save:hover { transform: translateY(-2px); color: #fff; }
+    .usr-table-head {
+        padding: 0.75rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;
+    }
+    .usr-table-head h6 { margin: 0; font-size: 1.1rem; font-weight: 800; color: #1e293b; }
+    .usr-search-wrap { position: relative; flex: 1; min-width: 180px; max-width: 300px; }
+    .usr-search-wrap i { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+    .usr-search {
+        width: 100%; padding: 0.55rem 0.75rem 0.55rem 2.25rem; border-radius: 9px;
+        border: 1px solid #e2e8f0; font-size: 1.02rem; font-weight: 600;
+    }
+    .usr-search:focus { outline: none; border-color: #a5b4fc; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+    .usr-count-badge {
+        display: inline-flex; padding: 0.28rem 0.65rem; border-radius: 999px;
+        font-size: 0.92rem; font-weight: 800; background: var(--usr-purple-soft); color: var(--usr-purple);
+    }
+    .usr-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0.75rem 1rem 0; }
+    .usr-chip {
+        display: inline-flex; align-items: center; gap: 0.28rem; padding: 0.35rem 0.7rem;
+        border-radius: 999px; border: 1px solid #e2e8f0; background: #fff;
+        font-size: 0.9rem; font-weight: 800; color: #475569; cursor: pointer; transition: all 0.15s ease;
+    }
+    .usr-chip:hover, .usr-chip--active { background: var(--usr-purple-soft); border-color: #c4b5fd; color: #6d28d9; }
+    .usr-table { margin-bottom: 0; width: 100%; }
+    .usr-table thead th {
+        background: #f8fafc; font-size: 0.98rem; font-weight: 800; letter-spacing: 0.04em;
+        text-transform: uppercase; color: #64748b; padding: 0.85rem 0.75rem; border-bottom: 1px solid #e2e8f0;
+        white-space: nowrap; cursor: pointer;
+    }
+    .usr-table thead th:hover { color: var(--usr-purple); }
+    .usr-table tbody tr.usr-row {
+        cursor: pointer; transition: background 0.18s ease, box-shadow 0.18s ease; border-bottom: 1px solid #f1f5f9;
+    }
+    .usr-table tbody tr.usr-row:hover, .usr-table tbody tr.usr-row--active {
+        background: linear-gradient(90deg, #eef2ff 0%, #fff 100%);
+        box-shadow: inset 4px 0 0 #6366f1;
+    }
+    .usr-table tbody tr.usr-row--hidden { display: none; }
+    .usr-table tbody td { padding: 0.9rem 0.8rem; font-size: 1.12rem; font-weight: 700; color: #334155; vertical-align: middle; }
+    .usr-name { font-weight: 800; color: #0f172a; font-size: 1.15rem; }
+    .usr-badge {
+        display: inline-flex; padding: 0.28rem 0.62rem; border-radius: 999px;
+        font-size: 0.88rem; font-weight: 800; border: 1px solid #e2e8f0;
+    }
+    .usr-badge--gerente { background: var(--usr-purple-soft); color: #6d28d9; border-color: #ddd6fe; }
+    .usr-badge--cajero { background: var(--usr-blue-soft); color: #1d4ed8; border-color: #bfdbfe; }
+    .usr-badge--bodeguero { background: var(--usr-amber-soft); color: #92400e; border-color: #fde68a; }
+    .usr-badge--contador { background: var(--usr-teal-soft, #ccfbf1); color: #0f766e; border-color: #99f6e4; }
+    .usr-badge--admin { background: var(--usr-red-soft); color: #b91c1c; border-color: #fecaca; }
+    .usr-status { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 1rem; font-weight: 800; }
+    .usr-status--active { color: var(--usr-green); }
+    .usr-status--inactive { color: #94a3b8; }
+    .usr-btn-edit {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.75rem;
+        border-radius: 8px; font-size: 0.95rem; font-weight: 800; text-decoration: none;
+        border: 1px solid #a5b4fc; background: #eef2ff; color: #4338ca; transition: all 0.15s ease;
+    }
+    .usr-btn-edit:hover { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+    .usr-btn-del {
+        display: inline-flex; align-items: center; justify-content: center; padding: 0.4rem 0.65rem;
+        border-radius: 8px; border: 1px solid #fca5a5; background: #fee2e2; color: #b91c1c; cursor: pointer;
+        font-size: 0.95rem; font-weight: 800; transition: all 0.15s ease;
+    }
+    .usr-btn-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+    .usr-sucursal-empty { font-size: 0.98rem; font-weight: 700; color: #94a3b8; font-style: italic; }
+    .usr-header-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+    .usr-empty { text-align: center; padding: 2.5rem 1rem; font-size: 1.12rem; font-weight: 600; color: #94a3b8; }
 </style>
 
-<div class="container py-5">
-    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-        <div>
-            <h2 class="fw-bold mb-0"><i class="bi bi-person-badge-fill text-primary"></i> Gestión de Usuarios</h2>
-            {% if session.get('empresa_nombre') and not es_superadmin %}
-            <p class="text-muted small mb-0 mt-1"><i class="bi bi-building me-1"></i> <strong>Empresa actual:</strong> {{ session.empresa_nombre }} — Solo ve y gestiona usuarios de esta empresa.</p>
-            {% elif es_superadmin %}
-            <p class="text-muted small mb-0 mt-1"><i class="bi bi-shield-check me-1"></i> <strong>Superusuario</strong> — Gestiona usuarios de todas las empresas.</p>
-            {% endif %}
+<div class="container-fluid px-4 py-4 usr-wrap">
+    <div class="usr-header">
+        <div class="d-flex align-items-start gap-3">
+            <span class="usr-header-icon"><i class="bi bi-person-badge-fill"></i></span>
+            <div>
+                <h2>Gestión de Usuarios</h2>
+                {% if es_superadmin %}
+                <p><i class="bi bi-shield-check"></i> Superusuario — gestiona usuarios de todas las empresas.</p>
+                {% elif empresa_nombre %}
+                <p><i class="bi bi-building"></i> {{ empresa_nombre }}</p>
+                {% else %}
+                <p>Usuarios, roles y sucursales asignadas</p>
+                {% endif %}
+            </div>
         </div>
-        <a href="/" class="btn btn-secondary btn-sm rounded-pill">Volver</a>
+        <div class="usr-header-actions">
+            <a href="{{ url_for('admin.historial_usuarios') }}" class="usr-back" style="background:linear-gradient(135deg,#6366f1,#4f46e5)"><i class="bi bi-clock-history"></i> Historial</a>
+            <a href="/" class="usr-back"><i class="bi bi-arrow-left"></i> Volver</a>
+        </div>
     </div>
 
-    <div class="alert alert-info py-2 px-3 mb-4 small" role="alert">
-        <strong>Jerarquía:</strong> Empresa → Sucursales → Usuarios. Cada usuario pertenece a una empresa.
+    <div class="usr-alert">
+        <strong>Jerarquía:</strong> Empresa → Sucursales → Usuarios.
         {% if es_superadmin %}
-        <strong>Como superusuario</strong> puede asignar usuario a cualquier empresa y sucursal.
+        Asigne empresa y sucursal al crear cada usuario.
         {% else %}
-        Los usuarios que crees se asignan a <strong>{{ session.empresa_nombre or 'su empresa' }}</strong>.
+        Los nuevos usuarios quedan en su empresa. Asigne sucursal <strong>Principal</strong> si aplica.
         {% endif %}
     </div>
 
-    <div class="row">
-        <div class="col-md-4">
-            <div class="card shadow-sm p-4 border-0 rounded-4 {{ 'border-primary border-2' if usuario else '' }}" id="formUsuario">
-                <h5 class="fw-bold mb-3">{{ 'Editar Usuario' if usuario else 'Nuevo Usuario' }}</h5>
-                {% if not es_superadmin %}
-                <div class="alert alert-light border py-2 px-3 mb-3 small">
-                    <i class="bi bi-building text-primary"></i> <strong>Empresa:</strong> {{ session.empresa_nombre or '—' }}<br>
-                    <i class="bi bi-geo-alt text-secondary"></i> Sucursal: de esta empresa.
+    <div class="row usr-kpi-row">
+        <div class="col-4 col-md-3">
+            <div class="card usr-kpi shadow-sm">
+                <div class="usr-kpi-label">Total</div>
+                <div class="usr-kpi-val" style="color:var(--usr-purple)">{{ n_usuarios|default(n_filas) }}</div>
+                <div class="usr-kpi-sub">en esta empresa</div>
+            </div>
+        </div>
+        <div class="col-4 col-md-3">
+            <div class="card usr-kpi shadow-sm">
+                <div class="usr-kpi-label">Activos</div>
+                <div class="usr-kpi-val" style="color:var(--usr-green)">{{ n_activos|default(0) }}</div>
+                <div class="usr-kpi-sub">pueden iniciar sesión</div>
+            </div>
+        </div>
+        <div class="col-4 col-md-3">
+            <div class="card usr-kpi shadow-sm">
+                <div class="usr-kpi-label">Inactivos</div>
+                <div class="usr-kpi-val" style="color:#94a3b8">{{ n_inactivos|default(0) }}</div>
+                <div class="usr-kpi-sub">desactivados</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-3">
+            <div class="card usr-kpi shadow-sm">
+                <div class="usr-kpi-label">Roles</div>
+                <div class="usr-kpi-val" style="color:var(--usr-blue);font-size:1.25rem;line-height:1.3">
+                    {% for rol, cnt in (roles_count or {})|dictsort %}
+                    {{ rol[:8] }}:{{ cnt }}{% if not loop.last %} · {% endif %}
+                    {% else %}—{% endfor %}
+                </div>
+                <div class="usr-kpi-sub">{{ (roles_count or {})|length }} rol{{ 'es' if (roles_count or {})|length != 1 else '' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-4">
+            <div class="card usr-form-card {{ 'usr-form-card--edit' if usuario else '' }}" id="formUsuario">
+                <h5><i class="bi bi-person-plus"></i> {{ 'Editar Usuario' if usuario else 'Nuevo Usuario' }}</h5>
+                {% if not es_superadmin and empresa_nombre %}
+                <div class="usr-empresa-box">
+                    <i class="bi bi-building text-primary"></i> <strong>{{ empresa_nombre }}</strong>
                 </div>
                 {% endif %}
                 <form action="/guardar_usuario" method="POST" id="formUsuarioPost">
                     <input type="hidden" name="usuario_id" value="{{ usuario[0] if usuario else '' }}">
                     {% if es_superadmin %}
                     <div class="mb-3">
-                        <label class="small fw-bold">Empresa</label>
+                        <label class="form-label">Empresa</label>
                         <select name="empresa" id="select_empresa" class="form-select">
                             <option value="0" {{ 'selected' if usuario and usuario|length > 4 and not usuario[4] else '' }}>— Sin empresa (Superusuario) —</option>
                             {% for e in empresas %}
@@ -50,7 +222,7 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="small fw-bold">Sucursal Asignada</label>
+                        <label class="form-label">Sucursal asignada</label>
                         <select name="sucursal" id="select_sucursal" class="form-select">
                             <option value="">— Sin sucursal —</option>
                         </select>
@@ -59,19 +231,19 @@
                     <input type="hidden" name="empresa" value="{{ session.empresa_id }}">
                     {% endif %}
                     <div class="mb-3">
-                        <label class="small fw-bold">Usuario <span class="text-danger">*</span></label>
-                        <input type="text" name="user" class="form-control" value="{{ usuario[1] if usuario else '' }}" required>
+                        <label class="form-label">Usuario <span class="text-danger">*</span></label>
+                        <input type="text" name="user" class="form-control" value="{{ usuario[1] if usuario else '' }}" required autocomplete="username">
                     </div>
                     <div class="mb-3">
-                        <label class="small fw-bold">Contraseña {{ '(dejar en blanco para no cambiar)' if usuario else '' }}</label>
-                        <input type="password" name="pass" class="form-control" {{ 'placeholder="••••••••"' if usuario else 'required' }}>
+                        <label class="form-label">Contraseña{% if usuario %} <span class="text-muted fw-normal">(blanco = no cambiar)</span>{% endif %}</label>
+                        <input type="password" name="pass" class="form-control" {{ 'placeholder="••••••••"' if usuario else 'required' }} autocomplete="new-password">
                     </div>
                     <div class="mb-3">
-                        <label class="small fw-bold">Rol</label>
+                        <label class="form-label">Rol</label>
                         <select name="rol" class="form-select">
                             <option value="CAJERO" {{ 'selected' if usuario and usuario[2] == 'CAJERO' else '' }}>Cajero — Ventas y clientes</option>
-                            <option value="BODEGUERO" {{ 'selected' if usuario and usuario[2] == 'BODEGUERO' else '' }}>Bodeguero — Inventario y stock</option>
-                            <option value="CONTADOR" {{ 'selected' if usuario and usuario[2] == 'CONTADOR' else '' }}>Contador — Reportes contables</option>
+                            <option value="BODEGUERO" {{ 'selected' if usuario and usuario[2] == 'BODEGUERO' else '' }}>Bodeguero — Inventario</option>
+                            <option value="CONTADOR" {{ 'selected' if usuario and usuario[2] == 'CONTADOR' else '' }}>Contador — Reportes</option>
                             <option value="GERENTE" {{ 'selected' if usuario and usuario[2] == 'GERENTE' else '' }}>Gerente — Todo de su empresa</option>
                             {% if usuario and usuario[2] in ('ADMIN', 'SUPERADMIN') %}
                             <option value="{{ usuario[2] }}" selected>Superusuario ({{ usuario[2] }})</option>
@@ -80,7 +252,7 @@
                     </div>
                     {% if not es_superadmin %}
                     <div class="mb-3">
-                        <label class="small fw-bold">Sucursal Asignada</label>
+                        <label class="form-label">Sucursal asignada</label>
                         <select name="sucursal" class="form-select">
                             <option value="">— Sin sucursal —</option>
                             {% for s in sucursales %}
@@ -89,82 +261,121 @@
                         </select>
                     </div>
                     {% endif %}
-                    <button type="submit" class="btn btn-primary w-100 fw-bold">{{ 'Actualizar Usuario' if usuario else 'Crear Usuario' }}</button>
-                    {% if usuario %}<a href="/usuarios" class="btn btn-outline-secondary w-100 mt-2">Cancelar</a>{% endif %}
+                    <button type="submit" class="usr-btn-save">{{ 'Actualizar Usuario' if usuario else 'Crear Usuario' }}</button>
+                    {% if usuario %}
+                    <a href="/usuarios" class="btn btn-outline-secondary w-100 mt-2 fw-bold" style="font-size:1rem;padding:0.55rem">Cancelar</a>
+                    {% endif %}
                 </form>
             </div>
         </div>
 
-        <div class="col-md-8">
-            <div class="card shadow-sm p-4 border-0 rounded-4">
-                <p class="small text-muted mb-2"><i class="bi bi-people"></i> {% if es_superadmin %}Todos los usuarios{% else %}Usuarios de <strong>{{ session.empresa_nombre or 'esta empresa' }}</strong>{% endif %}</p>
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            {% if es_superadmin %}<th>Empresa</th>{% endif %}
-                            <th>Usuario</th>
-                            <th>Rol</th>
-                            <th>Sucursal</th>
-                            <th>Estado</th>
-                            <th class="text-center">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for u in usuarios %}
-                        <tr>
-                            {% if es_superadmin %}<td class="small">{{ u[5] if u|length > 5 else '—' }}</td>{% endif %}
-                            <td class="fw-bold">{{ u[1] if u|length > 1 else '' }}</td>
-                            <td><span class="badge bg-light text-dark border">{{ u[2] if u|length > 2 else '' }}</span></td>
-                            <td>{{ (u[3] if u|length > 3 else '') or '—' }}</td>
-                            <td>
-                                {% set activo_val = u[4] if u|length > 4 else false %}
-                                {% if activo_val %}
-                                <span class="text-success small"><i class="bi bi-circle-fill"></i> Activo</span>
-                                {% else %}
-                                <span class="text-muted small"><i class="bi bi-circle"></i> Inactivo</span>
+        <div class="col-lg-8">
+            <div class="card usr-table-card shadow-sm">
+                <div class="usr-table-head">
+                    <h6><i class="bi bi-people"></i> {% if es_superadmin %}Todos los usuarios{% else %}Usuarios{% endif %}</h6>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <div class="usr-search-wrap">
+                            <i class="bi bi-search"></i>
+                            <input type="search" class="usr-search" id="usrSearch" placeholder="Buscar usuario, rol…" autocomplete="off">
+                        </div>
+                        <span class="usr-count-badge" id="usrVisibleCount">{{ n_filas }} usuario{{ 's' if n_filas != 1 else '' }}</span>
+                    </div>
+                </div>
+                {% if n_filas > 0 %}
+                <div class="usr-chips" id="usrRolChips">
+                    <button type="button" class="usr-chip usr-chip--active" data-rol="">Todos</button>
+                    <button type="button" class="usr-chip" data-rol="gerente">Gerente</button>
+                    <button type="button" class="usr-chip" data-rol="cajero">Cajero</button>
+                    <button type="button" class="usr-chip" data-rol="bodeguero">Bodeguero</button>
+                    <button type="button" class="usr-chip" data-rol="contador">Contador</button>
+                </div>
+                {% endif %}
+                <div class="table-responsive">
+                    <table class="table usr-table align-middle" id="usrTable">
+                        <thead>
+                            <tr>
+                                {% if es_superadmin %}<th data-sort="text">Empresa</th>{% endif %}
+                                <th data-sort="text">Usuario</th>
+                                <th data-sort="text">Rol</th>
+                                <th data-sort="text">Sucursal</th>
+                                <th data-sort="text">Estado</th>
+                                <th class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usrBody">
+                            {% for u in usuarios %}
+                            {% set u_rol = (u[2] if u|length > 2 else '')|string|upper %}
+                            {% set activo_val = u[4] if u|length > 4 else false %}
+                            {% set rol_key = u_rol|lower %}
+                            {% set roles_editable = ('CAJERO', 'BODEGUERO', 'CONTADOR', 'GERENTE') %}
+                            {% set puede_editar = u|length > 0 and activo_val and (es_superadmin or (u_rol in roles_editable)) %}
+                            <tr class="usr-row" data-search="{{ ((u[1] or '') ~ ' ' ~ u_rol ~ ' ' ~ (u[3] or '') ~ ' ' ~ (u[5] if u|length > 5 else ''))|lower }}" data-rol="{{ rol_key }}">
+                                {% if es_superadmin %}
+                                <td>{{ u[5] if u|length > 5 else '—' }}</td>
                                 {% endif %}
-                            </td>
-                            <td class="text-center">
-                                {% set u_rol = (u[2] if u|length > 2 else '')|string|upper %}
-                                {% set roles_editable = ('CAJERO', 'BODEGUERO', 'CONTADOR', 'GERENTE') %}
-{% set puede_editar = u|length > 0 and (u[4] if u|length > 4 else false) and (es_superadmin or (u_rol in roles_editable)) %}
-                                {% if puede_editar %}
-                                <a href="/usuarios/editar/{{ u[0] }}" class="btn btn-sm btn-outline-primary" title="Editar" style="cursor:pointer;"><i class="bi bi-pencil"></i> Editar</a>
-                                <form action="/eliminar_usuario/{{ u[0] }}" method="POST" class="d-inline ms-1" onsubmit="return confirm('¿Desactivar este usuario? No podrá iniciar sesión.');">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Desactivar"><i class="bi bi-trash"></i></button>
-                                </form>
-                                {% elif u|length > 0 and (u[4] if u|length > 4 else false) %}
-                                <span class="text-muted small" title="Solo superusuario puede editar usuarios con rol superusuario">—</span>
-                                {% else %}
-                                <span class="text-muted small">—</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="{{ 6 if es_superadmin else 5 }}" class="text-center text-muted py-4">No hay usuarios.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                                <td><span class="usr-name">{{ u[1] or '—' }}</span></td>
+                                <td>
+                                    {% if u_rol == 'GERENTE' %}<span class="usr-badge usr-badge--gerente"><i class="bi bi-person-workspace"></i> {{ u_rol }}</span>
+                                    {% elif u_rol == 'CAJERO' %}<span class="usr-badge usr-badge--cajero"><i class="bi bi-cart"></i> {{ u_rol }}</span>
+                                    {% elif u_rol == 'BODEGUERO' %}<span class="usr-badge usr-badge--bodeguero"><i class="bi bi-box-seam"></i> {{ u_rol }}</span>
+                                    {% elif u_rol == 'CONTADOR' %}<span class="usr-badge usr-badge--contador"><i class="bi bi-calculator"></i> {{ u_rol }}</span>
+                                    {% elif u_rol in ('ADMIN', 'SUPERADMIN') %}<span class="usr-badge usr-badge--admin"><i class="bi bi-shield"></i> {{ u_rol }}</span>
+                                    {% else %}<span class="usr-badge">{{ u_rol or '—' }}</span>{% endif %}
+                                </td>
+                                <td>{% if u|length > 3 and u[3] %}{{ u[3] }}{% else %}<span class="usr-sucursal-empty" title="Acceso a toda la empresa">Sin asignar</span>{% endif %}</td>
+                                <td>
+                                    {% if activo_val %}
+                                    <span class="usr-status usr-status--active"><i class="bi bi-circle-fill"></i> Activo</span>
+                                    {% else %}
+                                    <span class="usr-status usr-status--inactive"><i class="bi bi-circle"></i> Inactivo</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center text-nowrap">
+                                    {% if puede_editar %}
+                                    <a href="/usuarios/editar/{{ u[0] }}" class="usr-btn-edit" title="Editar"><i class="bi bi-pencil"></i> Editar</a>
+                                    <form action="/eliminar_usuario/{{ u[0] }}" method="POST" class="d-inline ms-1 form-del-usr" data-nombre="{{ (u[1] or '')|e }}">
+                                        <button type="submit" class="usr-btn-del" title="Desactivar"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                    {% elif activo_val %}
+                                    <span class="text-muted" style="font-size:0.95rem;font-weight:600" title="Solo superusuario">—</span>
+                                    {% else %}
+                                    <span class="text-muted" style="font-size:0.95rem">—</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="{{ 6 if es_superadmin else 5 }}" class="usr-empty">
+                                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                    No hay usuarios registrados.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
-{% if es_superadmin and sucursales_todas %}
+{% endblock %}
+
+{% block scripts %}
 <script>
 (function() {
-    const sucursalesData = {{ (sucursales_todas or []) | tojson }};
-    const selEmpresa = document.getElementById('select_empresa');
-    const selSucursal = document.getElementById('select_sucursal');
-    const usuarioSucursalId = {{ (usuario[3] if usuario and usuario[3] else none) | tojson }};
-    const usuarioEmpresaId = {{ (usuario[4] if usuario and usuario|length > 4 and usuario[4] else none) | tojson }};
-
+    {% if es_superadmin and sucursales_todas %}
+    var sucursalesData = {{ (sucursales_todas or []) | tojson }};
+    var selEmpresa = document.getElementById('select_empresa');
+    var selSucursal = document.getElementById('select_sucursal');
+    var usuarioSucursalId = {{ (usuario[3] if usuario and usuario[3] else none) | tojson }};
+    var usuarioEmpresaId = {{ (usuario[4] if usuario and usuario|length > 4 and usuario[4] else none) | tojson }};
     function actualizarSucursales() {
         if (!selEmpresa || !selSucursal) return;
-        const empId = selEmpresa.value;
+        var empId = selEmpresa.value;
         selSucursal.innerHTML = '<option value="">— Sin sucursal —</option>';
         sucursalesData.forEach(function(s) {
             if (String(s[2]) === String(empId)) {
-                const opt = document.createElement('option');
+                var opt = document.createElement('option');
                 opt.value = s[0];
                 opt.textContent = s[1];
                 if (usuarioSucursalId && String(s[0]) === String(usuarioSucursalId)) opt.selected = true;
@@ -177,10 +388,75 @@
         if (usuarioEmpresaId) selEmpresa.value = usuarioEmpresaId;
         actualizarSucursales();
     }
+    {% endif %}
+
+    {% if usuario %}
+    document.getElementById('formUsuario')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    {% endif %}
+
+    document.querySelectorAll('.form-del-usr').forEach(function(frm) {
+        frm.addEventListener('submit', function(e) {
+            var nom = frm.getAttribute('data-nombre') || 'este usuario';
+            if (!confirm('¿Desactivar «' + nom + '»?\n\nNo podrá iniciar sesión.')) e.preventDefault();
+        });
+    });
+
+    var search = document.getElementById('usrSearch');
+    var countEl = document.getElementById('usrVisibleCount');
+    var rows = document.querySelectorAll('.usr-row');
+    var rolFilter = '';
+    var chips = document.querySelectorAll('.usr-chip[data-rol]');
+
+    function applyFilters() {
+        var q = search ? (search.value || '').trim().toLowerCase() : '';
+        var v = 0;
+        rows.forEach(function(row) {
+            var matchQ = !q || (row.getAttribute('data-search') || '').indexOf(q) >= 0;
+            var matchR = !rolFilter || (row.getAttribute('data-rol') || '').indexOf(rolFilter) >= 0;
+            var show = matchQ && matchR;
+            row.classList.toggle('usr-row--hidden', !show);
+            if (show) v++;
+        });
+        if (countEl) countEl.textContent = v + ' usuario' + (v !== 1 ? 's' : '');
+    }
+    if (search) search.addEventListener('input', applyFilters);
+    chips.forEach(function(chip) {
+        chip.addEventListener('click', function() {
+            chips.forEach(function(c) { c.classList.remove('usr-chip--active'); });
+            chip.classList.add('usr-chip--active');
+            rolFilter = chip.getAttribute('data-rol') || '';
+            applyFilters();
+        });
+    });
+    rows.forEach(function(row) {
+        row.addEventListener('click', function(e) {
+            if (e.target.closest('a, button, form')) return;
+            rows.forEach(function(r) { r.classList.remove('usr-row--active'); });
+            row.classList.add('usr-row--active');
+            var editLink = row.querySelector('.usr-btn-edit');
+            if (editLink && e.detail === 2) window.location.href = editLink.href;
+        });
+    });
+
+    var tbody = document.getElementById('usrBody');
+    var headers = document.querySelectorAll('#usrTable thead th[data-sort]');
+    var sortCol = -1, sortAsc = true;
+    headers.forEach(function(th, idx) {
+        th.addEventListener('click', function() {
+            if (sortCol === idx) sortAsc = !sortAsc;
+            else { sortCol = idx; sortAsc = true; }
+            var arr = Array.from(rows);
+            arr.sort(function(a, b) {
+                var va = (a.cells[idx] ? a.cells[idx].textContent : '').trim().toLowerCase();
+                var vb = (b.cells[idx] ? b.cells[idx].textContent : '').trim().toLowerCase();
+                if (va < vb) return sortAsc ? -1 : 1;
+                if (va > vb) return sortAsc ? 1 : -1;
+                return 0;
+            });
+            arr.forEach(function(r) { tbody.appendChild(r); });
+            rows = document.querySelectorAll('.usr-row');
+        });
+    });
 })();
 </script>
-{% endif %}
-{% if usuario %}
-<script>document.getElementById('formUsuario')?.scrollIntoView({ behavior: 'smooth', block: 'start' });</script>
-{% endif %}
 {% endblock %}

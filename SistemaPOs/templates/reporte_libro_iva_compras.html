@@ -1,84 +1,306 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
-<div class="container-fluid px-4 mt-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <div>
-            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
-            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-cart-check text-primary"></i> Libro de IVA Compras</h2>
-            <p class="text-muted small mb-0">Facturas de proveedores gravadas — Retención 1% según Gran Contribuyente (MH El Salvador)</p>
+{% set n_filas = filas|length %}
+<style>
+    .lic-wrap {
+        --lic-navy: #1e3a5f;
+        --lic-green: #16a34a;
+        --lic-green-soft: #dcfce7;
+        --lic-purple: #7c3aed;
+        --lic-purple-soft: #f3e8ff;
+        --lic-red: #dc2626;
+        --lic-red-soft: #fee2e2;
+        --lic-orange: #ea580c;
+        --lic-orange-soft: #ffedd5;
+        --lic-blue: #2563eb;
+        --lic-blue-soft: #eff6ff;
+    }
+    .lic-header {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start;
+        gap: 0.85rem; margin-bottom: 1rem;
+    }
+    .lic-header-main { display: flex; align-items: flex-start; gap: 0.65rem; min-width: 0; }
+    .lic-back {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.75rem;
+        border-radius: 999px; border: 1px solid #cbd5e1; background: #fff;
+        font-size: 0.92rem; font-weight: 700; color: #475569; text-decoration: none;
+        margin-bottom: 0.55rem; transition: all 0.15s ease;
+    }
+    .lic-back:hover { background: #f8fafc; border-color: #94a3b8; color: #1e293b; transform: translateX(-2px); }
+    .lic-header-icon {
+        width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem; color: #fff; flex-shrink: 0;
+        background: linear-gradient(145deg, #059669 0%, #0891b2 100%);
+        box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
+    }
+    .lic-header h2 { font-size: 1.55rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; line-height: 1.15; }
+    .lic-header p { font-size: 1.02rem; font-weight: 600; color: #64748b; margin: 0; max-width: 44rem; line-height: 1.4; }
+    .lic-tool-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .lic-tool-btn {
+        display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.55rem 0.9rem;
+        border-radius: 9px; font-size: 0.95rem; font-weight: 800; text-decoration: none;
+        transition: transform 0.15s ease, box-shadow 0.2s ease; border: none; color: #fff;
+    }
+    .lic-tool-btn:hover { transform: translateY(-2px); color: #fff; }
+    .lic-tool-btn--excel { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 3px 10px rgba(34,197,94,0.28); }
+    .lic-tool-btn--csv { background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); box-shadow: 0 3px 10px rgba(6,182,212,0.28); }
+    .lic-tool-btn--pdf { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); box-shadow: 0 3px 10px rgba(220,38,38,0.28); }
+    .lic-filter-card { border-radius: 12px !important; border: 1px solid #e2e8f0 !important; margin-bottom: 0.85rem; overflow: hidden; }
+    .lic-filter-head {
+        padding: 0.65rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        font-size: 1rem; font-weight: 800; color: #334155; display: flex; align-items: center; gap: 0.4rem;
+    }
+    .lic-filter-body { padding: 1rem 1.05rem !important; }
+    .lic-wrap .form-label { font-size: 0.95rem; font-weight: 800; color: #334155; margin-bottom: 0.35rem; }
+    .lic-wrap .form-control { font-size: 1.05rem; font-weight: 600; padding: 0.58rem 0.75rem; border-radius: 9px; border-color: #e2e8f0; }
+    .lic-quick-dates { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+    .lic-quick-date {
+        display: inline-flex; align-items: center; gap: 0.28rem; padding: 0.32rem 0.68rem;
+        border-radius: 999px; border: 1px solid #cbd5e1; background: #fff;
+        font-size: 0.88rem; font-weight: 700; color: #475569; text-decoration: none; transition: all 0.15s ease;
+    }
+    .lic-quick-date:hover { background: var(--lic-blue-soft); border-color: #93c5fd; color: #1d4ed8; transform: translateY(-1px); }
+    .lic-filter-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+        padding: 0.58rem 1rem; border-radius: 9px; font-size: 1rem; font-weight: 800; border: none; cursor: pointer;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #fff;
+        box-shadow: 0 3px 10px rgba(37,99,235,0.28); transition: transform 0.15s ease; width: 100%;
+    }
+    .lic-filter-btn:hover { transform: translateY(-2px); }
+    .lic-alert {
+        border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 0.85rem;
+        font-size: 0.98rem; font-weight: 600; line-height: 1.45; display: flex; align-items: flex-start; gap: 0.5rem;
+    }
+    .lic-alert--info { background: var(--lic-blue-soft); border: 1px solid #bfdbfe; color: #1e40af; }
+    .lic-alert--warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .lic-alert a { color: inherit; font-weight: 800; text-decoration: underline; }
+    .lic-kpi-row { --bs-gutter-x: 0.55rem; --bs-gutter-y: 0.55rem; margin-bottom: 0.85rem; }
+    .lic-kpi {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important; padding: 0.95rem 1rem !important;
+        height: 100%; transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .lic-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(15,23,42,0.1) !important; }
+    .lic-kpi-icon {
+        width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.05rem; margin-bottom: 0.45rem; transition: transform 0.2s ease;
+    }
+    .lic-kpi:hover .lic-kpi-icon { transform: scale(1.08); }
+    .lic-kpi-icon--navy { background: linear-gradient(145deg, #e2e8f0 0%, #cbd5e1 100%); color: var(--lic-navy); }
+    .lic-kpi-icon--green { background: linear-gradient(145deg, #dcfce7 0%, #bbf7d0 100%); color: var(--lic-green); }
+    .lic-kpi-icon--purple { background: linear-gradient(145deg, #f3e8ff 0%, #e9d5ff 100%); color: var(--lic-purple); }
+    .lic-kpi-icon--red { background: linear-gradient(145deg, #fee2e2 0%, #fecaca 100%); color: var(--lic-red); }
+    .lic-kpi-icon--orange { background: linear-gradient(145deg, #ffedd5 0%, #fed7aa 100%); color: var(--lic-orange); }
+    .lic-kpi-label { font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; margin-bottom: 0.2rem; line-height: 1.2; }
+    .lic-kpi-val { font-size: 1.55rem; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .lic-kpi-val--navy { color: var(--lic-navy); }
+    .lic-kpi-val--green { color: var(--lic-green); }
+    .lic-kpi-val--purple { color: var(--lic-purple); }
+    .lic-kpi-val--red { color: var(--lic-red); }
+    .lic-kpi-val--orange { color: var(--lic-orange); }
+    .lic-kpi-sub { font-size: 0.82rem; font-weight: 600; color: #94a3b8; margin-top: 0.15rem; }
+    .lic-audit {
+        border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc;
+        margin-bottom: 0.85rem; overflow: hidden; transition: box-shadow 0.15s ease;
+    }
+    .lic-audit:hover { box-shadow: 0 4px 14px rgba(15,23,42,0.06); }
+    .lic-audit-toggle {
+        width: 100%; display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem;
+        border: none; background: transparent; cursor: pointer; text-align: left;
+        font-size: 1rem; font-weight: 800; color: #334155;
+    }
+    .lic-audit-toggle i.lic-audit-chevron { margin-left: auto; transition: transform 0.2s ease; color: #64748b; }
+    .lic-audit.open .lic-audit-chevron { transform: rotate(180deg); }
+    .lic-audit-body {
+        display: none; padding: 0 1rem 0.85rem; font-size: 1rem; font-weight: 600; color: #475569; line-height: 1.5;
+    }
+    .lic-audit.open .lic-audit-body { display: block; }
+    .lic-search-wrap { position: relative; margin-bottom: 0.75rem; }
+    .lic-search-wrap i { position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1.1rem; }
+    .lic-search {
+        width: 100%; padding: 0.62rem 0.85rem 0.62rem 2.5rem; border-radius: 10px;
+        border: 1px solid #e2e8f0; font-size: 1.05rem; font-weight: 600; color: #334155;
+    }
+    .lic-search:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .lic-table-card { border-radius: 12px !important; border: 1px solid #e2e8f0 !important; overflow: hidden; }
+    .lic-table-head {
+        padding: 0.7rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;
+    }
+    .lic-table-head h6 { margin: 0; font-size: 1.08rem; font-weight: 800; color: #1e293b; }
+    .lic-count-badge {
+        display: inline-flex; padding: 0.25rem 0.6rem; border-radius: 999px;
+        font-size: 0.88rem; font-weight: 800; background: #ecfdf5; color: #059669;
+    }
+    .lic-table { margin-bottom: 0; width: 100%; }
+    .lic-table thead th {
+        background: #f8fafc; font-size: 0.85rem; font-weight: 800; letter-spacing: 0.05em;
+        text-transform: uppercase; color: #64748b; padding: 0.75rem 0.85rem; border-bottom: 1px solid #e2e8f0;
+        white-space: nowrap;
+    }
+    .lic-table tbody tr.lic-row {
+        transition: background 0.18s ease, box-shadow 0.18s ease; border-bottom: 1px solid #f1f5f9; cursor: pointer;
+    }
+    .lic-table tbody tr.lic-row:hover, .lic-table tbody tr.lic-row--active {
+        background: linear-gradient(90deg, #ecfdf5 0%, #fff 100%);
+        box-shadow: inset 4px 0 0 #059669;
+    }
+    .lic-table tbody tr.lic-row--hidden { display: none; }
+    .lic-table tbody td { padding: 0.75rem 0.85rem; vertical-align: middle; font-size: 1.05rem; font-weight: 700; color: #334155; }
+    .lic-table tbody td:first-child, .lic-table thead th:first-child { padding-left: 1rem; }
+    .lic-table tfoot td {
+        background: #f8fafc; font-size: 1.05rem; font-weight: 900; color: #0f172a;
+        padding: 0.8rem 0.85rem; border-top: 2px solid #e2e8f0;
+    }
+    .lic-id { font-size: 0.92rem; font-weight: 800; color: #059669; background: #ecfdf5; padding: 0.2rem 0.5rem; border-radius: 6px; }
+    .lic-badge {
+        display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.28rem 0.62rem;
+        border-radius: 999px; font-size: 0.88rem; font-weight: 800;
+    }
+    .lic-badge--practicada { background: var(--lic-red-soft); color: var(--lic-red); border: 1px solid #fecaca; }
+    .lic-badge--sufrida { background: var(--lic-orange-soft); color: var(--lic-orange); border: 1px solid #fed7aa; }
+    .lic-badge--none { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+    .lic-money { font-variant-numeric: tabular-nums; font-weight: 800; }
+    .lic-money--total { font-size: 1.08rem; font-weight: 900; color: var(--lic-purple); }
+    .lic-empty { text-align: center; padding: 2.5rem 1rem !important; font-size: 1.05rem; font-weight: 600; color: #94a3b8; }
+    .lic-empty i { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; color: #cbd5e1; }
+</style>
+
+<div class="container-fluid px-4 mt-4 lic-wrap">
+    <div class="lic-header">
+        <div class="lic-header-main">
+            <div>
+                <a href="{{ url_for('admin.reporte') }}" class="lic-back"><i class="bi bi-arrow-left"></i> Reportes</a>
+                <div class="d-flex align-items-start gap-3">
+                    <span class="lic-header-icon"><i class="bi bi-cart-check-fill"></i></span>
+                    <div>
+                        <h2>Libro de IVA Compras</h2>
+                        <p>Facturas de proveedores gravadas — Retención 1% según Gran Contribuyente (MH El Salvador)</p>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="d-flex gap-2 flex-wrap">
-            <a href="{{ url_for('admin.reporte_libro_iva_compras_exportar_excel') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-success fw-bold text-white"><i class="bi bi-file-earmark-excel"></i> Excel</a>
-            <a href="{{ url_for('admin.reporte_libro_iva_compras_exportar_csv') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-info fw-bold text-white"><i class="bi bi-file-earmark-text"></i> CSV</a>
-            <a href="{{ url_for('admin.reporte_libro_iva_compras_exportar_pdf') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-danger fw-bold text-white"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+        <div class="lic-tool-row">
+            <a href="{{ url_for('admin.reporte_libro_iva_compras_exportar_excel') }}?inicio={{ inicio }}&fin={{ fin }}" class="lic-tool-btn lic-tool-btn--excel"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+            <a href="{{ url_for('admin.reporte_libro_iva_compras_exportar_csv') }}?inicio={{ inicio }}&fin={{ fin }}" class="lic-tool-btn lic-tool-btn--csv"><i class="bi bi-file-earmark-text"></i> CSV</a>
+            <a href="{{ url_for('admin.reporte_libro_iva_compras_exportar_pdf') }}?inicio={{ inicio }}&fin={{ fin }}" class="lic-tool-btn lic-tool-btn--pdf"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
         </div>
     </div>
 
-    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
-        <form method="GET" action="{{ url_for('admin.reporte_libro_iva_compras') }}" class="row g-3 align-items-end">
-            <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Desde</label>
-                <input type="date" name="inicio" class="form-control" value="{{ inicio }}">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Hasta</label>
-                <input type="date" name="fin" class="form-control" value="{{ fin }}">
-            </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-filter"></i> Filtrar</button>
-            </div>
-        </form>
-    </div>
-
-    <div class="row g-3 mb-4">
-        <div class="col-md-2">
-            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #1e3a5f;">
-                <small class="text-muted fw-bold">Compras gravadas</small>
-                <h4 class="fw-bold text-dark">$ {{ "{:,.2f}".format(total_gravado|float) }}</h4>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #059669;">
-                <small class="text-muted fw-bold">IVA 13%</small>
-                <h4 class="fw-bold text-success">$ {{ "{:,.2f}".format(total_iva|float) }}</h4>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #7c3aed;">
-                <small class="text-muted fw-bold">Total compras</small>
-                <h4 class="fw-bold" style="color:#7c3aed">$ {{ "{:,.2f}".format(total_gen|float) }}</h4>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #dc2626;">
-                <small class="text-muted fw-bold">Ret. practicada</small>
-                <h4 class="fw-bold text-danger">$ {{ "{:,.2f}".format(ret_practicada|float) }}</h4>
-                <small class="text-muted">(Nosotros retuvimos)</small>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #ea580c;">
-                <small class="text-muted fw-bold">Ret. sufrida</small>
-                <h4 class="fw-bold" style="color:#ea580c">$ {{ "{:,.2f}".format(ret_sufrida|float) }}</h4>
-                <small class="text-muted">(Proveedor retuvo)</small>
-            </div>
+    <div class="card lic-filter-card shadow-sm">
+        <div class="lic-filter-head"><i class="bi bi-calendar-range"></i> Período del libro</div>
+        <div class="card-body lic-filter-body">
+            <form method="GET" action="{{ url_for('admin.reporte_libro_iva_compras') }}" class="row g-3 align-items-end">
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Desde</label>
+                    <input type="date" name="inicio" class="form-control" value="{{ inicio }}">
+                </div>
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" name="fin" class="form-control" value="{{ fin }}">
+                </div>
+                <div class="col-12 col-md-6 col-lg-4">
+                    <div class="lic-quick-dates">
+                        <a href="{{ url_for('admin.reporte_libro_iva_compras', inicio=fecha_hoy|default(fin), fin=fecha_hoy|default(fin)) }}" class="lic-quick-date"><i class="bi bi-sun"></i> Hoy</a>
+                        <a href="{{ url_for('admin.reporte_libro_iva_compras', inicio=fin[:7] ~ '-01', fin=fecha_hoy|default(fin)) }}" class="lic-quick-date"><i class="bi bi-calendar-month"></i> Este mes</a>
+                        {% if ultima_fecha_compras %}
+                        <a href="{{ url_for('admin.reporte_libro_iva_compras', inicio=primera_fecha_compras|default(ultima_fecha_compras), fin=ultima_fecha_compras) }}" class="lic-quick-date"><i class="bi bi-clock-history"></i> Con compras</a>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-12 col-lg-2">
+                    <button type="submit" class="lic-filter-btn"><i class="bi bi-funnel-fill"></i> Filtrar</button>
+                </div>
+            </form>
         </div>
     </div>
 
-    <div class="alert alert-light border mb-3" style="border-radius: 10px;">
-        <small><strong>Auditoría / Contador:</strong> La retención <b>practicada</b> es el 1% que usted retuvo al proveedor (cuando usted es Gran Contribuyente y él no). La retención <b>sufrida</b> es el 1% que el proveedor le retuvo (cuando él es Grande y usted no). Base gravada &gt; $100 para que aplique.</small>
+    {% if fecha_auto %}
+    <div class="lic-alert lic-alert--info"><i class="bi bi-info-circle-fill"></i>
+        <span>No hay compras en el mes actual. Se muestra el rango con datos: <strong>{{ inicio }}</strong> → <strong>{{ fin }}</strong>.</span>
+    </div>
+    {% elif n_filas == 0 and ultima_fecha_compras %}
+    <div class="lic-alert lic-alert--warn"><i class="bi bi-exclamation-triangle-fill"></i>
+        <span>Sin compras entre {{ inicio }} y {{ fin }}. Hay registros del <strong>{{ primera_fecha_compras or ultima_fecha_compras }}</strong> al <strong>{{ ultima_fecha_compras }}</strong> —
+            <a href="{{ url_for('admin.reporte_libro_iva_compras', inicio=primera_fecha_compras|default(ultima_fecha_compras), fin=ultima_fecha_compras) }}">Ver ese período</a>.
+        </span>
+    </div>
+    {% endif %}
+
+    <div class="row lic-kpi-row">
+        <div class="col-6 col-md-4 col-lg">
+            <div class="card lic-kpi shadow-sm">
+                <div class="lic-kpi-icon lic-kpi-icon--navy"><i class="bi bi-basket"></i></div>
+                <div class="lic-kpi-label">Compras gravadas</div>
+                <div class="lic-kpi-val lic-kpi-val--navy">$ {{ "{:,.2f}".format(total_gravado|float) }}</div>
+                <div class="lic-kpi-sub">Base imponible</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg">
+            <div class="card lic-kpi shadow-sm">
+                <div class="lic-kpi-icon lic-kpi-icon--green"><i class="bi bi-percent"></i></div>
+                <div class="lic-kpi-label">IVA 13%</div>
+                <div class="lic-kpi-val lic-kpi-val--green">$ {{ "{:,.2f}".format(total_iva|float) }}</div>
+                <div class="lic-kpi-sub">Crédito fiscal</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg">
+            <div class="card lic-kpi shadow-sm">
+                <div class="lic-kpi-icon lic-kpi-icon--purple"><i class="bi bi-cash-stack"></i></div>
+                <div class="lic-kpi-label">Total compras</div>
+                <div class="lic-kpi-val lic-kpi-val--purple">$ {{ "{:,.2f}".format(total_gen|float) }}</div>
+                <div class="lic-kpi-sub">{{ n_filas }} factura{{ 's' if n_filas != 1 else '' }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-6 col-lg">
+            <div class="card lic-kpi shadow-sm">
+                <div class="lic-kpi-icon lic-kpi-icon--red"><i class="bi bi-arrow-down-circle"></i></div>
+                <div class="lic-kpi-label">Ret. practicada</div>
+                <div class="lic-kpi-val lic-kpi-val--red">$ {{ "{:,.2f}".format(ret_practicada|float) }}</div>
+                <div class="lic-kpi-sub">Nosotros retuvimos</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-6 col-lg">
+            <div class="card lic-kpi shadow-sm">
+                <div class="lic-kpi-icon lic-kpi-icon--orange"><i class="bi bi-arrow-up-circle"></i></div>
+                <div class="lic-kpi-label">Ret. sufrida</div>
+                <div class="lic-kpi-val lic-kpi-val--orange">$ {{ "{:,.2f}".format(ret_sufrida|float) }}</div>
+                <div class="lic-kpi-sub">Proveedor retuvo</div>
+            </div>
+        </div>
     </div>
 
-    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
-        <div class="card-header bg-white py-3 border-bottom">
-            <h6 class="m-0 fw-bold text-primary">Detalle por compra</h6>
+    <div class="lic-audit open" id="licAudit">
+        <button type="button" class="lic-audit-toggle" id="licAuditBtn" aria-expanded="true">
+            <i class="bi bi-shield-check text-success"></i>
+            Auditoría / Contador
+            <i class="bi bi-chevron-down lic-audit-chevron"></i>
+        </button>
+        <div class="lic-audit-body">
+            La retención <strong>practicada</strong> es el 1% que usted retuvo al proveedor (cuando usted es Gran Contribuyente y él no).
+            La retención <strong>sufrida</strong> es el 1% que el proveedor le retuvo (cuando él es Grande y usted no).
+            Aplica cuando la base gravada supera <strong>$100</strong>.
         </div>
+    </div>
+
+    <div class="card lic-table-card shadow-sm">
+        <div class="lic-table-head">
+            <h6><i class="bi bi-list-ul"></i> Detalle por compra</h6>
+            <span class="lic-count-badge" id="licVisibleCount">{{ n_filas }} visible{{ 's' if n_filas != 1 else '' }}</span>
+        </div>
+        {% if n_filas > 0 %}
+        <div class="px-3 pt-3">
+            <div class="lic-search-wrap">
+                <i class="bi bi-search"></i>
+                <input type="search" class="lic-search" id="licSearch" placeholder="Buscar proveedor, NIT/NRC, N° o fecha…" autocomplete="off">
+            </div>
+        </div>
+        {% endif %}
         <div class="table-responsive">
-            <table class="table align-middle m-0 table-hover table-sm">
-                <thead class="table-light">
+            <table class="table lic-table align-middle" id="licTable">
+                <thead>
                     <tr>
-                        <th class="ps-4">N°</th>
+                        <th>N°</th>
                         <th>Fecha</th>
                         <th>Proveedor</th>
                         <th>NIT / NRC</th>
@@ -91,36 +313,85 @@
                 </thead>
                 <tbody>
                     {% for r in filas %}
-                    <tr>
-                        <td class="ps-4">#{{ r[0] }}</td>
+                    <tr class="lic-row" data-search="{{ ((r[2] or '') ~ ' ' ~ (r[3] or '') ~ ' ' ~ r[0]|string ~ ' ' ~ (r[1] or ''))|lower }}">
+                        <td><span class="lic-id">#{{ r[0] }}</span></td>
                         <td>{{ r[1] }}</td>
-                        <td>{{ (r[2] or '—')[:35] }}</td>
-                        <td class="small">{{ (r[3] or '—')[:20] }}</td>
-                        <td class="text-end">$ {{ "{:,.2f}".format(r[4]|float) }}</td>
-                        <td class="text-end">$ {{ "{:,.2f}".format(r[5]|float) }}</td>
-                        <td class="text-end fw-bold">$ {{ "{:,.2f}".format(r[6]|float) }}</td>
-                        <td class="text-end">{{ "$ {:,.2f}".format(r[7]|float) if r[7] else "—" }}</td>
+                        <td title="{{ r[2] or '' }}">{{ (r[2] or '—')[:40] }}</td>
+                        <td class="text-muted">{{ (r[3] or '—')[:24] }}</td>
+                        <td class="text-end lic-money">$ {{ "{:,.2f}".format(r[4]|float) }}</td>
+                        <td class="text-end lic-money" style="color:var(--lic-green)">$ {{ "{:,.2f}".format(r[5]|float) }}</td>
+                        <td class="text-end lic-money lic-money--total">$ {{ "{:,.2f}".format(r[6]|float) }}</td>
+                        <td class="text-end lic-money" style="color:var(--lic-red)">{{ "$ {:,.2f}".format(r[7]|float) if r[7] else "—" }}</td>
                         <td>
                             {% if r|length > 8 and r[8] %}
-                            <span class="badge bg-danger">Practicada</span>
+                            <span class="lic-badge lic-badge--practicada"><i class="bi bi-arrow-down-circle"></i> Practicada</span>
                             {% elif r[7] %}
-                            <span class="badge bg-warning text-dark">Sufrida</span>
+                            <span class="lic-badge lic-badge--sufrida"><i class="bi bi-arrow-up-circle"></i> Sufrida</span>
                             {% else %}
-                            —
+                            <span class="lic-badge lic-badge--none">—</span>
                             {% endif %}
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="9" class="text-center py-5 text-muted">
-                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                            No hay compras gravadas en el período.
+                        <td colspan="9" class="lic-empty">
+                            <i class="bi bi-inbox"></i>
+                            No hay compras gravadas en el período seleccionado.
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
+                {% if n_filas > 0 %}
+                <tfoot>
+                    <tr>
+                        <td colspan="4" class="text-end">Totales del período</td>
+                        <td class="text-end">$ {{ "{:,.2f}".format(total_gravado|float) }}</td>
+                        <td class="text-end" style="color:var(--lic-green)">$ {{ "{:,.2f}".format(total_iva|float) }}</td>
+                        <td class="text-end lic-money--total">$ {{ "{:,.2f}".format(total_gen|float) }}</td>
+                        <td class="text-end" style="color:var(--lic-red)">$ {{ "{:,.2f}".format(total_retencion|float) }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+                {% endif %}
             </table>
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    var audit = document.getElementById('licAudit');
+    var auditBtn = document.getElementById('licAuditBtn');
+    if (auditBtn && audit) {
+        auditBtn.addEventListener('click', function() {
+            audit.classList.toggle('open');
+            auditBtn.setAttribute('aria-expanded', audit.classList.contains('open') ? 'true' : 'false');
+        });
+    }
+
+    var search = document.getElementById('licSearch');
+    var rows = document.querySelectorAll('.lic-row');
+    var countEl = document.getElementById('licVisibleCount');
+    if (search && rows.length) {
+        function filterRows() {
+            var q = (search.value || '').trim().toLowerCase();
+            var visible = 0;
+            rows.forEach(function(row) {
+                var match = !q || (row.getAttribute('data-search') || '').indexOf(q) >= 0;
+                row.classList.toggle('lic-row--hidden', !match);
+                if (match) visible++;
+            });
+            if (countEl) countEl.textContent = visible + ' visible' + (visible !== 1 ? 's' : '');
+        }
+        search.addEventListener('input', filterRows);
+    }
+
+    rows.forEach(function(row) {
+        row.addEventListener('click', function() {
+            rows.forEach(function(r) { r.classList.remove('lic-row--active'); });
+            row.classList.add('lic-row--active');
+        });
+    });
+})();
+</script>
 {% endblock %}

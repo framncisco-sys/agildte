@@ -1,234 +1,357 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
-<div class="container-fluid mt-4">
-    <div class="mb-3">
-        <a href="{{ url_for('admin.inventario') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Inventario</a>
-        <a href="{{ url_for('admin.reporte_inventario_index') }}" class="btn btn-outline-secondary btn-sm ms-1"><i class="bi bi-file-earmark-bar-graph"></i> Reportes</a>
-    </div>
-    <div class="card border-0 shadow-sm rounded-4">
-        <div class="card-header bg-white py-3 border-bottom">
-            <h5 class="mb-0 fw-bold"><i class="bi bi-clipboard2-check text-primary"></i> Conteo físico y ajuste de inventario</h5>
-            <p class="text-muted small mb-0 mt-1">Compare el stock del sistema con el conteo real. Cada diferencia genera un <strong>ajuste de inventario</strong> en Kardex (entrada o salida con motivo). Art. 142 y F-983.</p>
+{% set n_prod = productos|length %}
+<style>
+    .cnt-wrap {
+        --cnt-blue: #2563eb;
+        --cnt-blue-soft: #eff6ff;
+        --cnt-green: #16a34a;
+        --cnt-green-soft: #dcfce7;
+        --cnt-red: #dc2626;
+        --cnt-red-soft: #fee2e2;
+        --cnt-amber: #d97706;
+        --cnt-amber-soft: #fef3c7;
+        --cnt-teal: #0d9488;
+        --cnt-teal-soft: #ccfbf1;
+    }
+    .cnt-header { margin-bottom: 1rem; }
+    .cnt-back {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.75rem;
+        border-radius: 999px; border: 1px solid #cbd5e1; background: #fff;
+        font-size: 0.92rem; font-weight: 700; color: #475569; text-decoration: none;
+        margin-bottom: 0.55rem; margin-right: 0.35rem; transition: all 0.15s ease;
+    }
+    .cnt-back:hover { background: #f8fafc; color: #1e293b; }
+    .cnt-header-icon {
+        width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem; color: #fff; flex-shrink: 0;
+        background: linear-gradient(145deg, #3b82f6 0%, #2563eb 100%);
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+    }
+    .cnt-header h2 { font-size: 1.75rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .cnt-header p { font-size: 1.08rem; font-weight: 600; color: #64748b; margin: 0; max-width: 52rem; line-height: 1.45; }
+    .cnt-card { border-radius: 12px !important; border: 1px solid #e2e8f0 !important; overflow: hidden; }
+    .cnt-filter-head {
+        padding: 0.65rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        font-size: 1rem; font-weight: 800; color: #334155;
+    }
+    .cnt-filter-body { padding: 1rem 1.05rem !important; }
+    .cnt-wrap .form-label { font-size: 1.02rem; font-weight: 800; color: #334155; margin-bottom: 0.35rem; }
+    .cnt-wrap .form-control, .cnt-wrap .form-select { font-size: 1.1rem; font-weight: 600; padding: 0.6rem 0.78rem; border-radius: 9px; }
+    .cnt-btn-primary {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+        padding: 0.62rem 1rem; border-radius: 9px; font-size: 1.05rem; font-weight: 800;
+        border: none; cursor: pointer; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: #fff; box-shadow: 0 3px 10px rgba(37,99,235,0.28); transition: transform 0.15s ease;
+    }
+    .cnt-btn-primary:hover { transform: translateY(-2px); color: #fff; }
+    .cnt-tool-btn {
+        display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.58rem 0.9rem;
+        border-radius: 9px; font-size: 0.98rem; font-weight: 800; border: none; cursor: pointer; color: #fff;
+        transition: transform 0.15s ease;
+    }
+    .cnt-tool-btn:hover { transform: translateY(-2px); color: #fff; }
+    .cnt-tool-btn--excel { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
+    .cnt-tool-btn--pdf { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+    .cnt-kpi-row { --bs-gutter-x: 0.65rem; --bs-gutter-y: 0.65rem; margin-bottom: 0.85rem; }
+    .cnt-kpi {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important; padding: 1rem 1.05rem !important;
+        height: 100%; transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .cnt-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(15,23,42,0.1) !important; }
+    .cnt-kpi-icon {
+        width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.15rem; margin-bottom: 0.55rem;
+    }
+    .cnt-kpi-icon--blue { background: linear-gradient(145deg, #dbeafe 0%, #bfdbfe 100%); color: var(--cnt-blue); }
+    .cnt-kpi-icon--green { background: linear-gradient(145deg, #dcfce7 0%, #bbf7d0 100%); color: var(--cnt-green); }
+    .cnt-kpi-icon--red { background: linear-gradient(145deg, #fee2e2 0%, #fecaca 100%); color: var(--cnt-red); }
+    .cnt-kpi-icon--amber { background: linear-gradient(145deg, #fef3c7 0%, #fde68a 100%); color: var(--cnt-amber); }
+    .cnt-kpi-label { font-size: 0.82rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; margin-bottom: 0.25rem; }
+    .cnt-kpi-val { font-size: 1.65rem; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .cnt-kpi-sub { font-size: 0.88rem; font-weight: 600; color: #94a3b8; margin-top: 0.2rem; }
+    .cnt-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; align-items: center; }
+    .cnt-chip {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.42rem 0.78rem;
+        border-radius: 999px; border: 1px solid #e2e8f0; background: #fff;
+        font-size: 0.95rem; font-weight: 800; color: #475569; cursor: pointer; transition: all 0.15s ease;
+    }
+    .cnt-chip:hover, .cnt-chip--active { background: var(--cnt-blue-soft); border-color: #93c5fd; color: #1d4ed8; }
+    .cnt-chip--warn.cnt-chip--active { background: var(--cnt-amber-soft); border-color: #fde68a; color: #92400e; }
+    .cnt-chip--danger.cnt-chip--active { background: var(--cnt-red-soft); border-color: #fca5a5; color: #b91c1c; }
+    .cnt-visible-badge {
+        display: inline-flex; padding: 0.35rem 0.75rem; border-radius: 999px;
+        font-size: 0.95rem; font-weight: 800; background: var(--cnt-teal-soft); color: var(--cnt-teal);
+    }
+    .cnt-search-wrap { position: relative; flex: 1; min-width: 200px; }
+    .cnt-search-wrap i { position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+    .cnt-search {
+        width: 100%; padding: 0.62rem 0.85rem 0.62rem 2.5rem; border-radius: 10px;
+        border: 1px solid #e2e8f0; font-size: 1.08rem; font-weight: 600;
+    }
+    .cnt-search:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .cnt-alert {
+        border-radius: 10px; padding: 0.85rem 1rem; margin-bottom: 0.85rem;
+        font-size: 1.02rem; font-weight: 600; line-height: 1.45;
+    }
+    .cnt-alert--warn { background: var(--cnt-amber-soft); border: 1px solid #fde68a; color: #92400e; }
+    .cnt-alert--info { background: var(--cnt-blue-soft); border: 1px solid #bfdbfe; color: #1e40af; }
+    .cnt-just-card {
+        border-radius: 12px; border: 2px solid #93c5fd; background: linear-gradient(135deg, #eff6ff 0%, #fff 100%);
+        padding: 1rem 1.05rem; margin-bottom: 0.85rem;
+    }
+    .cnt-just-card h6 { font-size: 1.08rem; font-weight: 800; color: #1d4ed8; margin-bottom: 0.5rem; }
+    .cnt-table-wrap { max-height: 65vh; overflow: auto; border-top: 1px solid #e2e8f0; }
+    .cnt-table { margin-bottom: 0; width: 100%; }
+    .cnt-table thead th {
+        position: sticky; top: 0; z-index: 2; background: #f8fafc;
+        font-size: 0.95rem; font-weight: 800; letter-spacing: 0.03em;
+        text-transform: uppercase; color: #64748b; padding: 0.85rem 0.75rem;
+        border-bottom: 1px solid #e2e8f0; white-space: nowrap;
+    }
+    .cnt-table tbody td { padding: 0.75rem; font-size: 1.08rem; font-weight: 700; color: #334155; vertical-align: middle; }
+    .cnt-table tbody tr.row-conteo { transition: background 0.15s ease; }
+    .cnt-table tbody tr.row-conteo:hover { background: var(--cnt-blue-soft); }
+    .cnt-code { color: var(--cnt-blue); font-weight: 800; font-variant-numeric: tabular-nums; }
+    .cnt-stock { font-size: 1.12rem; font-weight: 900; color: #475569; font-variant-numeric: tabular-nums; }
+    .cnt-inp-fisico {
+        font-size: 1.12rem !important; font-weight: 800 !important; text-align: center !important;
+        max-width: 110px !important; margin: 0 auto !important; padding: 0.55rem !important;
+        border-radius: 9px !important; border: 2px solid #cbd5e1 !important;
+    }
+    .cnt-inp-fisico:focus { border-color: var(--cnt-blue) !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.15) !important; }
+    .cnt-sel-motivo { font-size: 0.95rem !important; font-weight: 700 !important; max-width: 240px !important; margin: 0 auto !important; }
+    .cnt-unidad { font-size: 0.92rem; font-weight: 700; color: #64748b; background: #f1f5f9; padding: 0.25rem 0.55rem; border-radius: 6px; }
+    .cnt-filter-empty {
+        display: none; text-align: center; padding: 2rem 1rem; font-size: 1.08rem; font-weight: 600; color: #64748b;
+        background: #f8fafc; border-top: 1px solid #e2e8f0;
+    }
+    .cnt-filter-empty--show { display: block; }
+    .cnt-empty { text-align: center; padding: 2.5rem 1rem; font-size: 1.08rem; font-weight: 600; color: #94a3b8; }
+</style>
+
+<div class="container-fluid px-4 mt-4 cnt-wrap">
+    <div class="cnt-header">
+        <a href="{{ url_for('admin.inventario') }}" class="cnt-back"><i class="bi bi-arrow-left"></i> Inventario</a>
+        <a href="{{ url_for('admin.reporte_inventario_index') }}" class="cnt-back"><i class="bi bi-file-earmark-bar-graph"></i> Reportes</a>
+        <div class="d-flex align-items-start gap-3 mt-2">
+            <span class="cnt-header-icon"><i class="bi bi-clipboard2-check"></i></span>
+            <div>
+                <h2>Conteo físico y ajuste de inventario</h2>
+                <p>Compare el stock del sistema con el conteo real. Cada diferencia genera un <strong>ajuste en Kardex</strong> (Art. 142 y F-983).</p>
+            </div>
         </div>
-        <div class="card-body p-4">
-            <form method="POST" action="{{ url_for('admin.inventario_conteo_fisico') }}" id="formConteo">
-                <div class="row g-3 mb-4">
+    </div>
+
+    <form method="POST" action="{{ url_for('admin.inventario_conteo_fisico') }}" id="formConteo">
+        <div class="card cnt-card shadow-sm mb-3">
+            <div class="cnt-filter-head"><i class="bi bi-sliders"></i> Parámetros del conteo</div>
+            <div class="card-body cnt-filter-body">
+                <div class="row g-3 align-items-end">
                     {% if es_superadmin and empresas %}
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold"><i class="bi bi-building"></i> Empresa</label>
+                    <div class="col-12 col-md-6 col-lg-3">
+                        <label class="form-label"><i class="bi bi-building"></i> Empresa</label>
                         <select name="empresa_id" id="sel_empresa" class="form-select">
                             {% for e in empresas %}
                             <option value="{{ e[0] }}" {{ 'selected' if empresa_id and empresa_id == e[0] else '' }}>{{ e[1] }}</option>
                             {% endfor %}
                         </select>
-                        <small class="text-muted">Superusuario: puede conciliar cualquier empresa.</small>
                     </div>
                     {% endif %}
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Fecha del conteo</label>
+                    <div class="col-6 col-md-4 col-lg-2">
+                        <label class="form-label">Fecha del conteo</label>
                         <input type="date" name="fecha_conteo" class="form-control" value="{{ fecha_hoy }}" required>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Sucursal / Bodega</label>
+                    <div class="col-12 col-md-6 col-lg-3">
+                        <label class="form-label">Sucursal / Bodega</label>
                         <select name="sucursal_id" class="form-select" id="sel_sucursal">
                             <option value="">— Global (todas las sucursales) —</option>
                             {% for s in sucursales %}
                             <option value="{{ s[0] }}" {{ 'selected' if sucursal_id and sucursal_id == s[0] else '' }}>{{ s[1] }}</option>
                             {% endfor %}
                         </select>
-                        <small class="text-muted">Si usa bodegas por sucursal, elija una. Si no, deje Global.</small>
                     </div>
-                    <div class="col-md-3 d-flex align-items-end gap-2 flex-wrap">
-                        <button type="submit" name="accion" value="aplicar" class="btn btn-primary fw-bold">
-                            <i class="bi bi-check2-square me-1"></i> Aplicar ajustes
+                    <div class="col-12 col-lg-4 d-flex gap-2 flex-wrap">
+                        <button type="submit" name="accion" value="aplicar" class="cnt-btn-primary flex-grow-1">
+                            <i class="bi bi-check2-square"></i> Aplicar ajustes
                         </button>
-                        <button type="submit" formaction="{{ url_for('admin.inventario_conteo_fisico_exportar_excel') }}" class="btn btn-success fw-bold">
-                            <i class="bi bi-file-earmark-excel me-1"></i> Excel
+                        <button type="submit" formaction="{{ url_for('admin.inventario_conteo_fisico_exportar_excel') }}" class="cnt-tool-btn cnt-tool-btn--excel">
+                            <i class="bi bi-file-earmark-excel"></i> Excel
                         </button>
-                        <button type="submit" formaction="{{ url_for('admin.inventario_conteo_fisico_exportar_pdf') }}" class="btn btn-danger fw-bold">
-                            <i class="bi bi-file-earmark-pdf me-1"></i> PDF
+                        <button type="submit" formaction="{{ url_for('admin.inventario_conteo_fisico_exportar_pdf') }}" class="cnt-tool-btn cnt-tool-btn--pdf">
+                            <i class="bi bi-file-earmark-pdf"></i> PDF
                         </button>
                     </div>
                 </div>
-
                 {% if sucursal_nombre %}
-                <p class="text-muted small mb-2"><i class="bi bi-geo-alt"></i> Sucursal: <strong>{{ sucursal_nombre }}</strong></p>
-                {% elif sucursal_id is none and not productos %}
-                <p class="text-muted small mb-2"><i class="bi bi-info-circle"></i> Seleccione sucursal o use Global para ver productos con stock.</p>
+                <p class="mt-2 mb-0" style="font-size:1.02rem;font-weight:600;color:#64748b"><i class="bi bi-geo-alt"></i> Sucursal: <strong>{{ sucursal_nombre }}</strong></p>
                 {% endif %}
-
-                {% if productos %}
-                <div class="row g-3 mb-4">
-                    <div class="col-md-3">
-                        <div class="card border-0 shadow-sm p-3 h-100" style="border-radius: 12px; border-left: 4px solid #1e3a5f;">
-                            <div class="small text-muted fw-bold">En el sistema</div>
-                            <h4 class="mb-0 fw-bold" id="resumenTotal">{{ productos|length }}</h4>
-                            <small class="text-muted">productos con stock</small>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card border-0 shadow-sm p-3 h-100" style="border-radius: 12px; border-left: 4px solid #059669;">
-                            <div class="small text-muted fw-bold">Contados</div>
-                            <h4 class="mb-0 fw-bold text-success" id="resumenContados">0</h4>
-                            <small class="text-muted">con valor físico</small>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card border-0 shadow-sm p-3 h-100" style="border-radius: 12px; border-left: 4px solid #dc2626;">
-                            <div class="small text-muted fw-bold">NO contados</div>
-                            <h4 class="mb-0 fw-bold text-danger" id="resumenNoContados">{{ productos|length }}</h4>
-                            <small class="text-muted">pendientes de conteo</small>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card border-0 shadow-sm p-3 h-100" style="border-radius: 12px; border-left: 4px solid #d97706;">
-                            <div class="small text-muted fw-bold">Con diferencias</div>
-                            <h4 class="mb-0 fw-bold text-warning" id="resumenDiferencias">0</h4>
-                            <small class="text-muted">físico ≠ sistema</small>
-                        </div>
-                    </div>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-                    <div class="d-flex gap-2 align-items-center flex-wrap">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnSoloDiferencias" title="Mostrar solo productos donde hay diferencia entre sistema y físico">
-                            <i class="bi bi-funnel"></i> Solo con diferencias
-                        </button>
-                        <button type="button" class="btn btn-outline-danger btn-sm" id="btnSoloNoContados" title="Mostrar solo productos que aún no tienen conteo físico">
-                            <i class="bi bi-clipboard-x"></i> Solo no contados
-                        </button>
-                        <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalPegarMasivo">
-                            <i class="bi bi-clipboard-data"></i> Pegar desde Excel
-                        </button>
-                    </div>
-                </div>
-
-                <div class="alert alert-warning border shadow-sm py-2 px-3 mb-3">
-                    <div class="fw-bold small mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> Requisitos para aplicar el ajuste de inventario</div>
-                    <ul class="small mb-0 ps-3">
-                        <li>Justificación escrita del acta de conteo (mín. {{ min_caracteres_justificacion_ajuste|default(10) }} caracteres) antes de <strong>Aplicar ajustes</strong>.</li>
-                        <li>Si el impacto supera <strong>${{ "%.0f"|format((umbral_impacto_ajuste_usd|default(10.0))|float) }}</strong> o alguna línea supera <strong>{{ "%.0f"|format((umbral_cantidad_ajuste_umb|default(5.0))|float) }} UMB</strong>, usuario y clave de <strong>Gerente/Administrador</strong> (salvo rol con privilegio).</li>
-                        <li><strong>Faltante</strong> (físico &lt; sistema): elija motivo (incluye <strong>ajuste de inventario</strong> para cuadre sin merma explícita). <strong>Sobrante</strong> (físico &gt; sistema): entrada automática con motivo sobrante de conteo.</li>
-                    </ul>
-                </div>
-
-                <div class="card border border-primary border-2 shadow-sm p-3 mb-3 rounded-3 bg-primary bg-opacity-10">
-                    <h6 class="fw-bold mb-2 text-primary"><i class="bi bi-shield-lock"></i> Justificación y autorización del ajuste</h6>
-                    <p class="small text-muted mb-3 mb-md-2">
-                        Obligatorio al pulsar <strong>Aplicar ajustes</strong>. Los movimientos quedan en Kardex con esta referencia y el usuario en sesión.
-                    </p>
-                    <div class="row g-3">
-                        <div class="col-md-8">
-                            <label class="form-label small fw-bold" for="justificacion_conteo">Justificación del conteo / bitácora de ajuste</label>
-                            <textarea id="justificacion_conteo" name="justificacion_conteo" class="form-control" rows="3" placeholder="Ej.: Acta conteo bodega central 02/04/2026, responsable, hallazgos, criterios de conteo… (mín. {{ min_caracteres_justificacion_ajuste|default(10) }} caracteres al aplicar)"></textarea>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-bold">Supervisor (umbral monto o cantidad)</label>
-                            <input type="text" name="supervisor_inventario_usuario" class="form-control form-control-sm mb-2" placeholder="Usuario gerente/admin" autocomplete="username">
-                            <input type="password" name="supervisor_inventario_clave" class="form-control form-control-sm" placeholder="Clave supervisor" autocomplete="current-password">
-                            <small class="text-muted">Solo si aplica; ver montos arriba.</small>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th class="py-3">Código</th>
-                                <th class="py-3">Producto</th>
-                                <th class="py-3 text-center">Stock sistema</th>
-                                <th class="py-3 text-center" style="min-width: 140px;">Conteo físico</th>
-                                <th class="py-3 text-center">Diferencia</th>
-                                <th class="py-3 text-center" style="min-width: 220px;">Motivo del ajuste<br><span class="small fw-normal text-muted">Faltante: elija. Sobrante: automático.</span></th>
-                                <th class="py-3 text-center">UMB / medida</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tbodyConteo">
-                            {% for p in productos %}
-                            <tr class="row-conteo" data-pid="{{ p[0] }}" data-codigo="{{ (p[1] or '')|lower }}" data-stock-sistema="{{ "%.4f"|format(p[3]|float) }}">
-                                <td class="fw-bold text-primary">{{ p[1] }}</td>
-                                <td>{{ p[2] }}</td>
-                                <td class="text-center">
-                                    <span class="badge bg-secondary">{{ "%.2f"|format(p[3]|float) }}</span>
-                                </td>
-                                <td class="text-center">
-                                    <input type="number" name="fisico_{{ p[0] }}" class="form-control form-control-sm text-center inp-fisico" 
-                                           placeholder="{{ "%.0f"|format(p[3]|float) }}" min="0" step="0.01" 
-                                           value="" inputmode="decimal" style="max-width: 100px; margin: 0 auto;"
-                                           data-stock-sistema="{{ "%.4f"|format(p[3]|float) }}">
-                                </td>
-                                <td class="text-center celda-diferencia">
-                                    <span class="badge bg-light text-muted">—</span>
-                                </td>
-                                <td class="text-center">
-                                    <select name="motivo_{{ p[0] }}" class="form-select form-select-sm sel-motivo-faltante" style="max-width: 220px; margin: 0 auto;" title="Obligatorio si hay faltante (físico menor que sistema). Si hay sobrante, no aplica.">
-                                        <option value="">—</option>
-                                        <option value="MERMA_OPERATIVA">Merma natural / operativa</option>
-                                        <option value="AVERIA">Avería o daño</option>
-                                        <option value="AJUSTE_INVENTARIO">Ajuste de inventario (cuadre / conteo)</option>
-                                        <option value="FALTANTE">Faltante / no justificado</option>
-                                    </select>
-                                </td>
-                                <td class="text-center small text-muted">{{ p[4] }}</td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="7" class="text-center py-5 text-muted">
-                                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                                    No hay productos con stock para esta selección. {% if not sucursales %}Cree sucursales y asigne stock.{% else %}Pruebe con <strong>Global</strong> o otra sucursal.{% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </form>
+            </div>
         </div>
-    </div>
 
-    <!-- Modal: Pegar desde Excel -->
+        {% if n_prod > 0 %}
+        <div class="row cnt-kpi-row">
+            <div class="col-6 col-md-3">
+                <div class="card cnt-kpi shadow-sm">
+                    <div class="cnt-kpi-icon cnt-kpi-icon--blue"><i class="bi bi-box-seam"></i></div>
+                    <div class="cnt-kpi-label">En el sistema</div>
+                    <div class="cnt-kpi-val" style="color:var(--cnt-blue)" id="resumenTotal">{{ n_productos|default(n_prod) }}</div>
+                    <div class="cnt-kpi-sub">{{ "{:,.2f}".format(total_stock_unidades|default(0)|float) }} UMB total</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card cnt-kpi shadow-sm">
+                    <div class="cnt-kpi-icon cnt-kpi-icon--green"><i class="bi bi-check-circle"></i></div>
+                    <div class="cnt-kpi-label">Contados</div>
+                    <div class="cnt-kpi-val" style="color:var(--cnt-green)" id="resumenContados">0</div>
+                    <div class="cnt-kpi-sub">con valor físico</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card cnt-kpi shadow-sm">
+                    <div class="cnt-kpi-icon cnt-kpi-icon--red"><i class="bi bi-clipboard-x"></i></div>
+                    <div class="cnt-kpi-label">No contados</div>
+                    <div class="cnt-kpi-val" style="color:var(--cnt-red)" id="resumenNoContados">{{ n_prod }}</div>
+                    <div class="cnt-kpi-sub">pendientes</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card cnt-kpi shadow-sm">
+                    <div class="cnt-kpi-icon cnt-kpi-icon--amber"><i class="bi bi-exclamation-triangle"></i></div>
+                    <div class="cnt-kpi-label">Con diferencias</div>
+                    <div class="cnt-kpi-val" style="color:var(--cnt-amber)" id="resumenDiferencias">0</div>
+                    <div class="cnt-kpi-sub">físico ≠ sistema</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="cnt-chips px-1">
+            <button type="button" class="cnt-chip cnt-chip--active" id="btnFiltroTodos" data-filtro="todos"><i class="bi bi-grid"></i> Todos</button>
+            <button type="button" class="cnt-chip cnt-chip--warn" id="btnSoloDiferencias" data-filtro="diferencias"><i class="bi bi-funnel"></i> Solo con diferencias</button>
+            <button type="button" class="cnt-chip cnt-chip--danger" id="btnSoloNoContados" data-filtro="no_contados"><i class="bi bi-clipboard-x"></i> Solo no contados</button>
+            <button type="button" class="cnt-chip" data-bs-toggle="modal" data-bs-target="#modalPegarMasivo"><i class="bi bi-clipboard-data"></i> Pegar Excel</button>
+            <div class="cnt-search-wrap">
+                <i class="bi bi-search"></i>
+                <input type="search" class="cnt-search" id="cntSearch" placeholder="Buscar código o producto…" autocomplete="off">
+            </div>
+            <span class="cnt-visible-badge" id="cntVisibleBadge">{{ n_prod }} visibles</span>
+        </div>
+
+        <div class="cnt-alert cnt-alert--warn">
+            <strong><i class="bi bi-exclamation-triangle-fill"></i> Requisitos:</strong>
+            Justificación mín. {{ min_caracteres_justificacion_ajuste|default(10) }} caracteres.
+            Faltante: elija motivo. Impacto &gt; ${{ "%.0f"|format((umbral_impacto_ajuste_usd|default(10))|float) }} o &gt; {{ "%.0f"|format((umbral_cantidad_ajuste_umb|default(5))|float) }} UMB → supervisor.
+        </div>
+
+        <div class="cnt-just-card">
+            <h6><i class="bi bi-shield-lock"></i> Justificación y autorización del ajuste</h6>
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label" for="justificacion_conteo">Bitácora del conteo</label>
+                    <textarea id="justificacion_conteo" name="justificacion_conteo" class="form-control" rows="3" style="font-size:1.08rem"
+                        placeholder="Acta de conteo, responsable, hallazgos, criterios…"></textarea>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Supervisor (si aplica)</label>
+                    <input type="text" name="supervisor_inventario_usuario" class="form-control mb-2" placeholder="Usuario gerente/admin" autocomplete="username">
+                    <input type="password" name="supervisor_inventario_clave" class="form-control" placeholder="Clave supervisor" autocomplete="current-password">
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card cnt-card shadow-sm">
+            <div class="cnt-filter-head d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span><i class="bi bi-table"></i> Detalle del conteo</span>
+                {% if n_prod > 0 %}<span class="text-muted" style="font-size:0.95rem;font-weight:700">{{ n_prod }} productos con stock</span>{% endif %}
+            </div>
+            <div class="cnt-table-wrap">
+                <table class="table cnt-table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Producto</th>
+                            <th class="text-center">Stock sistema</th>
+                            <th class="text-center" style="min-width:130px">Conteo físico</th>
+                            <th class="text-center">Diferencia</th>
+                            <th class="text-center" style="min-width:220px">Motivo ajuste</th>
+                            <th class="text-center">UMB</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyConteo">
+                        {% for p in productos %}
+                        <tr class="row-conteo" data-pid="{{ p[0] }}" data-codigo="{{ (p[1] or '')|lower }}"
+                            data-search="{{ ((p[1] or '') ~ ' ' ~ (p[2] or ''))|lower }}"
+                            data-stock-sistema="{{ "%.4f"|format(p[3]|float) }}">
+                            <td><span class="cnt-code">{{ p[1] or '—' }}</span></td>
+                            <td>{{ p[2] }}</td>
+                            <td class="text-center"><span class="cnt-stock">{{ "%.2f"|format(p[3]|float) }}</span></td>
+                            <td class="text-center">
+                                <input type="number" name="fisico_{{ p[0] }}" class="form-control inp-fisico cnt-inp-fisico"
+                                    placeholder="{{ "%.0f"|format(p[3]|float) }}" min="0" step="0.01" value="" inputmode="decimal"
+                                    data-stock-sistema="{{ "%.4f"|format(p[3]|float) }}">
+                            </td>
+                            <td class="text-center celda-diferencia"><span class="badge bg-light text-muted">—</span></td>
+                            <td class="text-center">
+                                <select name="motivo_{{ p[0] }}" class="form-select sel-motivo-faltante cnt-sel-motivo">
+                                    <option value="">—</option>
+                                    <option value="MERMA_OPERATIVA">Merma natural / operativa</option>
+                                    <option value="AVERIA">Avería o daño</option>
+                                    <option value="AJUSTE_INVENTARIO">Ajuste de inventario (cuadre)</option>
+                                    <option value="FALTANTE">Faltante / no justificado</option>
+                                </select>
+                            </td>
+                            <td class="text-center"><span class="cnt-unidad">{{ p[4] or 'UNI' }}</span></td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="cnt-empty">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                No hay productos con stock.{% if not sucursales %} Cree sucursales y asigne stock.{% else %} Pruebe <strong>Global</strong> o otra sucursal.{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="cnt-filter-empty" id="cntFilterEmpty">
+                <i class="bi bi-funnel fs-3 d-block mb-2 text-muted"></i>
+                Ningún producto coincide con el filtro activo.
+                <button type="button" class="btn btn-link fw-bold" id="btnResetFiltro">Mostrar todos ({{ n_prod }})</button>
+            </div>
+        </div>
+    </form>
+
     <div class="modal fade" id="modalPegarMasivo" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content" style="border-radius:12px">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-clipboard-data"></i> Pegar conteos desde Excel</h5>
+                    <h5 class="modal-title fw-bold"><i class="bi bi-clipboard-data"></i> Pegar conteos desde Excel</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted">Pegue una o más filas con formato: <strong>código, cantidad</strong> o <strong>código TAB cantidad</strong>. Una fila por producto.</p>
-                    <textarea id="textareaPegar" class="form-control font-monospace" rows="12" placeholder="Ejemplo:&#10;AGUA EN BOTEL	50&#10;PROD001, 25"></textarea>
-                    <p class="small text-muted mt-2 mb-0">Los códigos se buscan sin distinguir mayúsculas. Los productos no encontrados se omiten.</p>
+                    <p style="font-size:1.05rem">Formato: <strong>código TAB cantidad</strong> o <strong>código, cantidad</strong> — una fila por producto.</p>
+                    <textarea id="textareaPegar" class="form-control font-monospace" rows="12" style="font-size:1rem"
+                        placeholder="7501206630303&#9;1&#10;REF.4601-12.18, 8"></textarea>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                    <button type="button" class="btn btn-primary" id="btnAplicarPegado">
-                        <i class="bi bi-check-lg"></i> Aplicar
-                    </button>
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="cnt-btn-primary" id="btnAplicarPegado" style="width:auto"><i class="bi bi-check-lg"></i> Aplicar</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="alert alert-info border mt-3">
-        <h6 class="fw-bold"><i class="bi bi-file-earmark-arrow-down"></i> Reportes</h6>
-        <p class="mb-1 small">Ingrese los conteos físicos y use <strong>Excel</strong> o <strong>PDF</strong> para generar el reporte con: detalle completo, resumen, grandes deficiencias (≥10% o ≥5 unidades) e impacto en valor.</p>
-    </div>
-    <div class="alert alert-light border mt-4">
-        <h6 class="fw-bold"><i class="bi bi-shield-check text-success"></i> Cumplimiento Hacienda</h6>
-        <ul class="mb-0 small text-muted">
-            <li><strong>Kardex (Art. 142):</strong> Cada ajuste queda en Kardex con <strong>motivo</strong> (merma, avería, ajuste de inventario, faltante o sobrante). Use el reporte <strong>Mermas y ajustes</strong> para ver el costo de las pérdidas por período.</li>
-            <li><strong>F-983:</strong> Los ajustes se reflejan en el informe anual de inventario físico.</li>
-            <li><strong>Auditoría:</strong> Mantenga actas de conteo firmadas por responsables. Los reportes de Movimientos y Kardex documentan cada cambio.</li>
-        </ul>
+    <div class="cnt-alert cnt-alert--info mt-3">
+        <strong><i class="bi bi-file-earmark-arrow-down"></i> Reportes:</strong>
+        Ingrese conteos y exporte Excel/PDF con detalle, resumen y deficiencias grandes (≥10% o ≥5 UMB).
     </div>
 </div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     var esSuper = {{ (es_superadmin or false) | tojson }};
-    var empresaId = {{ (empresa_id or 0) | tojson }};
-
     function buildUrl() {
         var params = [];
         var suc = document.getElementById('sel_sucursal');
@@ -237,11 +360,13 @@ document.addEventListener('DOMContentLoaded', function() {
         if (suc && suc.value) params.push('sucursal_id=' + suc.value);
         return '{{ url_for("admin.inventario_conteo_fisico") }}' + (params.length ? '?' + params.join('&') : '');
     }
-
     var selSuc = document.getElementById('sel_sucursal');
     if (selSuc) selSuc.addEventListener('change', function() { window.location.href = buildUrl(); });
     var selEmp = document.getElementById('sel_empresa');
     if (selEmp) selEmp.addEventListener('change', function() { window.location.href = buildUrl(); });
+
+    var modoFiltro = 'todos';
+    var searchQ = '';
 
     function actualizarDiferencia(input) {
         var row = input.closest('tr');
@@ -250,116 +375,116 @@ document.addEventListener('DOMContentLoaded', function() {
         var val = input.value.trim().replace(',', '.');
         var fis = val === '' ? null : parseFloat(val);
         var celda = row.querySelector('.celda-diferencia');
-        if (!celda) return;
         var selMot = row.querySelector('.sel-motivo-faltante');
+        if (!celda) return;
         if (fis === null || isNaN(fis)) {
             celda.innerHTML = '<span class="badge bg-light text-muted">—</span>';
             row.dataset.tieneDiferencia = '0';
-            if (selMot) {
-                selMot.disabled = false;
-                selMot.value = '';
-                selMot.classList.remove('bg-light', 'text-muted');
-                selMot.title = 'Obligatorio si hay faltante (físico menor que sistema). Si hay sobrante, no aplica.';
-            }
+            if (selMot) { selMot.disabled = false; selMot.value = ''; selMot.classList.remove('bg-light', 'text-muted'); }
             return;
         }
         var diff = fis - sist;
         row.dataset.tieneDiferencia = Math.abs(diff) < 0.0001 ? '0' : '1';
         var badge = diff > 0 ? 'bg-success' : (diff < 0 ? 'bg-danger' : 'bg-secondary');
         var sig = diff > 0 ? '+' : '';
-        celda.innerHTML = '<span class="badge ' + badge + '">' + sig + diff.toFixed(2) + '</span>';
+        celda.innerHTML = '<span class="badge ' + badge + '" style="font-size:1rem;padding:0.4rem 0.65rem">' + sig + diff.toFixed(2) + '</span>';
         if (selMot) {
             if (diff > 0.0001) {
-                selMot.disabled = true;
-                selMot.value = '';
-                selMot.classList.add('bg-light', 'text-muted');
-                selMot.title = 'Sobrante: el sistema registrará AJUSTE_ENTRADA con motivo sobrante de conteo (no elija motivo aquí).';
-            } else if (diff < -0.0001) {
-                selMot.disabled = false;
-                selMot.classList.remove('bg-light', 'text-muted');
-                selMot.title = 'Obligatorio: merma operativa, avería o faltante no justificado.';
+                selMot.disabled = true; selMot.value = ''; selMot.classList.add('bg-light', 'text-muted');
             } else {
-                selMot.disabled = false;
-                selMot.value = '';
-                selMot.classList.remove('bg-light', 'text-muted');
-                selMot.title = 'Obligatorio si hay faltante (físico menor que sistema). Si hay sobrante, no aplica.';
+                selMot.disabled = false; selMot.classList.remove('bg-light', 'text-muted');
             }
         }
     }
 
-    function actualizarContador() {
-        var total = document.querySelectorAll('.row-conteo').length;
-        var contados = 0;
-        var conDiferencias = 0;
-        document.querySelectorAll('.row-conteo').forEach(function(tr) {
-            var inp = tr.querySelector('.inp-fisico');
-            if (inp && inp.value.trim() !== '') contados++;
-            if (tr.dataset.tieneDiferencia === '1') conDiferencias++;
-        });
-        var noContados = total - contados;
-        var elTotal = document.getElementById('resumenTotal');
-        var elContados = document.getElementById('resumenContados');
-        var elNoContados = document.getElementById('resumenNoContados');
-        var elDiferencias = document.getElementById('resumenDiferencias');
-        if (elTotal) elTotal.textContent = total;
-        if (elContados) elContados.textContent = contados;
-        if (elNoContados) { elNoContados.textContent = noContados; elNoContados.classList.toggle('text-danger', noContados > 0); }
-        if (elDiferencias) elDiferencias.textContent = conDiferencias;
-        if (typeof aplicarFiltro === 'function') aplicarFiltro();
-    }
-
-    document.querySelectorAll('.inp-fisico').forEach(function(inp) {
-        inp.addEventListener('input', function() {
-            actualizarDiferencia(this);
-            actualizarContador();
-        });
-        inp.addEventListener('blur', function() { actualizarDiferencia(this); actualizarContador(); });
-    });
-    actualizarContador();
-
-    var modoFiltro = 'todos'; // 'todos' | 'diferencias' | 'no_contados'
     function aplicarFiltro() {
+        var visible = 0;
         document.querySelectorAll('.row-conteo').forEach(function(tr) {
             var inp = tr.querySelector('.inp-fisico');
             var tieneValor = inp && inp.value.trim() !== '';
             var tieneDiff = tr.dataset.tieneDiferencia === '1';
             var noContado = !tieneValor;
-            var mostrar = modoFiltro === 'todos' || (modoFiltro === 'diferencias' && tieneValor && tieneDiff) || (modoFiltro === 'no_contados' && noContado);
-            tr.style.display = mostrar ? '' : 'none';
+            var matchFiltro = modoFiltro === 'todos'
+                || (modoFiltro === 'diferencias' && tieneValor && tieneDiff)
+                || (modoFiltro === 'no_contados' && noContado);
+            var matchSearch = !searchQ || (tr.getAttribute('data-search') || '').indexOf(searchQ) >= 0;
+            var show = matchFiltro && matchSearch;
+            tr.style.display = show ? '' : 'none';
+            if (show) visible++;
         });
-        document.getElementById('btnSoloDiferencias')?.classList.toggle('active', modoFiltro === 'diferencias');
-        document.getElementById('btnSoloNoContados')?.classList.toggle('active', modoFiltro === 'no_contados');
+        var badge = document.getElementById('cntVisibleBadge');
+        if (badge) badge.textContent = visible + ' visible' + (visible !== 1 ? 's' : '');
+        var emptyEl = document.getElementById('cntFilterEmpty');
+        if (emptyEl) emptyEl.classList.toggle('cnt-filter-empty--show', visible === 0 && document.querySelectorAll('.row-conteo').length > 0);
+        document.querySelectorAll('.cnt-chip[data-filtro]').forEach(function(chip) {
+            chip.classList.toggle('cnt-chip--active', chip.getAttribute('data-filtro') === modoFiltro);
+        });
     }
-    document.getElementById('btnSoloDiferencias')?.addEventListener('click', function() {
-        modoFiltro = modoFiltro === 'diferencias' ? 'todos' : 'diferencias';
+
+    function actualizarContador() {
+        var total = document.querySelectorAll('.row-conteo').length;
+        var contados = 0, conDiferencias = 0;
+        document.querySelectorAll('.row-conteo').forEach(function(tr) {
+            var inp = tr.querySelector('.inp-fisico');
+            if (inp && inp.value.trim() !== '') contados++;
+            if (tr.dataset.tieneDiferencia === '1') conDiferencias++;
+        });
+        var el = function(id, val) { var e = document.getElementById(id); if (e) e.textContent = val; };
+        el('resumenTotal', total);
+        el('resumenContados', contados);
+        el('resumenNoContados', total - contados);
+        el('resumenDiferencias', conDiferencias);
+        aplicarFiltro();
+    }
+
+    document.querySelectorAll('.inp-fisico').forEach(function(inp) {
+        inp.addEventListener('input', function() { actualizarDiferencia(this); actualizarContador(); });
+        inp.addEventListener('blur', function() { actualizarDiferencia(this); actualizarContador(); });
+    });
+
+    document.querySelectorAll('.cnt-chip[data-filtro]').forEach(function(chip) {
+        chip.addEventListener('click', function() {
+            var f = chip.getAttribute('data-filtro');
+            modoFiltro = (modoFiltro === f) ? 'todos' : f;
+            aplicarFiltro();
+        });
+    });
+
+    var searchEl = document.getElementById('cntSearch');
+    if (searchEl) {
+        searchEl.addEventListener('input', function() {
+            searchQ = (searchEl.value || '').trim().toLowerCase();
+            aplicarFiltro();
+        });
+    }
+
+    document.getElementById('btnResetFiltro')?.addEventListener('click', function() {
+        modoFiltro = 'todos';
+        searchQ = '';
+        if (searchEl) searchEl.value = '';
         aplicarFiltro();
     });
-    document.getElementById('btnSoloNoContados')?.addEventListener('click', function() {
-        modoFiltro = modoFiltro === 'no_contados' ? 'todos' : 'no_contados';
-        aplicarFiltro();
-    });
+
+    actualizarContador();
 
     var btnAplicar = document.getElementById('btnAplicarPegado');
     var txtPegar = document.getElementById('textareaPegar');
     if (btnAplicar && txtPegar) {
         btnAplicar.addEventListener('click', function() {
-            var lineas = txtPegar.value.trim().split(/\r?\n/);
-            var aplicados = 0;
             var mapa = {};
             document.querySelectorAll('.row-conteo').forEach(function(tr) {
                 var cod = (tr.dataset.codigo || '').trim();
                 if (cod) mapa[cod] = tr.querySelector('.inp-fisico');
             });
-            lineas.forEach(function(linea) {
+            var aplicados = 0;
+            txtPegar.value.trim().split(/\r?\n/).forEach(function(linea) {
                 linea = linea.trim();
                 if (!linea) return;
                 var partes = linea.split(/[\t,;]+/).map(function(s) { return s.trim(); });
                 if (partes.length < 2) return;
-                var cod = (partes[0] || '').toLowerCase();
+                var inp = mapa[(partes[0] || '').toLowerCase()];
                 var cant = partes[1].replace(',', '.');
-                if (isNaN(parseFloat(cant))) return;
-                var inp = mapa[cod];
-                if (inp) {
+                if (inp && !isNaN(parseFloat(cant))) {
                     inp.value = cant;
                     actualizarDiferencia(inp);
                     aplicados++;

@@ -66,23 +66,13 @@
     }
     .sugerencia-item:hover { background: #f8f9fc; color: var(--accent); }
 
-    /* Estilo para el banner de Offline */
-    #offline-banner {
-        display: none;
-        background: #e74a3b;
-        color: white;
-        text-align: center;
-        padding: 12px;
-        font-weight: bold;
-        border-radius: 8px;
-        margin-bottom: 15px;
-        animation: pulse 2s infinite;
-    }
+    /* Estilo offline: ver .pos-alert-danger #offline-banner */
     @keyframes pulse {
         0% { opacity: 1; }
-        50% { opacity: 0.7; }
+        50% { opacity: 0.85; }
         100% { opacity: 1; }
     }
+    #offline-banner { animation: pulse 2.5s ease-in-out infinite; }
 
     /* Botones rápidos: venta por $ y fracciones (queso, tomate, etc.) */
     .pos-rapidos .btn {
@@ -119,7 +109,7 @@
     body.device-mobile .table thead th { font-size: 0.68rem; }
 
     /* MODO ESCÁNER: mismo patrón que BÚSQUEDA MANUAL (input-group + btn-outline-primary). */
-    #pos_escanner_root .input-group .form-control {
+    #pos_escanner_root .pos-input-group .form-control {
         min-width: 0;
     }
     /* Texto de ayuda: pantallas pequeñas o puntero táctil */
@@ -206,6 +196,7 @@
         min-height: 64px;
     }
     body.device-tv .total-box { padding: 1.35rem; font-size: 1.15rem; }
+    body.device-tv .pos-total-amount { font-size: 3.25rem; }
     body.device-tv .form-control,
     body.device-tv .form-select { font-size: 1.08rem; padding: 0.65rem 0.95rem; }
     body.device-tv .pos-rapidos .btn { font-size: 0.95rem; min-height: 48px; }
@@ -217,58 +208,1075 @@
     #modalCatalogoProductos tr.catalogo-row-sin-stock:hover { background: #f8fafc; }
     #modalCatalogoProductos tr.catalogo-row-sin-stock .exist-cat-ok { color: inherit; }
     #modalCatalogoProductos tr.catalogo-row-sin-stock .exist-cat-cero { color: #b91c1c; font-weight: 700; }
-</style>
+    #modalCatalogoProductos tr.catalogo-row-sin-precio { cursor: not-allowed; }
+    #modalCatalogoProductos tr.catalogo-row-sin-precio:hover { background: #fef2f2; }
+    #modalCatalogoProductos tr.catalogo-row-sin-precio .precio-cat-cero { color: #dc2626 !important; }
+    .pos-cat-aviso {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.65rem;
+        padding: 0.7rem 1rem;
+        margin-bottom: 0.75rem;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        border: 1px solid #fca5a5;
+        color: #991b1b;
+        font-size: 0.84rem;
+        line-height: 1.4;
+        box-shadow: 0 4px 14px rgba(220, 38, 38, 0.12);
+    }
+    .pos-cat-aviso i { font-size: 1.25rem; flex-shrink: 0; margin-top: 0.1rem; }
+    .pos-cat-aviso.pos-cat-aviso-animate { animation: pos-cat-shake 0.5s ease; }
+    @keyframes pos-cat-shake {
+        0%, 100% { transform: translateX(0); }
+        20% { transform: translateX(-6px); }
+        40% { transform: translateX(6px); }
+        60% { transform: translateX(-4px); }
+        80% { transform: translateX(4px); }
+    }
+    .pos-precio-cero-toast {
+        position: fixed;
+        left: 50%;
+        bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+        transform: translateX(-50%) translateY(120%);
+        z-index: 1090;
+        max-width: min(420px, calc(100vw - 1.5rem));
+        display: flex;
+        align-items: flex-start;
+        gap: 0.65rem;
+        padding: 0.75rem 1rem;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        border: 1px solid #fca5a5;
+        color: #991b1b;
+        font-size: 0.85rem;
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform 0.35s ease, opacity 0.35s ease;
+    }
+    .pos-precio-cero-toast.pos-precio-cero-toast-show {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+        pointer-events: auto;
+        animation: pos-cat-shake 0.45s ease;
+    }
+    .pos-precio-cero-toast i { font-size: 1.3rem; flex-shrink: 0; }
+    .sugerencia-item:disabled { opacity: 0.55; cursor: not-allowed; }
 
-<div class="container-fluid px-4 mt-3">
+    /* —— POS premium: iconos, secciones, checkout —— */
+    .pos-alerts { display: flex; flex-direction: column; gap: 0.5rem; }
+    .pos-alert {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.65rem 1rem;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        font-size: 0.84rem;
+        line-height: 1.4;
+    }
+    .pos-alert-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 1.1rem;
+    }
+    .pos-alert-warn {
+        background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+        border-color: #fcd34d;
+        color: #92400e;
+    }
+    .pos-alert-warn .pos-alert-icon { background: #f59e0b; color: #fff; }
+    .pos-alert-ok {
+        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        border-color: #86efac;
+        color: #166534;
+    }
+    .pos-alert-ok .pos-alert-icon { background: #22c55e; color: #fff; }
+    .pos-alert-info {
+        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        border-color: #93c5fd;
+        color: #1e40af;
+    }
+    .pos-alert-info .pos-alert-icon { background: #3b82f6; color: #fff; }
+    .pos-alert-danger {
+        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        border-color: #fca5a5;
+        color: #991b1b;
+        font-weight: 600;
+    }
+    .pos-alert-danger .pos-alert-icon { background: #ef4444; color: #fff; }
+    .pos-alert-body { flex: 1; min-width: 0; }
+    .pos-alert-body strong { font-weight: 800; }
+
+    .pos-search-card { border: 1px solid #e2e8f0; }
+    .pos-search-block label {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 0.5rem;
+    }
+    .pos-search-block label .pos-label-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.95rem;
+        color: #fff;
+        flex-shrink: 0;
+    }
+    .pos-search-block.scanner label .pos-label-icon { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+    .pos-search-block.manual label .pos-label-icon { background: linear-gradient(135deg, #0ea5e9, #0284c7); }
+    .pos-input-group {
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .pos-input-group:focus-within {
+        border-color: #6366f1;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+    }
+    .pos-input-group .input-group-text {
+        background: #f8fafc;
+        border: none;
+        color: #64748b;
+        min-width: 44px;
+        justify-content: center;
+    }
+    .pos-input-group .form-control { border: none; background: #fff; }
+    .pos-input-group .btn {
+        border: none;
+        border-left: 1px solid #e2e8f0;
+        transition: background 0.2s ease, transform 0.15s ease;
+    }
+    .pos-input-group .btn:hover { transform: scale(1.02); }
+    .pos-btn-cam {
+        background: linear-gradient(135deg, #eff6ff, #dbeafe) !important;
+        color: #2563eb !important;
+    }
+    .pos-btn-cam:hover { background: linear-gradient(135deg, #dbeafe, #bfdbfe) !important; }
+
+    #pos_favoritos_card {
+        border: 1px dashed #cbd5e1 !important;
+        background: linear-gradient(135deg, #fafafa 0%, #f8fafc 100%);
+    }
+    .pos-fav-head {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .pos-fav-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 9px;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.95rem;
+        flex-shrink: 0;
+    }
+
+    .pos-cart-card { border: 1px solid #e2e8f0; border-radius: 14px; }
+    .pos-cart-card .table thead th {
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+        color: #475569;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 0.85rem 0.65rem;
+        border-bottom: 2px solid #e2e8f0;
+        white-space: nowrap;
+    }
+    .pos-cart-card .table thead th i { color: #6366f1; margin-right: 0.25rem; font-size: 0.85rem; }
+    .pos-cart-row {
+        transition: background-color 0.2s ease, box-shadow 0.2s ease;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .pos-cart-row:hover { background: #fafbff; }
+    .pos-cart-row td { padding: 0.85rem 0.65rem; vertical-align: middle; }
+    .pos-cart-product-name {
+        font-weight: 800;
+        font-size: 0.95rem;
+        color: #0f172a;
+        line-height: 1.25;
+        display: inline;
+    }
+    .pos-cart-product-code {
+        display: inline-block;
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: #334155;
+        background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+        padding: 0.28rem 0.65rem;
+        border-radius: 8px;
+        margin-top: 0.4rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        letter-spacing: 0.04em;
+        border: 1px solid #cbd5e1;
+        line-height: 1.3;
+    }
+    .pos-cart-badge { font-size: 0.65rem; font-weight: 700; vertical-align: middle; margin-left: 0.35rem; }
+    .pos-cart-select {
+        display: block;
+        width: 100%;
+        max-width: 240px;
+        margin-top: 0.45rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        background: #f8fafc;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #334155;
+        padding: 0.38rem 0.55rem;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .pos-cart-select:focus {
+        border-color: #6366f1;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+        outline: none;
+    }
+    .pos-cart-hint {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.35rem;
+        margin-top: 0.45rem;
+        padding: 0.4rem 0.55rem;
+        background: #f8fafc;
+        border-radius: 8px;
+        border-left: 3px solid #cbd5e1;
+        font-size: 0.72rem;
+        color: #64748b;
+        line-height: 1.35;
+        max-width: 320px;
+    }
+    .pos-cart-hint i { color: #94a3b8; flex-shrink: 0; margin-top: 0.1rem; }
+    .pos-cart-price-box { min-width: 7.5rem; }
+    .pos-cart-price-amt {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #2563eb;
+        font-variant-numeric: tabular-nums;
+    }
+    .pos-cart-price-unit {
+        display: block;
+        font-size: 0.72rem;
+        color: #94a3b8;
+        margin-top: 0.1rem;
+    }
+    .pos-cart-price-tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.35rem; }
+    .pos-cart-btn-edit {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-top: 0.45rem;
+        padding: 0.28rem 0.55rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #2563eb;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 0.2s ease, transform 0.15s ease;
+    }
+    .pos-cart-btn-edit:hover { background: #dbeafe; transform: translateY(-1px); }
+    .pos-qty-stepper {
+        display: inline-flex;
+        align-items: center;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+    }
+    .pos-qty-btn {
+        width: 36px;
+        height: 36px;
+        border: none;
+        background: #f8fafc;
+        color: #475569;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+    .pos-qty-btn:hover { background: #eef2ff; color: #4f46e5; }
+    .pos-qty-btn.pos-qty-minus:hover { background: #fef2f2; color: #dc2626; }
+    .pos-qty-btn.pos-qty-plus:hover { background: #f0fdf4; color: #16a34a; }
+    .pos-qty-btn:active { transform: scale(0.92); }
+    .pos-qty-value {
+        min-width: 44px;
+        text-align: center;
+        font-weight: 800;
+        font-size: 1rem;
+        color: #0f172a;
+        font-variant-numeric: tabular-nums;
+        padding: 0 0.35rem;
+        border-left: 1px solid #e2e8f0;
+        border-right: 1px solid #e2e8f0;
+        line-height: 36px;
+    }
+    .pos-cart-subtotal {
+        font-size: 1.08rem;
+        font-weight: 800;
+        color: #0f172a;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .pos-cart-btn-remove {
+        width: 38px;
+        height: 38px;
+        border: 1px solid #fecaca;
+        border-radius: 10px;
+        background: #fef2f2;
+        color: #dc2626;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+    }
+    .pos-cart-btn-remove:hover {
+        background: #fee2e2;
+        transform: scale(1.06);
+        box-shadow: 0 2px 8px rgba(220, 38, 38, 0.2);
+    }
+    .pos-cart-empty {
+        text-align: center;
+        padding: 2.5rem 1.5rem !important;
+        color: #94a3b8;
+    }
+    .pos-cart-empty-icon {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 0.75rem;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        color: #94a3b8;
+    }
+    .pos-cart-empty p { margin: 0; font-size: 0.88rem; }
+    .pos-cart-empty strong { color: #64748b; }
+    .pos-cart-monto-input {
+        width: 100px;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        font-weight: 700;
+        text-align: right;
+    }
+    .pos-cart-cant-input {
+        max-width: 5.5rem;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        font-weight: 700;
+        text-align: center;
+        margin: 0 auto;
+    }
+    .pos-cart-row .pos-rapidos .btn {
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.75rem;
+    }
+    .pos-cart-toggle-monto {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-top: 0.35rem;
+        font-size: 0.78rem;
+        color: #64748b;
+        cursor: pointer;
+    }
+
+    .pos-checkout-card {
+        border: 1px solid #e2e8f0;
+    }
+    @media (min-width: 992px) {
+        .pos-checkout-card { overflow: visible; }
+        .pos-col-checkout {
+            position: sticky;
+            top: 0.5rem;
+            align-self: flex-start;
+        }
+        .pos-col-checkout .pos-total-hero {
+            border-radius: 12px 12px 0 0;
+            margin-bottom: 0;
+        }
+        .pos-col-checkout .pos-checkout-card {
+            border-radius: 0 0 12px 12px;
+        }
+        .pos-checkout-sticky {
+            max-height: none;
+            overflow: visible;
+        }
+    }
+    .total-box {
+        border-radius: 0;
+        padding: 1.25rem 1rem 1.35rem;
+        position: relative;
+        overflow: visible;
+        text-align: center;
+    }
+    .total-box::after {
+        content: '';
+        position: absolute;
+        top: -40%;
+        right: -20%;
+        width: 120px;
+        height: 120px;
+        background: rgba(255,255,255,0.12);
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 0;
+    }
+    .total-box small {
+        font-size: 0.68rem;
+        letter-spacing: 0.08em;
+        display: block;
+        position: relative;
+        z-index: 1;
+    }
+    .pos-total-amount {
+        font-size: clamp(2.35rem, 7.5vw, 3.15rem);
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        color: #fff !important;
+        line-height: 1.08;
+        letter-spacing: -0.02em;
+        position: relative;
+        z-index: 1;
+        margin: 0.15rem 0 0;
+    }
+    .total-box h2 { font-size: 2.85rem; font-variant-numeric: tabular-nums; color: #fff; line-height: 1.08; }
+
+    .pos-checkout-body { padding: 1rem 1.15rem 1.15rem; font-size: 0.92rem; }
+    @media (min-width: 992px) {
+        body.pos-ventas-page .pos-checkout-body { padding: 0.72rem 0.92rem 0.82rem; font-size: 0.88rem; }
+        body.pos-ventas-page .pos-section { margin-bottom: 0.55rem; padding-bottom: 0.55rem; }
+        body.pos-ventas-page .pos-section-head { margin-bottom: 0.45rem; font-size: 0.74rem; }
+        body.pos-ventas-page .pos-section-head i { font-size: 0.95rem; }
+        body.pos-ventas-page .pos-select-wrap { padding: 0.45rem 0.58rem; margin-bottom: 0.42rem; gap: 0.55rem; }
+        body.pos-ventas-page .pos-select-icon { width: 36px; height: 36px; font-size: 0.98rem; border-radius: 9px; }
+        body.pos-ventas-page .pos-select-wrap .form-select { font-size: 0.94rem; padding-top: 0.28rem; padding-bottom: 0.28rem; }
+        body.pos-ventas-page .pos-cobro-hint { font-size: 0.82rem; line-height: 1.35; margin-top: 0.35rem !important; }
+        body.pos-ventas-page .pos-cliente-actions { margin-bottom: 0.45rem !important; }
+        body.pos-ventas-page .pos-cliente-actions .btn { font-size: 0.86rem; padding: 0.32rem 0.58rem; }
+        body.pos-ventas-page #cliente_nombre { min-height: 40px; font-size: 0.94rem; padding-top: 0.4rem; padding-bottom: 0.4rem; }
+        body.pos-ventas-page .pos-cliente-search .input-group-text { font-size: 1rem; min-height: 40px; }
+        body.pos-ventas-page .pos-wa-box { padding: 0.58rem 0.75rem !important; }
+        body.pos-ventas-page .pos-wa-box .form-check-label { font-size: 0.92rem !important; }
+        body.pos-ventas-page #pos_cliente_telefono_hint { font-size: 0.65rem; margin-top: 0.25rem !important; line-height: 1.2; }
+        body.pos-ventas-page #pos_cliente_telefono_hint { display: none; }
+        body.pos-ventas-page .pos-total-hero { padding: 0.62rem 0.82rem 0.72rem; }
+        body.pos-ventas-page .pos-total-hero .pos-total-amount { font-size: 2.35rem; }
+        body.pos-ventas-page .pos-total-hero small { font-size: 0.68rem; }
+        body.pos-ventas-page .pos-resumen { padding: 0.58rem 0.75rem; margin-bottom: 0.55rem; }
+        body.pos-ventas-page .pos-resumen-row { font-size: 0.92rem; padding: 0.18rem 0; }
+        body.pos-ventas-page .pos-resumen-row b { font-size: 1rem; }
+        body.pos-ventas-page .pos-resumen-row.total-row { font-size: 0.98rem; }
+        body.pos-ventas-page .pos-resumen-row.total-row b { font-size: 1.05rem; }
+        body.pos-ventas-page .pos-resumen-row.pos-resumen-total-final { display: none; }
+        body.pos-ventas-page .pos-section-head.pos-descuento-head { font-size: 0.72rem; }
+        body.pos-ventas-page #descuento_pct,
+        body.pos-ventas-page #descuento_monto { font-size: 0.96rem; min-height: 40px; }
+        body.pos-ventas-page .pos-descuento-group .input-group-text { font-size: 0.95rem; }
+        body.pos-ventas-page .pos-descuento-hint { font-size: 0.78rem; }
+        body.pos-ventas-page .btn-cobrar { min-height: 50px; font-size: 1rem !important; margin-bottom: 0.45rem !important; }
+        body.pos-ventas-page .btn-cobrar-text { font-size: 1rem; }
+        body.pos-ventas-page .pos-hotkey-f8 { font-size: 1.05rem; min-width: 2.75rem; padding: 0.35rem 0.65rem; }
+        body.pos-ventas-page .btn-cobrar-icon { width: 36px; height: 36px; font-size: 1.1rem; }
+        body.pos-ventas-page .btn-vaciar { padding: 0.45rem !important; font-size: 0.82rem !important; }
+        body.pos-ventas-page .pos-section.pos-section-wa { margin-bottom: 0.4rem; padding-bottom: 0.4rem; border-bottom: none; }
+    }
+    .pos-section { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #f1f5f9; }
+    .pos-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .pos-section-head {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 0.7rem;
+    }
+    .pos-section-head i { font-size: 1rem; color: #6366f1; }
+
+    .pos-select-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        padding: 0.55rem 0.72rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        margin-bottom: 0.55rem;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .pos-select-wrap:focus-within {
+        border-color: #6366f1;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+    .pos-select-wrap:last-child { margin-bottom: 0; }
+    .pos-select-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.12rem;
+        color: #fff;
+        flex-shrink: 0;
+        transition: transform 0.2s ease;
+    }
+    .pos-select-wrap:hover .pos-select-icon { transform: scale(1.05); }
+    .pos-select-icon.pay-efectivo { background: linear-gradient(135deg, #22c55e, #16a34a); }
+    .pos-select-icon.pay-tarjeta { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+    .pos-select-icon.pay-credito { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .pos-select-icon.doc-ticket { background: linear-gradient(135deg, #64748b, #475569); }
+    .pos-select-icon.doc-factura { background: linear-gradient(135deg, #0ea5e9, #0284c7); }
+    .pos-select-icon.doc-ccf { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+    .pos-select-wrap .form-select {
+        border: none;
+        background: transparent;
+        font-weight: 700;
+        font-size: 0.98rem;
+        color: #1e293b;
+        padding: 0.3rem 0.5rem 0.3rem 0;
+        box-shadow: none !important;
+        line-height: 1.3;
+    }
+
+    .pos-cobro-hint {
+        font-size: 0.86rem;
+        color: #64748b;
+        line-height: 1.4;
+    }
+
+    .pos-cliente-actions .btn { border-radius: 10px; font-weight: 700; font-size: 0.86rem; padding: 0.35rem 0.65rem; }
+    .pos-cliente-search .form-control {
+        font-size: 0.98rem;
+        font-weight: 600;
+        min-height: 44px;
+        color: #1e293b;
+    }
+    .pos-cliente-search .input-group-text {
+        font-size: 1.05rem;
+        min-height: 44px;
+        min-width: 44px;
+        justify-content: center;
+    }
+    .pos-wa-box {
+        border-radius: 12px;
+        border: 1px solid #bbf7d0 !important;
+        background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%) !important;
+        padding: 0.65rem 0.85rem !important;
+    }
+    .pos-wa-box .form-check-label {
+        color: #166534;
+        font-size: 0.96rem;
+        font-weight: 700;
+        line-height: 1.35;
+    }
+    .pos-wa-box .form-check-input {
+        width: 1.15em;
+        height: 1.15em;
+        margin-top: 0.15em;
+    }
+    .pos-wa-box .form-check-input:checked { background-color: #22c55e; border-color: #22c55e; }
+
+    .pos-descuento-group {
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+    }
+    .pos-descuento-group .input-group-text {
+        background: #f1f5f9;
+        border: none;
+        font-weight: 800;
+        font-size: 1.02rem;
+        color: #475569;
+        min-width: 2.6rem;
+        justify-content: center;
+    }
+    .pos-descuento-group .form-control {
+        border: none;
+        background: #fff;
+        font-size: 1.02rem;
+        font-weight: 700;
+        min-height: 44px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        color: #0f172a;
+    }
+    .pos-descuento-group:focus-within {
+        border-color: #6366f1;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+    }
+    .pos-descuento-hint {
+        display: block;
+        font-size: 0.84rem;
+        color: #64748b;
+        margin-top: 0.45rem;
+        line-height: 1.35;
+    }
+
+    .pos-resumen {
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+        border-radius: 12px;
+        padding: 0.75rem 0.95rem;
+        margin-bottom: 1rem;
+        border: 1px solid #e2e8f0;
+    }
+    .pos-resumen-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.96rem;
+        font-weight: 600;
+        color: #475569;
+        padding: 0.28rem 0;
+        line-height: 1.35;
+    }
+    .pos-resumen-row b {
+        color: #0f172a;
+        font-variant-numeric: tabular-nums;
+        font-size: 1.06rem;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+    .pos-resumen-row.total-row {
+        border-top: 1px dashed #cbd5e1;
+        margin-top: 0.4rem;
+        padding-top: 0.55rem;
+        font-weight: 700;
+        color: #1e293b;
+        font-size: 1rem;
+    }
+    .pos-resumen-row.total-row span { font-weight: 800; color: #0f172a; }
+    .pos-resumen-row.total-row b { font-size: 1.1rem; color: #1d4ed8; }
+    .pos-resumen-row.pos-resumen-total-final {
+        border-top: 2px solid #6366f1;
+        margin-top: 0.5rem;
+        padding-top: 0.55rem;
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .pos-resumen-row.pos-resumen-total-final b {
+        font-size: 1.35rem;
+        color: #2563eb;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .btn-cobrar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        min-height: 58px;
+        border-radius: 14px !important;
+        font-size: 1.08rem !important;
+        letter-spacing: 0.02em;
+        transition: transform 0.2s ease, box-shadow 0.25s ease !important;
+    }
+    .btn-cobrar:hover { transform: translateY(-2px); }
+    .btn-cobrar-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 11px;
+        background: rgba(255,255,255,0.22);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        flex-shrink: 0;
+    }
+    .btn-cobrar-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .btn-cobrar-text {
+        font-size: 1.08rem;
+        font-weight: 800;
+        line-height: 1.2;
+    }
+    .pos-hotkey-f8 {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 3rem;
+        padding: 0.4rem 0.75rem;
+        font-size: 1.15rem;
+        font-weight: 900;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        letter-spacing: 0.08em;
+        color: #0f172a;
+        background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%);
+        border: 2px solid rgba(255, 255, 255, 0.95);
+        border-radius: 10px;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 1);
+        line-height: 1;
+        flex-shrink: 0;
+    }
+    .btn-cobrar:hover .pos-hotkey-f8 {
+        transform: scale(1.05);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 1);
+    }
+    .pos-hotkey-f8 { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    body.layout-gerente .btn-cobrar { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35); }
+    body.layout-cajero .btn-cobrar { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 6px 20px rgba(34, 197, 94, 0.35); }
+    body.layout-bodeguero .btn-cobrar { background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%); box-shadow: 0 6px 20px rgba(234, 88, 12, 0.35); }
+    body.layout-contador .btn-cobrar { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35); }
+    body.layout-superuser .btn-cobrar { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35); }
+
+    .btn-vaciar {
+        border-radius: 12px !important;
+        padding: 0.55rem !important;
+        font-size: 0.82rem !important;
+        font-weight: 700 !important;
+        color: #dc2626 !important;
+        background: #fef2f2 !important;
+        border: 1px solid #fecaca !important;
+        transition: all 0.2s ease !important;
+    }
+    .btn-vaciar:hover { background: #fee2e2 !important; transform: translateY(-1px); }
+    .btn-vaciar i { margin-right: 0.35rem; }
+
+    /* === Adaptación a cada dispositivo (móvil · tablet · laptop · TV) === */
+    .pos-page {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    .pos-layout-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    @media (min-width: 992px) {
+        .pos-layout-grid { flex-wrap: nowrap; align-items: flex-start; }
+        .pos-layout-grid > .pos-col-productos.col-lg-8 {
+            flex: 1 1 0;
+            min-width: 0;
+            max-width: calc(100% - 380px);
+            width: auto;
+        }
+        .pos-layout-grid > .pos-col-checkout.col-lg-4 {
+            flex: 0 0 min(380px, 34%);
+            max-width: 380px;
+            width: auto;
+        }
+    }
+    @media (min-width: 1200px) {
+        .pos-col-checkout { flex-basis: min(400px, 32%); max-width: 400px; }
+    }
+    @media (min-width: 1400px) {
+        .pos-col-productos { max-width: calc(100% - 420px); }
+        .pos-col-checkout { flex-basis: 420px; max-width: 420px; }
+    }
+    .pos-col-productos,
+    .pos-col-checkout {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .pos-cart-scroll {
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+    .pos-cart-scroll .table { margin-bottom: 0; min-width: 580px; }
+
+    /* Barra fija inferior — móvil / tablet táctil */
+    .pos-mobile-dock {
+        display: none;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1055;
+        padding: 0.45rem 0.65rem calc(0.45rem + env(safe-area-inset-bottom, 0px));
+        padding-left: max(0.65rem, env(safe-area-inset-left, 0px));
+        padding-right: max(0.65rem, env(safe-area-inset-right, 0px));
+        background: rgba(255, 255, 255, 0.96);
+        border-top: 1px solid #e2e8f0;
+        box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.1);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        gap: 0.6rem;
+        align-items: center;
+    }
+    .pos-mobile-dock-total { flex: 1; min-width: 0; }
+    .pos-mobile-dock-total small {
+        font-size: 0.6rem;
+        color: #64748b;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+    .pos-mobile-dock-total strong {
+        font-size: 1.28rem;
+        font-weight: 800;
+        color: #0f172a;
+        font-variant-numeric: tabular-nums;
+        display: block;
+        line-height: 1.1;
+    }
+    .pos-mobile-dock .btn-cobrar-dock {
+        flex-shrink: 0;
+        border: none;
+        color: #fff;
+        font-weight: 800;
+        border-radius: 12px;
+        padding: 0.7rem 1rem;
+        font-size: 0.92rem;
+        min-height: 50px;
+        min-width: 148px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        touch-action: manipulation;
+    }
+    .pos-cobrar-dock-label { font-weight: 800; }
+    .pos-cobrar-dock .pos-hotkey-f8 {
+        min-width: 2.5rem;
+        padding: 0.3rem 0.55rem;
+        font-size: 0.95rem;
+        border-radius: 8px;
+    }
+    body.layout-gerente .btn-cobrar-dock { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+    body.layout-cajero .btn-cobrar-dock { background: linear-gradient(135deg, #22c55e, #16a34a); }
+    body.layout-bodeguero .btn-cobrar-dock { background: linear-gradient(135deg, #ea580c, #c2410c); }
+    body.layout-contador .btn-cobrar-dock { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    body.layout-superuser .btn-cobrar-dock { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+
+    /* Móvil / tablet táctil — total grande siempre visible (fuera del card para no recortar sticky) */
+    @media (max-width: 991.98px) {
+        .pos-col-checkout .pos-total-hero {
+            position: sticky;
+            top: 0;
+            z-index: 30;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.22);
+            border-radius: 12px;
+            margin-bottom: 0.65rem;
+            padding: 0.85rem 1rem 0.95rem;
+        }
+        .pos-col-checkout .pos-total-hero small { font-size: 0.72rem; }
+        .pos-col-checkout .pos-total-amount { font-size: clamp(2.5rem, 9vw, 3.2rem); }
+        body.pos-ventas-page .pos-col-checkout {
+            padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+        }
+        body.pos-ventas-page .pos-checkout-body { padding: 0.95rem 1.05rem 1rem; font-size: 0.94rem; }
+        body.pos-ventas-page .pos-section { margin-bottom: 0.75rem; padding-bottom: 0.75rem; }
+        body.pos-ventas-page .pos-section-head { font-size: 0.8rem; margin-bottom: 0.55rem; }
+        body.pos-ventas-page .pos-section-head i { font-size: 1.05rem; }
+        body.pos-ventas-page .pos-select-wrap { padding: 0.58rem 0.72rem; }
+        body.pos-ventas-page .pos-select-wrap .form-select { font-size: 1rem; }
+        body.pos-ventas-page .pos-select-icon { width: 42px; height: 42px; font-size: 1.12rem; }
+        body.pos-ventas-page .pos-cobro-hint { font-size: 0.86rem; }
+        body.pos-ventas-page .pos-wa-box .form-check-label { font-size: 0.98rem !important; }
+        body.pos-ventas-page #cliente_nombre { font-size: 1rem; min-height: 46px; }
+        body.pos-ventas-page .pos-cliente-search .input-group-text { min-height: 46px; font-size: 1.08rem; }
+        body.pos-ventas-page .pos-cliente-actions .btn { font-size: 0.9rem; padding: 0.38rem 0.7rem; }
+        body.pos-ventas-page .pos-resumen { padding: 0.7rem 0.85rem; }
+        body.pos-ventas-page .pos-resumen-row { font-size: 0.98rem; }
+        body.pos-ventas-page .pos-resumen-row b { font-size: 1.06rem; }
+        body.pos-ventas-page .pos-resumen-row.total-row { font-size: 1.02rem; font-weight: 700; }
+        body.pos-ventas-page .pos-resumen-row.total-row b { font-size: 1.12rem; }
+        body.pos-ventas-page #descuento_pct,
+        body.pos-ventas-page #descuento_monto { font-size: 1.02rem; min-height: 44px; }
+        body.pos-ventas-page .pos-descuento-group .input-group-text { font-size: 1rem; }
+        body.pos-ventas-page .pos-descuento-hint { font-size: 0.86rem; }
+        body.pos-ventas-page .pos-section-head.pos-descuento-head { font-size: 0.76rem; }
+        body.pos-ventas-page .pos-checkout-body > .btn-cobrar { font-size: 1.02rem !important; min-height: 50px; }
+        body.pos-ventas-page .btn-vaciar { font-size: 0.88rem !important; }
+    }
+
+    /* Móvil */
+    @media (max-width: 767.98px) {
+        .pos-page { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+        .pos-alert { font-size: 0.78rem; padding: 0.55rem 0.75rem; }
+        .pos-alert-icon { width: 32px; height: 32px; font-size: 0.95rem; }
+        .pos-search-card { padding: 0.85rem !important; }
+        .pos-checkout-body { padding: 0.95rem 1rem; }
+        .pos-cart-scroll { max-height: min(42dvh, 380px); }
+        body.pos-ventas-page .pos-mobile-dock { display: flex; }
+        body.pos-ventas-page .pos-page { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px)) !important; }
+        body.pos-ventas-page .pos-checkout-body > .btn-cobrar { display: none; }
+    }
+    body.device-mobile.pos-ventas-page .pos-mobile-dock { display: flex; }
+    body.device-mobile.pos-ventas-page .pos-page {
+        padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    }
+    body.device-mobile.pos-ventas-page .pos-checkout-body > .btn-cobrar { display: none; }
+    body.device-mobile .pos-cart-scroll { max-height: min(40dvh, 360px); }
+    body.device-mobile .pos-qty-btn { width: 42px; height: 42px; }
+    body.device-mobile .pos-qty-value { line-height: 42px; min-width: 48px; font-size: 1.05rem; }
+    body.device-mobile .pos-cart-product-name { font-size: 0.92rem; }
+    body.device-mobile .pos-cart-product-code { font-size: 1rem; padding: 0.32rem 0.7rem; }
+    body.device-mobile .pos-cart-btn-remove { width: 42px; height: 42px; }
+    body.device-mobile #input_codigo,
+    body.device-mobile .pos-input-group .form-control {
+        min-height: 44px;
+        font-size: 16px;
+    }
+    body.device-mobile .pos-btn-cam { min-width: 48px; min-height: 44px; }
+    body.device-mobile .pos-select-wrap { padding: 0.55rem 0.65rem; }
+    body.device-mobile .pos-select-icon { width: 40px; height: 40px; }
+
+    /* Tablet */
+    @media (min-width: 768px) and (max-width: 991.98px) {
+        .pos-cart-scroll { max-height: min(38dvh, 340px); }
+        body.pos-ventas-page .pos-mobile-dock { display: flex; }
+        body.pos-ventas-page .pos-page { padding-bottom: calc(4.25rem + env(safe-area-inset-bottom, 0px)) !important; }
+        body.pos-ventas-page .pos-checkout-body > .btn-cobrar { display: none; }
+    }
+    body.device-tablet.pos-ventas-page .pos-mobile-dock { display: flex; }
+    body.device-tablet.pos-ventas-page .pos-page {
+        padding-bottom: calc(4.25rem + env(safe-area-inset-bottom, 0px)) !important;
+    }
+    body.device-tablet.pos-ventas-page .pos-checkout-body > .btn-cobrar { display: none; }
+    @media (min-width: 992px) and (max-width: 1199.98px) {
+        body.device-tablet .pos-col-productos { max-width: 58%; flex: 0 0 58%; }
+        body.device-tablet .pos-col-checkout { flex: 0 0 42%; max-width: 42%; }
+        body.device-tablet.pos-ventas-page .pos-mobile-dock { display: none; }
+        body.device-tablet.pos-ventas-page .pos-checkout-body > .btn-cobrar { display: flex; }
+        body.device-tablet.pos-ventas-page .pos-page { padding-bottom: 0.5rem !important; }
+    }
+
+    /* Laptop — sin scroll interno en checkout; carrito con altura flexible */
+    @media (min-width: 992px) {
+        body.pos-ventas-page .pos-checkout-sticky {
+            max-height: none;
+            overflow: visible;
+            overscroll-behavior: auto;
+        }
+        body.pos-ventas-page .pos-cart-scroll {
+            max-height: calc(100dvh - 16rem);
+        }
+    }
+    body.device-laptop.pos-ventas-page .pos-cart-scroll {
+        max-height: calc(100dvh - 20rem);
+    }
+
+    /* TV / pantalla grande */
+    body.device-tv.pos-ventas-page .pos-page { max-width: 1680px; margin: 0 auto; }
+    body.device-tv .total-box h2 { font-size: 2.75rem; }
+    body.device-tv .pos-total-amount { font-size: 3.25rem; }
+    body.device-tv .pos-mobile-dock { display: none !important; }
+    body.device-tv.pos-ventas-page .pos-checkout-body > .btn-cobrar { display: flex; min-height: 68px; font-size: 1.2rem !important; }
+    body.device-tv .pos-cart-scroll { max-height: calc(100dvh - 18rem); }
+    body.device-tv .pos-cart-scroll .table { min-width: 720px; font-size: 1.02rem; }
+    body.device-tv .pos-select-wrap .form-select { font-size: 1rem; }
+
+    /* Evitar zoom iOS en inputs táctiles */
+    @media (hover: none) and (pointer: coarse) {
+        .pos-page .form-control,
+        .pos-page .form-select { font-size: max(16px, 1rem); }
+    }
+
+    body.pos-ventas-page .main-content {
+        min-height: 100dvh;
+        min-height: 100vh;
+    }
+</style>
+<script>document.body.classList.add('pos-ventas-page');</script>
+
+<div class="container-fluid pos-page px-2 px-md-4 mt-2 mt-md-3">
     {% if puede_gestionar_ventas|default(false) %}
     <div class="mb-2">
         <a href="{{ url_for('admin.gestion_ventas') }}" class="btn btn-sm btn-outline-secondary rounded-pill"><i class="bi bi-receipt-cutoff"></i> Gestión de ventas</a>
     </div>
     {% endif %}
     {% if es_modo_prueba|default(true) %}
-    <div id="modo-prueba-banner" class="alert alert-warning border-warning border-2 fw-bold text-center mb-3 py-2" role="alert">
-        <i class="bi bi-exclamation-triangle-fill"></i>
-        {{ modo_operacion_etiqueta|default('Versión prueba') }} — Los tickets y facturas se imprimen como <strong>PRUEBA</strong> (AgilDTE apitest). Cambie a online en <a href="/configuracion" class="alert-link">Configuración</a> cuando vaya a producción.
-    </div>
+    <div class="pos-alerts mb-3">
+        <div id="modo-prueba-banner" class="pos-alert pos-alert-warn" role="alert">
+            <span class="pos-alert-icon"><i class="bi bi-shield-exclamation"></i></span>
+            <div class="pos-alert-body">
+                <strong>{{ modo_operacion_etiqueta|default('Versión prueba') }}</strong> — Tickets y facturas se imprimen como <strong>PRUEBA</strong> (AgilDTE apitest).
+                <a href="/configuracion" class="alert-link fw-bold">Configuración</a> para producción.
+            </div>
+        </div>
     {% else %}
-    <div id="modo-prueba-banner" class="alert alert-success border-success text-center mb-3 py-2 small" role="alert">
-        <i class="bi bi-check-circle-fill"></i> <strong>Online — producción</strong> (facturación real con AgilDTE).
-    </div>
+    <div class="pos-alerts mb-3">
+        <div id="modo-prueba-banner" class="pos-alert pos-alert-ok" role="alert">
+            <span class="pos-alert-icon"><i class="bi bi-shield-check"></i></span>
+            <div class="pos-alert-body"><strong>Online — producción</strong> · Facturación real con AgilDTE.</div>
+        </div>
     {% endif %}
-    <div id="offline-banner">
-        ⚠️ MODO OFFLINE: <span id="pendientes-count">0</span> VENTAS GUARDADAS EN MEMORIA (ESPERANDO INTERNET). Solo Ticket. Productos desde caché.
-    </div>
-    <div id="cache-status" class="alert alert-info py-2 px-3 small mb-3" style="display:none;">
-        <i class="bi bi-database-check"></i> <span id="cache-productos-count">0</span> productos en caché para uso offline. <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="btn-actualizar-cache" title="Precargar productos para vender sin internet"><i class="bi bi-arrow-clockwise"></i> Actualizar</button>
-        <span class="d-block small mt-1 text-muted">Si cambió presentaciones o unidades por caja en Inventario, pulse <strong>Actualizar</strong> para refrescar el POS offline.</span>
+        <div id="offline-banner" class="pos-alert pos-alert-danger" style="display:none;">
+            <span class="pos-alert-icon"><i class="bi bi-wifi-off"></i></span>
+            <div class="pos-alert-body">
+                <strong>Modo offline</strong> — <span id="pendientes-count">0</span> venta(s) en memoria. Solo Ticket. Productos desde caché.
+            </div>
+        </div>
+        <div id="cache-status" class="pos-alert pos-alert-info" style="display:none;">
+            <span class="pos-alert-icon"><i class="bi bi-cloud-check"></i></span>
+            <div class="pos-alert-body">
+                <strong><span id="cache-productos-count">0</span> productos</strong> en caché offline.
+                <button type="button" class="btn btn-sm btn-light fw-bold ms-1" id="btn-actualizar-cache" title="Precargar productos para vender sin internet">
+                    <i class="bi bi-arrow-clockwise"></i> Actualizar
+                </button>
+                <span class="d-block small mt-1 opacity-75">Si cambió presentaciones en Inventario, pulse <strong>Actualizar</strong>.</span>
+            </div>
+        </div>
     </div>
 
-    <div class="row g-4">
-        <div class="col-lg-8">
-            <div class="card p-4 mb-4">
+    <div class="row g-3 g-lg-4 pos-layout-grid">
+        <div class="col-lg-8 pos-col-productos">
+            <div class="card p-4 mb-4 pos-search-card">
                 <div class="row g-3">
-                    <div class="col-12 col-md-6">
-                        <label class="text-primary small fw-bold mb-2">MODO ESCÁNER</label>
-                        <p class="small text-muted mb-1 d-none pos-hint-camara-movil">Use el ícono de <strong>cámara</strong> a la derecha del campo o el código con pistola/teclado.</p>
+                    <div class="col-12 col-md-6 pos-search-block scanner">
+                        <label><span class="pos-label-icon"><i class="bi bi-upc-scan"></i></span> Modo escáner</label>
+                        <p class="small text-muted mb-1 d-none pos-hint-camara-movil">Use la <strong>cámara</strong> o pistola lectora.</p>
                         <div class="position-relative" id="pos_escanner_root" data-pos-ui-version="2026-05-12-escanner-ancho-igual">
-                            <div class="input-group shadow-sm">
-                                <span class="input-group-text bg-light border-0"><i class="bi bi-upc-scan"></i></span>
-                                <input type="text" id="input_codigo" class="form-control border-0" placeholder="Escanee producto…" autocomplete="off" autocorrect="off" spellcheck="false" autofocus>
-                                <button type="button" class="btn btn-outline-primary px-3" id="btnPosCamaraBarras" title="Escanear código de barras con la cámara" aria-label="Escanear con la cámara">
-                                    <i class="bi bi-camera-fill fs-5" aria-hidden="true"></i><span class="visually-hidden">Escanear con cámara</span>
+                            <div class="input-group pos-input-group">
+                                <span class="input-group-text"><i class="bi bi-barcode"></i></span>
+                                <input type="text" id="input_codigo" class="form-control" placeholder="Escanee código de barras…" autocomplete="off" autocorrect="off" spellcheck="false" autofocus>
+                                <button type="button" class="btn pos-btn-cam px-3" id="btnPosCamaraBarras" title="Escanear con cámara" aria-label="Escanear con cámara">
+                                    <i class="bi bi-camera-fill fs-5" aria-hidden="true"></i>
                                 </button>
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-md-6">
-                        <label class="text-primary small fw-bold mb-2">BÚSQUEDA MANUAL</label>
-                        <p class="small text-muted mb-1 d-none pos-hint-catalogo-movil">Escriba 2+ letras para ver resultados o pulse <strong>Catálogo</strong>.</p>
+                    <div class="col-12 col-md-6 pos-search-block manual">
+                        <label><span class="pos-label-icon"><i class="bi bi-search"></i></span> Búsqueda manual</label>
+                        <p class="small text-muted mb-1 d-none pos-hint-catalogo-movil">2+ letras o pulse <strong>Catálogo</strong>.</p>
                         <div class="position-relative" id="pos_busqueda_manual_root">
-                            <div class="input-group shadow-sm">
-                                <span class="input-group-text bg-light border-0" id="btnBusquedaAbrirCatalogo" role="button" tabindex="0" title="Abrir catálogo de productos" aria-label="Abrir catálogo"><i class="bi bi-search"></i></span>
-                                <input type="text" id="input_nombre" class="form-control border-0" placeholder="Buscar producto…" title="Escriba para filtrar; en móvil use el botón Catálogo" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
-                                <button type="button" class="btn btn-outline-primary" id="btnAbrirCatalogoProductos" title="Ver todos los productos (existencia y precio)">
-                                    <i class="bi bi-list-ul"></i><span class="d-none d-sm-inline"> Catálogo</span>
+                            <div class="input-group pos-input-group">
+                                <span class="input-group-text" id="btnBusquedaAbrirCatalogo" role="button" tabindex="0" title="Abrir catálogo" aria-label="Abrir catálogo"><i class="bi bi-grid-3x3-gap"></i></span>
+                                <input type="text" id="input_nombre" class="form-control" placeholder="Nombre o código…" title="Escriba para filtrar" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
+                                <button type="button" class="btn btn-outline-primary fw-bold" id="btnAbrirCatalogoProductos" title="Ver catálogo completo">
+                                    <i class="bi bi-box-seam"></i><span class="d-none d-sm-inline ms-1">Catálogo</span>
                                 </button>
                             </div>
                             <div id="lista_sugerencias" class="list-group position-absolute w-100 shadow mt-1" style="display:none;"></div>
@@ -277,140 +1285,166 @@
                 </div>
             </div>
 
-            <div class="card py-2 px-3 mb-3 border-0 shadow-sm" id="pos_favoritos_card">
-                <div class="d-flex flex-wrap align-items-center gap-2">
-                    <span class="small fw-bold text-nowrap text-secondary"><i class="bi bi-star-fill text-warning"></i> Acceso rápido</span>
+            <div class="card py-2 px-3 mb-3 pos-fav-card" id="pos_favoritos_card">
+                <div class="pos-fav-head">
+                    <span class="pos-fav-icon"><i class="bi bi-star-fill"></i></span>
+                    <span class="small fw-bold text-secondary">Acceso rápido</span>
                     <div id="pos_favoritos_chips" class="d-flex flex-wrap align-items-center flex-grow-1 gap-1"></div>
                 </div>
-                <p class="small text-muted mb-0 mt-1" id="pos_favoritos_hint">Busque por nombre y pulse la estrella en un resultado para guardar aquí productos que pesa el mostrador (tomate, queso, etc.). Con internet, la lista se sincroniza en el servidor para esta sucursal.</p>
+                <p class="small text-muted mb-0 mt-1" id="pos_favoritos_hint">Pulse la estrella en un resultado para fijar productos frecuentes del mostrador.</p>
             </div>
 
-            <div class="card p-0 overflow-hidden">
-                <table class="table align-middle m-0">
-                    <thead>
+            <div class="card p-0 overflow-hidden pos-cart-card">
+                <div class="pos-cart-scroll">
+                <table class="table align-middle m-0 pos-cart-table">
+                    <thead class="pos-cart-thead">
                         <tr>
-                            <th class="ps-4">Descripción</th>
-                            <th>Precio Unit.</th>
-                            <th class="text-center">Cant. / $</th>
-                            <th class="text-end pe-4">Subtotal</th>
-                            <th class="text-center">Acciones</th>
+                            <th class="ps-4"><i class="bi bi-box-seam"></i> Descripción</th>
+                            <th><i class="bi bi-tag"></i> Precio unit.</th>
+                            <th class="text-center"><i class="bi bi-123"></i> Cant. / $</th>
+                            <th class="text-end pe-4"><i class="bi bi-calculator"></i> Subtotal</th>
+                            <th class="text-center"><i class="bi bi-gear"></i> Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tabla_carrito"></tbody>
                 </table>
+                </div>
             </div>
         </div>
 
-        <div class="col-lg-4">
-            <div class="card p-4 border-0">
-                <div class="total-box mb-4 shadow">
-                    <small class="text-white-50 fw-bold">TOTAL A PAGAR</small>
-                    <h2 class="display-5 fw-bold m-0" id="display_total">$ 0.00</h2>
-                </div>
+        <div class="col-lg-4 pos-col-checkout">
+            <div class="total-box shadow-sm pos-total-hero mb-0">
+                <small class="text-white-50 fw-bold">Total a pagar</small>
+                <div class="pos-total-amount" id="display_total" aria-live="polite">$ 0.00</div>
+            </div>
 
-                <div class="mb-3">
-                    <label class="small fw-bold text-muted mb-1">MÉTODO DE PAGO</label>
-                    <select id="tipo_pago" class="form-select bg-light fw-bold border-0">
-                        <option value="EFECTIVO">💵 EFECTIVO</option>
-                        <option value="TARJETA">💳 TARJETA / POS</option>
-                        <option value="CREDITO">📋 CRÉDITO (pendiente cobro)</option>
-                    </select>
-                </div>
-
-                <div class="mb-3">
-                    <label class="small fw-bold text-muted mb-1">TIPO DE COMPROBANTE</label>
-                    <select id="tipo_comprobante" class="form-select bg-light fw-bold border-0">
-                        <option value="TICKET">🧾 Ticket</option>
-                        <option value="FACTURA">📄 Factura (consumidor final)</option>
-                        <option value="CREDITO_FISCAL">🏢 Crédito fiscal</option>
-                    </select>
-                    <small class="text-muted d-block mt-1">Factura y crédito fiscal: elija al cliente <strong>haciendo clic</strong> en un resultado de la búsqueda. Crédito fiscal: además debe ser <strong>contribuyente</strong> en Clientes.</small>
-                </div>
-
-                <div class="mb-2 position-relative" id="cliente_field_wrap">
-                    <label class="small fw-bold text-muted mb-1">CLIENTE — buscar por nombre o documento</label>
-                    {% if es_super or ((session.get('rol') or '')|upper) in ('GERENTE', 'CAJERO', 'ADMIN', 'SUPERADMIN') %}
-                    <div class="d-flex flex-wrap gap-1 mb-1">
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnPosNuevoCliente" title="Registrar cliente en el catálogo">
-                            <i class="bi bi-person-plus"></i> Nuevo cliente
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPosEditarCliente" style="display:none" title="Editar ficha del cliente seleccionado">
-                            <i class="bi bi-pencil-square"></i> Editar ficha
-                        </button>
-                    </div>
-                    {% endif %}
-                    <input type="hidden" id="cliente_id" value="">
-                    <input type="text" id="cliente_nombre" class="form-control bg-light border-0" placeholder="Consumidor Final o escriba para buscar..." autocomplete="off">
-                    <div id="lista_clientes" class="list-group position-absolute w-100 shadow mt-1" style="display:none; z-index:1000; max-height:220px; overflow-y:auto;"></div>
-                </div>
-                <div id="formulario_cliente" class="card bg-light border-0 mb-3 p-3 small" style="display:none; border-radius:10px;">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="fw-bold text-primary"><i class="bi bi-person-badge"></i> Datos del cliente</span>
-                        <button type="button" class="btn btn-link btn-sm text-muted p-0" onclick="limpiarCliente()" title="Quitar cliente">✕</button>
-                    </div>
-                    <div class="row g-2">
-                        <div class="col-12"><strong>Nombre:</strong> <span id="fc_nombre">—</span></div>
-                        <div class="col-6"><strong>Documento:</strong> <span id="fc_documento">—</span></div>
-                        <div class="col-6"><strong>Tipo:</strong> <span id="fc_tipo_doc">—</span></div>
-                        <div class="col-12"><strong>Dirección:</strong> <span id="fc_direccion">—</span></div>
-                        <div class="col-6"><strong>Teléfono:</strong> <span id="fc_telefono">—</span></div>
-                        <div class="col-6"><strong>Correo:</strong> <span id="fc_correo">—</span></div>
-                        <div class="col-12"><span id="fc_contribuyente" class="badge bg-success" style="display:none;">Contribuyente</span></div>
-                    </div>
-                </div>
-
-                <div class="mb-3 p-3 rounded-3 border border-success border-opacity-25 bg-success bg-opacity-10" id="pos_whatsapp_wrap">
-                    <div class="form-check mb-0">
-                        <input class="form-check-input" type="checkbox" id="chk_enviar_whatsapp" checked>
-                        <label class="form-check-label small fw-bold" for="chk_enviar_whatsapp">
-                            <i class="bi bi-whatsapp text-success"></i> Enviar comprobante por WhatsApp
-                        </label>
-                    </div>
-                    <p id="pos_cliente_telefono_hint" class="small mb-0 mt-2 text-muted">
-                        Sin cliente del catálogo: el envío aplica en <strong>Factura / Crédito fiscal</strong>, o en <strong>Ticket</strong> si elige cliente con teléfono en ficha.
-                    </p>
-                </div>
-
-                <div class="mb-3">
-                    <label class="small fw-bold text-muted mb-1">DESCUENTO</label>
-                    <div class="row g-2">
-                        <div class="col-6">
-                            <div class="input-group input-group-sm shadow-sm">
-                                <span class="input-group-text bg-light border-0">%</span>
-                                <input type="number" id="descuento_pct" class="form-control border-0 bg-light" min="0" max="100" step="0.01" placeholder="0.00">
-                            </div>
-                            <small class="text-muted">Porcentaje</small>
+            <div class="card border-0 shadow-sm pos-checkout-card pos-checkout-sticky">
+                <div class="pos-checkout-body">
+                    <div class="pos-section">
+                        <div class="pos-section-head"><i class="bi bi-credit-card-2-front"></i> Cobro</div>
+                        <div class="pos-cobro-grid">
+                        <div class="pos-select-wrap" id="wrap_tipo_pago">
+                            <span class="pos-select-icon pay-efectivo" id="icon_tipo_pago"><i class="bi bi-cash-stack"></i></span>
+                            <select id="tipo_pago" class="form-select">
+                                <option value="EFECTIVO">Efectivo</option>
+                                <option value="TARJETA">Tarjeta / POS</option>
+                                <option value="CREDITO">Crédito (pendiente cobro)</option>
+                            </select>
                         </div>
-                        <div class="col-6">
-                            <div class="input-group input-group-sm shadow-sm">
-                                <span class="input-group-text bg-light border-0">$</span>
-                                <input type="number" id="descuento_monto" class="form-control border-0 bg-light" min="0" step="0.01" placeholder="0.00">
-                            </div>
-                            <small class="text-muted">Monto</small>
+                        <div class="pos-select-wrap" id="wrap_tipo_comprobante">
+                            <span class="pos-select-icon doc-ticket" id="icon_tipo_comprobante"><i class="bi bi-receipt"></i></span>
+                            <select id="tipo_comprobante" class="form-select">
+                                <option value="TICKET">Ticket</option>
+                                <option value="FACTURA">Factura (consumidor final)</option>
+                                <option value="CREDITO_FISCAL">Crédito fiscal</option>
+                            </select>
+                        </div>
+                        </div>
+                        <small class="text-muted d-block pos-cobro-hint mt-1">Factura/CCF: seleccione cliente contribuyente en la búsqueda.</small>
+                    </div>
+
+                    <div class="pos-section position-relative" id="cliente_field_wrap">
+                        <div class="pos-section-head"><i class="bi bi-person-vcard"></i> Cliente</div>
+                        {% if es_super or ((session.get('rol') or '')|upper) in ('GERENTE', 'CAJERO', 'ADMIN', 'SUPERADMIN') %}
+                        <div class="d-flex flex-wrap gap-1 mb-2 pos-cliente-actions">
+                            <button type="button" class="btn btn-sm btn-primary" id="btnPosNuevoCliente" title="Registrar cliente">
+                                <i class="bi bi-person-plus-fill"></i> Nuevo
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPosEditarCliente" style="display:none" title="Editar ficha">
+                                <i class="bi bi-pencil-square"></i> Editar
+                            </button>
+                        </div>
+                        {% endif %}
+                        <input type="hidden" id="cliente_id" value="">
+                        <div class="input-group pos-input-group pos-cliente-search">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input type="text" id="cliente_nombre" class="form-control" placeholder="Consumidor final o buscar…" autocomplete="off">
+                        </div>
+                        <div id="lista_clientes" class="list-group position-absolute w-100 shadow mt-1" style="display:none; z-index:1000; max-height:220px; overflow-y:auto;"></div>
+                    </div>
+
+                    <div id="formulario_cliente" class="card bg-light border-0 mb-3 p-3 small" style="display:none; border-radius:10px;">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-bold text-primary"><i class="bi bi-person-badge"></i> Datos del cliente</span>
+                            <button type="button" class="btn btn-link btn-sm text-muted p-0" onclick="limpiarCliente()" title="Quitar cliente">✕</button>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-12"><strong>Nombre:</strong> <span id="fc_nombre">—</span></div>
+                            <div class="col-6"><strong>Documento:</strong> <span id="fc_documento">—</span></div>
+                            <div class="col-6"><strong>Tipo:</strong> <span id="fc_tipo_doc">—</span></div>
+                            <div class="col-12"><strong>Dirección:</strong> <span id="fc_direccion">—</span></div>
+                            <div class="col-6"><strong>Teléfono:</strong> <span id="fc_telefono">—</span></div>
+                            <div class="col-6"><strong>Correo:</strong> <span id="fc_correo">—</span></div>
+                            <div class="col-12"><span id="fc_contribuyente" class="badge bg-success" style="display:none;">Contribuyente</span></div>
                         </div>
                     </div>
-                    <small class="text-muted d-block mt-1">Si llenas monto, se ignora el porcentaje.</small>
-                </div>
 
-                <div class="d-flex justify-content-between mb-2 text-muted px-2">
-                    <span>Gravado (Sin IVA):</span> <b id="resumen_gravado">$ 0.00</b>
-                </div>
-                <div class="d-flex justify-content-between mb-2 text-muted px-2">
-                    <span>Descuento:</span> <b id="resumen_descuento">$ 0.00</b>
-                </div>
-                <div class="d-flex justify-content-between mb-4 text-muted px-2 border-bottom pb-2">
-                    <span>IVA (13%):</span> <b id="resumen_iva">$ 0.00</b>
-                </div>
+                    <div class="pos-section pos-section-wa mb-0 pb-0">
+                        <div class="pos-wa-box p-3" id="pos_whatsapp_wrap">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="chk_enviar_whatsapp" checked>
+                                <label class="form-check-label small fw-bold" for="chk_enviar_whatsapp" title="Ticket con cliente catalogado, o Factura / CCF con teléfono en ficha.">
+                                    <i class="bi bi-whatsapp"></i> Enviar comprobante por WhatsApp
+                                </label>
+                            </div>
+                            <p id="pos_cliente_telefono_hint" class="small mb-0 mt-2 text-muted">
+                                Ticket con cliente catalogado, o Factura / CCF con teléfono en ficha.
+                            </p>
+                        </div>
+                    </div>
 
-                <button class="btn btn-cobrar w-100 mb-3 shadow-sm" onclick="guardarVenta()">
-                    PROCESAR COBRO (F2)
-                </button>
+                    <div class="pos-section pos-section-descuento">
+                        <div class="pos-section-head pos-descuento-head"><i class="bi bi-percent"></i> Descuento</div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <div class="input-group pos-descuento-group">
+                                    <span class="input-group-text">%</span>
+                                    <input type="number" id="descuento_pct" class="form-control" min="0" max="100" step="0.01" placeholder="0.00">
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="input-group pos-descuento-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" id="descuento_monto" class="form-control" min="0" step="0.01" placeholder="0.00">
+                                </div>
+                            </div>
+                        </div>
+                        <small class="pos-descuento-hint">El monto fijo tiene prioridad sobre el %.</small>
+                    </div>
 
-                <button class="btn btn-light btn-sm w-100 text-danger fw-bold border-0" onclick="cancelarTodo()">
-                    <i class="bi bi-trash"></i> VACIAR CARRITO
-                </button>
+                    <div class="pos-resumen">
+                        <div class="pos-resumen-row"><span>Gravado (sin IVA)</span><b id="resumen_gravado">$ 0.00</b></div>
+                        <div class="pos-resumen-row"><span>Descuento</span><b id="resumen_descuento">$ 0.00</b></div>
+                        <div class="pos-resumen-row total-row"><span>IVA (13%)</span><b id="resumen_iva">$ 0.00</b></div>
+                        <div class="pos-resumen-row pos-resumen-total-final"><span>Total a pagar</span><b id="resumen_total">$ 0.00</b></div>
+                    </div>
+
+                    <button class="btn btn-cobrar w-100 mb-2 shadow-sm" onclick="guardarVenta()" type="button">
+                        <span class="btn-cobrar-icon"><i class="bi bi-bag-check-fill"></i></span>
+                        <span class="btn-cobrar-label">
+                            <span class="btn-cobrar-text">Procesar cobro</span>
+                            <kbd class="pos-hotkey-f8" aria-label="Atajo de teclado F8">F8</kbd>
+                        </span>
+                    </button>
+
+                    <button class="btn btn-vaciar w-100" onclick="cancelarTodo()" type="button">
+                        <i class="bi bi-trash3"></i> Vaciar carrito
+                    </button>
+                </div>
             </div>
         </div>
+    </div>
+
+    <div class="pos-mobile-dock" id="pos_mobile_dock" role="toolbar" aria-label="Cobro rápido">
+        <div class="pos-mobile-dock-total">
+            <small>Total a pagar</small>
+            <strong id="display_total_mobile">$ 0.00</strong>
+        </div>
+        <button type="button" class="btn-cobrar-dock" onclick="guardarVenta()" aria-label="Procesar cobro con F8">
+            <i class="bi bi-bag-check-fill"></i>
+            <span class="pos-cobrar-dock-label">Cobrar</span>
+            <kbd class="pos-hotkey-f8" aria-hidden="true">F8</kbd>
+        </button>
     </div>
 </div>
 
@@ -431,6 +1465,7 @@
                     <div class="spinner-border spinner-border-sm" role="status"></div> Cargando…
                 </div>
                 <div id="modal_catalogo_error" class="alert alert-warning small d-none"></div>
+                <div id="modal_catalogo_precio_aviso" class="pos-cat-aviso d-none" role="alert" aria-live="assertive"></div>
                 <div class="table-responsive border rounded" style="max-height: min(62vh, 520px);">
                     <table class="table table-hover table-sm align-middle mb-0">
                         <thead class="table-light sticky-top">
@@ -445,7 +1480,7 @@
                         <tbody id="modal_catalogo_tbody"></tbody>
                     </table>
                 </div>
-                <p class="small text-muted mb-0 mt-2" id="modal_catalogo_leyenda">Toque una fila o <strong>Agregar</strong>. Existencia en UMB / unidad base (sucursal de sesión). <strong class="text-danger">Sin existencia (0) no se puede agregar.</strong></p>
+                <p class="small text-muted mb-0 mt-2" id="modal_catalogo_leyenda">Toque una fila o <strong>Agregar</strong>. <strong class="text-danger">Sin existencia (0)</strong> o <strong class="text-danger">precio $0.00</strong> no se pueden vender.</p>
             </div>
             <div class="modal-footer py-2">
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
@@ -697,6 +1732,10 @@
         pintarBarraFavoritos();
     }
     function agregarProductoDesdeBusqueda(p) {
+        if (!productoPosTienePrecioVendible(p)) {
+            mostrarAvisoPrecioCero(p.nombre);
+            return;
+        }
         if (!productoPosTieneStockVendible(p)) {
             alert('Sin existencia en inventario: no se puede agregar «' + (p.nombre || 'este producto') + '» al carrito. Cargue stock en Inventario o Kardex para esta sucursal.');
             return;
@@ -722,6 +1761,10 @@
         }
     }
     function seleccionarProductoDesdeCatalogo(p) {
+        if (!productoPosTienePrecioVendible(p)) {
+            mostrarAvisoPrecioCero(p.nombre);
+            return;
+        }
         if (!productoPosTieneStockVendible(p)) {
             alert('Sin existencia en inventario: no se puede agregar «' + (p.nombre || 'este producto') + '» al carrito.');
             return;
@@ -764,6 +1807,42 @@
         if (!Number.isFinite(x)) return true;
         return x > 0;
     }
+    function productoPosTienePrecioVendible(p) {
+        if (!p) return false;
+        const n = parseFloat(p.precio);
+        return Number.isFinite(n) && n > 0;
+    }
+    function mostrarAvisoPrecioCero(nombre) {
+        const titulo = (nombre || 'Producto').trim() || 'Producto';
+        const cuerpo = '<strong>' + escAttr(titulo) + '</strong> tiene precio <strong>$0.00</strong>. Asigne precio en <strong>Inventario</strong> antes de vender.';
+        const icono = '<i class="bi bi-exclamation-octagon-fill"></i>';
+        const modalAviso = document.getElementById('modal_catalogo_precio_aviso');
+        const modalEl = document.getElementById('modalCatalogoProductos');
+        const modalOpen = modalEl && modalEl.classList.contains('show');
+        if (modalOpen && modalAviso) {
+            modalAviso.innerHTML = icono + '<span>' + cuerpo + '</span>';
+            modalAviso.classList.remove('d-none', 'pos-cat-aviso-animate');
+            void modalAviso.offsetWidth;
+            modalAviso.classList.add('pos-cat-aviso-animate');
+            clearTimeout(window._posPrecioAvisoT);
+            window._posPrecioAvisoT = setTimeout(function () { modalAviso.classList.add('d-none'); }, 7000);
+            return;
+        }
+        let toast = document.getElementById('pos_precio_cero_toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'pos_precio_cero_toast';
+            toast.className = 'pos-precio-cero-toast';
+            toast.setAttribute('role', 'alert');
+            document.body.appendChild(toast);
+        }
+        toast.innerHTML = icono + '<span>' + cuerpo + '</span>';
+        toast.classList.remove('pos-precio-cero-toast-show');
+        void toast.offsetWidth;
+        toast.classList.add('pos-precio-cero-toast-show');
+        clearTimeout(window._posPrecioToastT);
+        window._posPrecioToastT = setTimeout(function () { toast.classList.remove('pos-precio-cero-toast-show'); }, 6500);
+    }
     /** Mismo id numérico para modal, API JSON y carrito (evita que === falle string vs number). */
     function normProductoIdPos(v) {
         const n = parseInt(v, 10);
@@ -802,27 +1881,48 @@
             const td2 = document.createElement('td');
             td2.className = 'text-end font-monospace';
             const hayStock = productoPosTieneStockVendible(p);
+            const hayPrecio = productoPosTienePrecioVendible(p);
+            const puedeAgregar = hayStock && hayPrecio;
             td2.textContent = formatExistenciaCat(p.existencia);
             td2.classList.add(hayStock ? 'exist-cat-ok' : 'exist-cat-cero');
             const td3 = document.createElement('td');
-            td3.className = 'text-end fw-bold text-primary';
-            td3.textContent = '$' + Number(p.precio).toFixed(2);
+            td3.className = 'text-end fw-bold ' + (hayPrecio ? 'text-primary precio-cat-ok' : 'precio-cat-cero');
+            td3.textContent = '$' + Number(p.precio || 0).toFixed(2);
             const td4 = document.createElement('td');
             td4.className = 'text-center';
             const btnA = document.createElement('button');
             btnA.type = 'button';
-            btnA.className = hayStock ? 'btn btn-sm btn-success btn-catalogo-add' : 'btn btn-sm btn-secondary btn-catalogo-add';
-            btnA.textContent = hayStock ? 'Agregar' : 'Sin stock';
-            btnA.disabled = !hayStock;
-            btnA.title = hayStock ? 'Agregar al carrito' : 'Sin existencia en esta sucursal';
+            if (!hayPrecio) {
+                btnA.className = 'btn btn-sm btn-outline-danger btn-catalogo-add';
+                btnA.textContent = 'Sin precio';
+                btnA.title = 'Precio $0.00 — clic para ver aviso';
+            } else if (!hayStock) {
+                btnA.className = 'btn btn-sm btn-secondary btn-catalogo-add';
+                btnA.textContent = 'Sin stock';
+                btnA.disabled = true;
+                btnA.title = 'Sin existencia en esta sucursal';
+            } else {
+                btnA.className = 'btn btn-sm btn-success btn-catalogo-add';
+                btnA.textContent = 'Agregar';
+                btnA.disabled = false;
+                btnA.title = 'Agregar al carrito';
+            }
             const pick = () => seleccionarProductoDesdeCatalogo(p);
+            const avisoBloqueo = () => {
+                if (!hayPrecio) mostrarAvisoPrecioCero(p.nombre);
+            };
             if (!hayStock) tr.classList.add('catalogo-row-sin-stock');
+            if (!hayPrecio) tr.classList.add('catalogo-row-sin-precio');
             tr.addEventListener('click', (ev) => {
                 if (ev.target.closest && ev.target.closest('.btn-catalogo-add')) return;
-                if (!hayStock) return;
+                if (!puedeAgregar) { avisoBloqueo(); return; }
                 pick();
             });
-            btnA.addEventListener('click', (ev) => { ev.stopPropagation(); if (!hayStock) return; pick(); });
+            btnA.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                if (!puedeAgregar) { avisoBloqueo(); return; }
+                pick();
+            });
             td4.appendChild(btnA);
             tr.appendChild(td0);
             tr.appendChild(td1);
@@ -833,7 +1933,7 @@
         });
         const leg = document.getElementById('modal_catalogo_leyenda');
         if (leg) {
-            leg.textContent = lista.length + ' producto(s). Con existencia > 0: fila o Agregar. Los de existencia 0 no se pueden vender desde aquí.';
+            leg.innerHTML = lista.length + ' producto(s). Con stock y precio &gt; $0: fila o <strong>Agregar</strong>. Los de existencia 0 o precio <strong class="text-danger">$0.00</strong> no se venden desde aquí.';
         }
     }
     async function cargarCatalogoModalDatos(forceReload) {
@@ -944,6 +2044,8 @@
         if (modalScan) posAsegurarModalEnBody(modalScan);
     })();
     document.getElementById('modalCatalogoProductos')?.addEventListener('show.bs.modal', function () {
+        const avisoPrecio = document.getElementById('modal_catalogo_precio_aviso');
+        if (avisoPrecio) avisoPrecio.classList.add('d-none');
         const f = document.getElementById('modal_catalogo_filtro');
         if (f) f.value = '';
         cargarCatalogoModalDatos().then(function () {
@@ -956,6 +2058,10 @@
     });
     setTimeout(prefetchCatalogoModalEnSegundoPlano, 800);
     function agregarDesdeFavoritoGuardado(st) {
+        if (!productoPosTienePrecioVendible(st)) {
+            mostrarAvisoPrecioCero(st.nombre);
+            return;
+        }
         if (!productoPosTieneStockVendible(st)) {
             alert('Sin existencia en inventario: «' + (st.nombre || 'este producto') + '». Actualice el caché del POS (con internet) o cargue stock en Inventario.');
             return;
@@ -987,10 +2093,15 @@
         btn.className = 'sugerencia-item flex-grow-1 text-start border-0 bg-white py-2 px-3';
         const pl = promoLabelSugerencia(p);
         const sinEx = !productoPosTieneStockVendible(p);
-        btn.innerHTML = `<span>${p.nombre}</span> <b class="float-end ${sinEx ? 'text-secondary' : 'text-primary'}">$${Number(p.precio).toFixed(2)}${pl}</b>${sinEx ? ' <span class="small text-danger">(sin stock)</span>' : ''}`;
-        btn.disabled = sinEx;
-        btn.title = sinEx ? 'Sin existencia en inventario para esta sucursal' : '';
-        btn.addEventListener('click', () => { if (!btn.disabled) agregarProductoDesdeBusqueda(p); });
+        const sinPrecio = !productoPosTienePrecioVendible(p);
+        const bloqueado = sinEx || sinPrecio;
+        btn.innerHTML = `<span>${p.nombre}</span> <b class="float-end ${bloqueado ? 'text-secondary' : 'text-primary'}">$${Number(p.precio || 0).toFixed(2)}${pl}</b>${sinPrecio ? ' <span class="small text-danger">(sin precio)</span>' : ''}${sinEx && !sinPrecio ? ' <span class="small text-danger">(sin stock)</span>' : ''}`;
+        btn.disabled = bloqueado;
+        btn.title = sinPrecio ? 'Precio $0.00 — configure en Inventario' : (sinEx ? 'Sin existencia en inventario para esta sucursal' : '');
+        btn.addEventListener('click', () => {
+            if (sinPrecio) { mostrarAvisoPrecioCero(p.nombre); return; }
+            if (!btn.disabled) agregarProductoDesdeBusqueda(p);
+        });
         const st = document.createElement('button');
         st.type = 'button';
         st.className = 'btn border-0 rounded-0 px-2 bg-light ' + (favoritoTieneId(p.id) ? 'text-warning' : 'text-muted');
@@ -1077,6 +2188,11 @@
         if (!navigator.onLine) {
             const p = obtenerProductoPorCodigo(cod);
             if (p) {
+                if (!productoPosTienePrecioVendible(p)) {
+                    mostrarAvisoPrecioCero(p.nombre);
+                    if (!opts.fromCamera) inputCodigo.value = '';
+                    return false;
+                }
                 agregarAlCarrito(p.id, p.nombre, p.precio, p.codigo || cod, {
                     tipo: p.promocion_tipo || '', valor: p.promocion_valor || 0,
                     valor_comprar: p.promocion_valor_comprar || 2, valor_pagar: p.promocion_valor_pagar || 1,
@@ -1099,6 +2215,11 @@
             }
             if (!productoPosTieneStockVendible(data)) {
                 alert('Sin existencia en inventario: «' + (data.nombre || 'este producto') + '». No se puede vender hasta cargar stock.');
+                if (!opts.fromCamera) inputCodigo.value = '';
+                return false;
+            }
+            if (!productoPosTienePrecioVendible(data)) {
+                mostrarAvisoPrecioCero(data.nombre);
                 if (!opts.fromCamera) inputCodigo.value = '';
                 return false;
             }
@@ -1814,6 +2935,10 @@
         }
         const esFracc = !!meta.fraccionable;
         const precioN = parseFloat(precio) || 0;
+        if (precioN <= 0) {
+            mostrarAvisoPrecioCero(nombre);
+            return;
+        }
         if (!esFracc) {
             let item = carrito.find(i => normProductoIdPos(i.id) === pid && (i._mergeKey || '') === mergeKey && (i.modo || 'CANTIDAD') === 'CANTIDAD');
             if (item) { item.cantidad++; renderizar(); return; }
@@ -1899,6 +3024,9 @@
     function renderizar() {
         const tabla = document.getElementById('tabla_carrito');
         tabla.innerHTML = '';
+        if (!carrito.length) {
+            tabla.innerHTML = '<tr><td colspan="5" class="pos-cart-empty"><div class="pos-cart-empty-icon"><i class="bi bi-cart3"></i></div><p><strong>Carrito vacío</strong><br>Escanee, busque o abra el catálogo para agregar productos.</p></td></tr>';
+        }
         let totalBruto = 0;
         carrito.forEach((p, i) => {
             aplicarPrecioReglaPresentacion(p);
@@ -1910,14 +3038,14 @@
             const subtotal = subtotalLineaItem(p);
             totalBruto += subtotal;
             let promoBadge = '';
-            if (pt === '2X1') promoBadge = '<span class="badge bg-warning text-dark ms-1">2x1</span>';
-            else if (pt === '3X2') promoBadge = '<span class="badge bg-warning text-dark ms-1">3x2</span>';
-            else if (pt === 'VOLUMEN') promoBadge = '<span class="badge bg-warning text-dark ms-1">Volumen</span>';
-            else if (pt === 'PORCENTAJE' && pv > 0) promoBadge = `<span class="badge bg-info ms-1">-${pv}%</span>`;
-            else if (pt === 'DESCUENTO_MONTO') promoBadge = '<span class="badge bg-secondary ms-1">$ desc.</span>';
-            else if (pt === 'REGALO') promoBadge = '<span class="badge bg-success ms-1">Regalo</span>';
-            else if (pt === 'PRECIO_FIJO' && pv > 0) promoBadge = `<span class="badge bg-primary ms-1">$${pv.toFixed(2)}</span>`;
-            else if (pt === 'DESCUENTO_CANTIDAD' && pv > 0) promoBadge = `<span class="badge bg-info ms-1">${vc}+ → -${pv}%</span>`;
+            if (pt === '2X1') promoBadge = '<span class="badge bg-warning text-dark pos-cart-badge">2x1</span>';
+            else if (pt === '3X2') promoBadge = '<span class="badge bg-warning text-dark pos-cart-badge">3x2</span>';
+            else if (pt === 'VOLUMEN') promoBadge = '<span class="badge bg-warning text-dark pos-cart-badge">Volumen</span>';
+            else if (pt === 'PORCENTAJE' && pv > 0) promoBadge = `<span class="badge bg-info pos-cart-badge">-${pv}%</span>`;
+            else if (pt === 'DESCUENTO_MONTO') promoBadge = '<span class="badge bg-secondary pos-cart-badge">$ desc.</span>';
+            else if (pt === 'REGALO') promoBadge = '<span class="badge bg-success pos-cart-badge">Regalo</span>';
+            else if (pt === 'PRECIO_FIJO' && pv > 0) promoBadge = `<span class="badge bg-primary pos-cart-badge">$${pv.toFixed(2)}</span>`;
+            else if (pt === 'DESCUENTO_CANTIDAD' && pv > 0) promoBadge = `<span class="badge bg-info pos-cart-badge">${vc}+ → -${pv}%</span>`;
             const modoMonto = (p.modo || 'CANTIDAD') === 'MONTO';
             let umbLabel = 'UMB';
             if (p.presentaciones && p.presentaciones.length) {
@@ -1936,25 +3064,25 @@
                     const lab = String(pr.nombre || '').replace(/</g, '') + ' (×' + pr.factor + ')';
                     return '<option value="' + val + '"' + selAttr + '>' + lab + '</option>';
                 }).join('');
-                selUnidad = '<select class="form-select form-select-sm my-1" style="max-width:220px" onchange="posPresentacionLinea(' + i + ', this.value)" ' + (modoMonto ? 'disabled' : '') + '>' + opts + '</select>';
+                selUnidad = '<select class="pos-cart-select" onchange="posPresentacionLinea(' + i + ', this.value)" ' + (modoMonto ? 'disabled' : '') + '>' + opts + '</select>';
             } else {
                 selUnidad = `
-                        <select class="form-select form-select-sm my-1" style="max-width:140px" onchange="posUnidadLinea(${i}, this.value)" ${modoMonto ? 'disabled' : ''}>
+                        <select class="pos-cart-select" onchange="posUnidadLinea(${i}, this.value)" ${modoMonto ? 'disabled' : ''}>
                             <option value="UNIDAD" ${uv === 'UNIDAD' ? 'selected' : ''}>Unidad</option>
                             <option value="DOCENA" ${uv === 'DOCENA' ? 'selected' : ''}>Docena (${parseInt(p.unidades_por_docena, 10) || 12} u.)</option>
                             <option value="CAJA" ${uv === 'CAJA' ? 'selected' : ''} ${hasCaja ? '' : 'disabled'}>Caja${hasCaja ? ' (' + parseInt(p.unidades_por_caja, 10) + ' u.)' : ' (sin factor)'}</option>
                         </select>`;
             }
-            const chkMonto = p.fraccionable ? `<label class="d-block small text-muted mb-0"><input type="checkbox" class="form-check-input align-middle" ${modoMonto ? 'checked' : ''} onchange="posToggleMonto(${i}, this.checked)"> Venta por monto ($)</label>` : '';
+            const chkMonto = p.fraccionable ? `<label class="pos-cart-toggle-monto"><input type="checkbox" class="form-check-input" ${modoMonto ? 'checked' : ''} onchange="posToggleMonto(${i}, this.checked)"> Venta por monto ($)</label>` : '';
             const montoVal = (p.monto_solicitado != null && p.monto_solicitado !== '') ? parseFloat(p.monto_solicitado) : '';
             const ctrlCant = modoMonto
-                ? `<div class="small">$ <input type="number" class="form-control form-control-sm d-inline-block text-end" style="width:100px" min="0.01" step="0.01" value="${montoVal}" onchange="posMontoLinea(${i}, this.value)" placeholder="Ej. 5.00" id="pos_monto_input_${i}"></div>`
+                ? `<div class="small fw-bold text-muted">$ <input type="number" class="form-control form-control-sm d-inline-block pos-cart-monto-input" min="0.01" step="0.01" value="${montoVal}" onchange="posMontoLinea(${i}, this.value)" placeholder="5.00" id="pos_monto_input_${i}"></div>`
                 : (p.fraccionable
-                    ? `<input type="number" class="form-control form-control-sm text-center mx-auto" style="max-width:5.5rem" min="0.0001" step="0.01" value="${(parseFloat(p.cantidad) > 0 ? parseFloat(p.cantidad) : 1)}" onchange="posCantidadLinea(${i}, this.value)" title="Cantidad en ${escAttr(umbLabel)} (no es monto en $)" id="pos_cant_input_${i}">`
-                    : `<div class="btn-group btn-group-sm">
-                            <button type="button" class="btn btn-light border" onclick="cambiarCant(${i},-1)">-</button>
-                            <span class="btn btn-white border-top border-bottom disabled fw-bold" style="width:44px">${p.cantidad}</span>
-                            <button type="button" class="btn btn-light border" onclick="cambiarCant(${i},1)">+</button>
+                    ? `<input type="number" class="form-control form-control-sm pos-cart-cant-input" min="0.0001" step="0.01" value="${(parseFloat(p.cantidad) > 0 ? parseFloat(p.cantidad) : 1)}" onchange="posCantidadLinea(${i}, this.value)" title="Cantidad en ${escAttr(umbLabel)}" id="pos_cant_input_${i}">`
+                    : `<div class="pos-qty-stepper" role="group" aria-label="Cantidad">
+                            <button type="button" class="pos-qty-btn pos-qty-minus" onclick="cambiarCant(${i},-1)" aria-label="Quitar uno"><i class="bi bi-dash-lg"></i></button>
+                            <span class="pos-qty-value">${p.cantidad}</span>
+                            <button type="button" class="pos-qty-btn pos-qty-plus" onclick="cambiarCant(${i},1)" aria-label="Agregar uno"><i class="bi bi-plus-lg"></i></button>
                         </div>`);
             let rapidosHtml = '';
             if (p.fraccionable && modoMonto) {
@@ -1981,27 +3109,36 @@
                     ? ' Precio por cantidad (regla Desde/Hasta); al subir unidades puede cambiar la presentación automáticamente.'
                     : '');
             const hintBase = !modoMonto
-                ? `<div class="small text-muted">Sale del inventario: <strong>${fmtCantBase(qBase)} ${umbLabel}</strong>. <span class="text-secondary">${
+                ? `<div class="pos-cart-hint"><i class="bi bi-info-circle"></i><span>Sale del inventario: <strong>${fmtCantBase(qBase)} ${umbLabel}</strong>. ${
                     p.fraccionable
-                        ? 'Use <strong>¼ · ½ · 1</strong> o el campo numérico. Para cobrar por dinero («$1 de tomate») marque <em>Venta por monto ($)</em> y use <strong>+$1</strong>, etc.'
-                        : 'Los botones +/− suman 1 <strong>' + escAttr(etiquetaToque) + '</strong> por toque.' + hintBloqueada
+                        ? 'Use <strong>¼ · ½ · 1</strong> o el campo numérico. Para cobrar por $ marque <em>Venta por monto</em>.'
+                        : 'Los botones <strong>+/−</strong> suman 1 <strong>' + escAttr(etiquetaToque) + '</strong> por toque.' + hintBloqueada
                 }</span></div>`
-                : `<div class="small text-muted">≈ <strong>${fmtCantBase(qBase)} ${umbLabel}</strong> según el monto. Botones verdes <strong>suman</strong> al total en $.</div>`;
+                : `<div class="pos-cart-hint"><i class="bi bi-cash-coin"></i><span>≈ <strong>${fmtCantBase(qBase)} ${umbLabel}</strong> según el monto. Botones verdes suman al total en $.</span></div>`;
+            const priceTags = [
+                pvLinea.origen === 'manual' ? '<span class="badge bg-warning-subtle text-dark" title="Precio cambiado manualmente">manual</span>' : '',
+                (pvLinea.origen === 'presentacion' || pvLinea.origen === 'regla') ? '<span class="badge bg-info-subtle text-info" title="Precio de presentación">presentación</span>' : '',
+                presentacionBloqueada(p) ? '<span class="badge bg-secondary-subtle text-secondary" title="Presentación fija">fija</span>' : ''
+            ].filter(Boolean).join('');
             tabla.innerHTML += `
-                <tr>
-                    <td class="ps-4"><b>${p.nombre}</b>${promoBadge}<br><small class="text-muted">${p.codigo}</small>
-                        ${selUnidad}${chkMonto}${hintBase}</td>
+                <tr class="pos-cart-row">
+                    <td class="ps-4">
+                        <span class="pos-cart-product-name">${p.nombre}</span>${promoBadge}
+                        ${p.codigo ? '<br><code class="pos-cart-product-code">' + p.codigo + '</code>' : ''}
+                        ${selUnidad}${chkMonto}${hintBase}
+                    </td>
                     <td>
-                        <div>$${pvLinea.precio.toFixed(2)} <span class="small text-muted">/ ${pvLinea.etiqueta}</span></div>
-                        ${pvLinea.origen === 'manual' ? '<span class="badge bg-warning-subtle text-dark" title="Precio cambiado manualmente">manual</span>' : ''}
-                        ${pvLinea.origen === 'presentacion' || pvLinea.origen === 'regla' ? '<span class="badge bg-info-subtle text-info" title="Precio de presentación">presentación</span>' : ''}
-                        ${presentacionBloqueada(p) ? '<span class="badge bg-secondary-subtle text-secondary" title="No cambia sola al subir cantidad">fija</span>' : ''}
-                        <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="posCambiarPrecio(${i})" title="Cambiar precio de esta línea"><i class="bi bi-pencil-square me-1"></i>Cambiar precio</button>
+                        <div class="pos-cart-price-box">
+                            <span class="pos-cart-price-amt">$${pvLinea.precio.toFixed(2)}</span>
+                            <span class="pos-cart-price-unit">/ ${pvLinea.etiqueta}</span>
+                            ${priceTags ? '<div class="pos-cart-price-tags">' + priceTags + '</div>' : ''}
+                            <button type="button" class="pos-cart-btn-edit" onclick="posCambiarPrecio(${i})" title="Cambiar precio de esta línea"><i class="bi bi-pencil-square"></i> Cambiar precio</button>
+                        </div>
                     </td>
                     <td class="text-center">${ctrlCant}${rapidosHtml}</td>
-                    <td class="text-end pe-4 fw-bold">$${subtotal.toFixed(2)}</td>
+                    <td class="text-end pe-4"><span class="pos-cart-subtotal">$${subtotal.toFixed(2)}</span></td>
                     <td class="text-center">
-                        <button type="button" class="btn btn-link text-danger p-0" onclick="eliminar(${i})"><i class="bi bi-trash-fill"></i></button>
+                        <button type="button" class="pos-cart-btn-remove" onclick="eliminar(${i})" title="Quitar del carrito" aria-label="Quitar ${escAttr(p.nombre)}"><i class="bi bi-trash3-fill"></i></button>
                     </td>
                 </tr>`;
         });
@@ -2015,7 +3152,13 @@
         if (descuento > totalBruto) descuento = totalBruto;
 
         const totalNeto = totalBruto - descuento;
-        document.getElementById('display_total').innerText = `$ ${totalNeto.toFixed(2)}`;
+        const totalTxt = `$ ${totalNeto.toFixed(2)}`;
+        const dt = document.getElementById('display_total');
+        if (dt) dt.innerText = totalTxt;
+        const dtm = document.getElementById('display_total_mobile');
+        if (dtm) dtm.textContent = totalTxt;
+        const rt = document.getElementById('resumen_total');
+        if (rt) rt.textContent = totalTxt;
         document.getElementById('resumen_descuento').innerText = `$ ${descuento.toFixed(2)}`;
         document.getElementById('resumen_gravado').innerText = `$ ${(totalNeto / 1.13).toFixed(2)}`;
         document.getElementById('resumen_iva').innerText = `$ ${(totalNeto - (totalNeto / 1.13)).toFixed(2)}`;
@@ -2564,8 +3707,10 @@
         const countEl = document.getElementById('cache-productos-count');
         if (countEl) countEl.textContent = prods.length;
         if (el && prods.length > 0) {
-            el.style.display = 'block';
-            el.className = navigator.onLine ? 'alert alert-info py-2 px-3 small mb-3' : 'alert alert-warning py-2 px-3 small mb-3';
+            el.style.display = 'flex';
+            el.className = navigator.onLine
+                ? 'pos-alert pos-alert-info'
+                : 'pos-alert pos-alert-warn';
         }
     }
     document.getElementById('btn-actualizar-cache')?.addEventListener('click', async function() {
@@ -2585,7 +3730,7 @@
         const wrapWa = document.getElementById('pos_whatsapp_wrap');
         const chkWa = document.getElementById('chk_enviar_whatsapp');
         if (offline) {
-            if (selTipo) { selTipo.value = 'TICKET'; selTipo.disabled = true; }
+            if (selTipo) { selTipo.value = 'TICKET'; selTipo.disabled = true; selTipo.dispatchEvent(new Event('change')); }
             if (wrapCliente) wrapCliente.style.opacity = '0.6';
             if (wrapWa) { wrapWa.style.opacity = '0.65'; wrapWa.setAttribute('title', 'WhatsApp requiere conexión al guardar la venta.'); }
             if (chkWa) chkWa.disabled = true;
@@ -2640,7 +3785,7 @@
         const banner = document.getElementById('offline-banner');
         if (banner) {
             if (cola.length > 0) {
-                banner.style.display = 'block';
+                banner.style.display = 'flex';
                 const pc = document.getElementById('pendientes-count');
                 if (pc) pc.textContent = cola.length;
             } else {
@@ -2665,7 +3810,74 @@
         favoritosCargarDesdeServidor();
     };
 
-    window.addEventListener('keydown', (e) => { if (e.key === 'F2') { e.preventDefault(); guardarVenta(); } });
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'F8' || e.code === 'F8') {
+            e.preventDefault();
+            guardarVenta();
+        }
+    });
+
+    function posAjustarLayoutDispositivo() {
+        var dock = document.getElementById('pos_mobile_dock');
+        if (!dock) return;
+        if (dock.parentElement !== document.body) {
+            document.body.appendChild(dock);
+        }
+        var w = window.innerWidth;
+        var body = document.body;
+        var mobile = body.classList.contains('device-mobile');
+        var tablet = body.classList.contains('device-tablet');
+        var tv = body.classList.contains('device-tv');
+        if (tv || (w >= 992 && !mobile && !(tablet && w < 1200))) {
+            dock.style.display = 'none';
+        } else {
+            dock.style.display = 'flex';
+        }
+    }
+    posAjustarLayoutDispositivo();
+    window.addEventListener('resize', function () {
+        clearTimeout(window._posLayoutT);
+        window._posLayoutT = setTimeout(posAjustarLayoutDispositivo, 150);
+    });
+    window.addEventListener('orientationchange', function () {
+        setTimeout(posAjustarLayoutDispositivo, 300);
+    });
+
+    (function posSelectIconsInit() {
+        const payMap = {
+            EFECTIVO: { cls: 'pay-efectivo', icon: 'bi-cash-stack' },
+            TARJETA: { cls: 'pay-tarjeta', icon: 'bi-credit-card-2-front-fill' },
+            CREDITO: { cls: 'pay-credito', icon: 'bi-hourglass-split' },
+        };
+        const docMap = {
+            TICKET: { cls: 'doc-ticket', icon: 'bi-receipt-cutoff' },
+            FACTURA: { cls: 'doc-factura', icon: 'bi-file-earmark-text-fill' },
+            CREDITO_FISCAL: { cls: 'doc-ccf', icon: 'bi-building-fill' },
+        };
+        function syncPay() {
+            const sel = document.getElementById('tipo_pago');
+            const icon = document.getElementById('icon_tipo_pago');
+            if (!sel || !icon) return;
+            const m = payMap[sel.value] || payMap.EFECTIVO;
+            icon.className = 'pos-select-icon ' + m.cls;
+            icon.innerHTML = '<i class="bi ' + m.icon + '"></i>';
+        }
+        function syncDoc() {
+            const sel = document.getElementById('tipo_comprobante');
+            const icon = document.getElementById('icon_tipo_comprobante');
+            if (!sel || !icon) return;
+            const m = docMap[sel.value] || docMap.TICKET;
+            icon.className = 'pos-select-icon ' + m.cls;
+            icon.innerHTML = '<i class="bi ' + m.icon + '"></i>';
+        }
+        const selPay = document.getElementById('tipo_pago');
+        const selDoc = document.getElementById('tipo_comprobante');
+        if (selPay) selPay.addEventListener('change', syncPay);
+        if (selDoc) selDoc.addEventListener('change', syncDoc);
+        syncPay();
+        syncDoc();
+    })();
+
     document.addEventListener('click', (e) => {
         if (listaSugerencias) {
             var rootBusq = document.getElementById('pos_busqueda_manual_root');

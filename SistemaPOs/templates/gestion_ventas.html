@@ -1,25 +1,235 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
+<style>
+    .gv-page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .gv-sub {
+        font-size: 0.84rem;
+        font-weight: 600;
+        color: #64748b;
+        margin: 0;
+        line-height: 1.4;
+    }
+    .gv-sub-note {
+        display: block;
+        margin-top: 0.35rem;
+        font-size: 0.82rem;
+        color: #475569;
+    }
+    .gv-pos-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.38rem;
+        padding: 0.42rem 0.72rem;
+        border-radius: 9px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid #bfdbfe;
+        background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+        color: #1d4ed8;
+        transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+        white-space: nowrap;
+    }
+    .gv-pos-btn-icon {
+        width: 1.65rem;
+        height: 1.65rem;
+        border-radius: 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.88rem;
+        background: rgba(37, 99, 235, 0.14);
+        color: #2563eb;
+        transition: transform 0.2s ease;
+    }
+    .gv-pos-btn:hover {
+        transform: translateY(-2px);
+        border-color: #93c5fd;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.18);
+        color: #1e40af;
+    }
+    .gv-pos-btn:hover .gv-pos-btn-icon { transform: scale(1.08); }
+    .gv-table-card { border-radius: 12px !important; overflow: hidden; }
+    .gv-table { margin-bottom: 0; font-size: 0.88rem; }
+    .gv-table thead th {
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+        padding: 0.55rem 0.65rem;
+        white-space: nowrap;
+    }
+    .gv-table thead th:first-child { padding-left: 1rem; }
+    .gv-table thead th:last-child { padding-right: 1rem; }
+    .gv-table tbody tr {
+        transition: background 0.18s ease, box-shadow 0.18s ease;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .gv-table tbody tr:hover {
+        background: linear-gradient(90deg, #f8fafc 0%, #fff 100%);
+        box-shadow: inset 3px 0 0 #3b82f6;
+    }
+    .gv-table tbody td {
+        padding: 0.48rem 0.65rem;
+        vertical-align: middle;
+    }
+    .gv-table tbody td:first-child { padding-left: 1rem; }
+    .gv-table tbody td:last-child { padding-right: 1rem; }
+    .gv-id {
+        font-size: 0.92rem;
+        font-weight: 800;
+        color: #2563eb;
+        font-variant-numeric: tabular-nums;
+    }
+    .gv-fecha {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: #334155;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .gv-cliente {
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: #1e293b;
+        line-height: 1.25;
+    }
+    .gv-pago {
+        font-size: 0.84rem;
+        font-weight: 700;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+    .gv-total {
+        font-size: 1rem;
+        font-weight: 800;
+        color: #0f172a;
+        font-variant-numeric: tabular-nums;
+    }
+    .gv-badge {
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid transparent;
+    }
+    .gv-badge--ticket {
+        background: #f1f5f9;
+        color: #475569;
+        border-color: #cbd5e1;
+    }
+    .gv-badge--factura {
+        background: #eff6ff;
+        color: #1d4ed8;
+        border-color: #bfdbfe;
+    }
+    .gv-badge--ccf {
+        background: #fef3c7;
+        color: #b45309;
+        border-color: #fcd34d;
+    }
+    .gv-row-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.28rem;
+    }
+    .gv-row-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        padding: 0.32rem 0.52rem;
+        border-radius: 8px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #475569;
+        line-height: 1.1;
+        transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .gv-row-btn i { font-size: 0.82rem; }
+    .gv-row-btn:hover { transform: translateY(-1px); color: inherit; }
+    .gv-row-btn:active { transform: scale(0.97); }
+    .gv-row-btn--json {
+        border-color: #cbd5e1;
+        background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
+        color: #475569;
+    }
+    .gv-row-btn--json:hover {
+        border-color: #94a3b8;
+        box-shadow: 0 3px 10px rgba(71, 85, 105, 0.12);
+        color: #334155;
+    }
+    .gv-row-btn--pdf {
+        border-color: #bfdbfe;
+        background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+        color: #1d4ed8;
+    }
+    .gv-row-btn--pdf:hover {
+        border-color: #93c5fd;
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.18);
+        color: #1e40af;
+    }
+    .gv-row-btn--void {
+        border-color: #fecaca;
+        background: linear-gradient(135deg, #fff 0%, #fef2f2 100%);
+        color: #b91c1c;
+    }
+    .gv-row-btn--void:hover {
+        border-color: #fca5a5;
+        box-shadow: 0 3px 10px rgba(220, 38, 38, 0.15);
+        color: #991b1b;
+    }
+    .gv-empty {
+        padding: 2.5rem 1rem !important;
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: #64748b;
+    }
+</style>
 <div class="container-fluid px-4 mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="gv-page-header">
         <div>
-            <h2 class="fw-bold text-dark"><i class="bi bi-receipt-cutoff text-primary"></i> Gestión de ventas</h2>
-            <p class="text-muted small mb-0">
+            <h2 class="fw-bold text-dark mb-1"><i class="bi bi-receipt-cutoff text-primary"></i> Gestión de ventas</h2>
+            <p class="gv-sub">
                 Gerente y superusuario: editar datos de facturación o anular venta (requiere motivo para auditoría).
                 {% if ambiente_emision == '00' %}
-                <span class="d-block mt-1">Solo se listan ventas de <strong>producción</strong>; las de pruebas AgilDTE quedan ocultas.</span>
+                <span class="gv-sub-note">Solo se listan ventas de <strong>producción</strong>; las de pruebas AgilDTE quedan ocultas.</span>
                 {% elif ambiente_emision == '01' %}
-                <span class="d-block mt-1">Solo se listan ventas del ambiente de <strong>pruebas</strong>.</span>
+                <span class="gv-sub-note">Solo se listan ventas del ambiente de <strong>pruebas</strong>.</span>
                 {% endif %}
             </p>
         </div>
-        <a href="{{ url_for('pos.ventas_pos') }}" class="btn btn-outline-primary rounded-pill"><i class="bi bi-shop"></i> Punto de venta</a>
+        <a href="{{ url_for('pos.ventas_pos') }}" class="gv-pos-btn">
+            <span class="gv-pos-btn-icon"><i class="bi bi-shop"></i></span>
+            Punto de venta
+        </a>
     </div>
-    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+    <div class="card border-0 shadow-sm gv-table-card">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
+            <table class="table gv-table align-middle mb-0">
+                <thead>
                     <tr>
                         <th>ID</th>
                         <th>Fecha</th>
@@ -32,21 +242,28 @@
                 </thead>
                 <tbody>
                     {% for v in ventas %}
+                    {% set comp = (v[5] or '')|upper %}
                     <tr>
-                        <td class="fw-bold text-primary">{{ v[0] }}</td>
-                        <td class="small">{{ v[1] }}</td>
-                        <td>{{ v[3] }}</td>
-                        <td><span class="badge bg-secondary">{{ v[5] }}</span></td>
-                        <td>{{ v[4] }}</td>
-                        <td class="text-end fw-bold">${{ "%.2f"|format(v[2]|float) }}</td>
+                        <td><span class="gv-id">{{ v[0] }}</span></td>
+                        <td><span class="gv-fecha">{{ v[1] }}</span></td>
+                        <td><span class="gv-cliente">{{ v[3] }}</span></td>
+                        <td>
+                            <span class="gv-badge {% if 'FACTURA' in comp %}gv-badge--factura{% elif 'CCF' in comp or 'CRÉDITO' in comp or 'CREDITO' in comp %}gv-badge--ccf{% else %}gv-badge--ticket{% endif %}">{{ v[5] }}</span>
+                        </td>
+                        <td><span class="gv-pago">{{ v[4] }}</span></td>
+                        <td class="text-end"><span class="gv-total">${{ "%.2f"|format(v[2]|float) }}</span></td>
                         <td class="text-end">
-                            <a href="{{ url_for('admin.gestion_ventas_generar_json', venta_id=v[0]) }}" class="btn btn-sm btn-outline-secondary" title="Generar JSON DTE AgilDTE">
-                                <i class="bi bi-braces"></i> JSON
-                            </a>
-                            <a href="{{ url_for('admin.gestion_ventas_generar_pdf', venta_id=v[0]) }}" class="btn btn-sm btn-outline-primary" target="_blank" title="Generar PDF AgilDTE">
-                                <i class="bi bi-file-earmark-pdf"></i> PDF
-                            </a>
-                            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalAnular{{ v[0] }}">Anular</button>
+                            <div class="gv-row-actions">
+                                <a href="{{ url_for('admin.gestion_ventas_generar_json', venta_id=v[0]) }}" class="gv-row-btn gv-row-btn--json" title="Generar JSON DTE AgilDTE">
+                                    <i class="bi bi-braces"></i> JSON
+                                </a>
+                                <a href="{{ url_for('admin.gestion_ventas_generar_pdf', venta_id=v[0]) }}" class="gv-row-btn gv-row-btn--pdf" target="_blank" title="Generar PDF AgilDTE">
+                                    <i class="bi bi-file-earmark-pdf"></i> PDF
+                                </a>
+                                <button type="button" class="gv-row-btn gv-row-btn--void" data-bs-toggle="modal" data-bs-target="#modalAnular{{ v[0] }}">
+                                    <i class="bi bi-x-circle"></i> Anular
+                                </button>
+                            </div>
                             <div class="modal fade" id="modalAnular{{ v[0] }}" tabindex="-1">
                                 <div class="modal-dialog">
                                     <div class="modal-content">
@@ -71,7 +288,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="7" class="text-center text-muted py-5">No hay ventas registradas.</td></tr>
+                    <tr><td colspan="7" class="text-center gv-empty">No hay ventas registradas.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

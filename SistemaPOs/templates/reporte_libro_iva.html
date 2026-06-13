@@ -1,72 +1,279 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
-<div class="container-fluid px-4 mt-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <div>
-            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
-            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-journal-bookmark text-primary"></i> Libro de Ventas a Contribuyentes (CCF)</h2>
-            <p class="text-muted small mb-0">Solo Crédito Fiscal (DTE clase 03). Facturas al consumidor final y tickets no aparecen aquí.</p>
+{% set n_filas = filas|length %}
+<style>
+    .ccf-wrap {
+        --ccf-navy: #1e3a5f;
+        --ccf-green: #16a34a;
+        --ccf-green-soft: #dcfce7;
+        --ccf-red: #dc2626;
+        --ccf-red-soft: #fee2e2;
+        --ccf-purple: #7c3aed;
+        --ccf-purple-soft: #f3e8ff;
+        --ccf-blue: #2563eb;
+        --ccf-blue-soft: #eff6ff;
+    }
+    .ccf-header {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start;
+        gap: 0.85rem; margin-bottom: 1rem;
+    }
+    .ccf-header-main { display: flex; align-items: flex-start; gap: 0.65rem; min-width: 0; }
+    .ccf-back {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.75rem;
+        border-radius: 999px; border: 1px solid #cbd5e1; background: #fff;
+        font-size: 0.92rem; font-weight: 700; color: #475569; text-decoration: none;
+        margin-bottom: 0.55rem; transition: all 0.15s ease;
+    }
+    .ccf-back:hover { background: #f8fafc; border-color: #94a3b8; color: #1e293b; transform: translateX(-2px); }
+    .ccf-header-icon {
+        width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem; color: #fff; flex-shrink: 0;
+        background: linear-gradient(145deg, #1e3a5f 0%, #2563eb 100%);
+        box-shadow: 0 4px 14px rgba(30, 58, 95, 0.35);
+    }
+    .ccf-header h2 { font-size: 1.55rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; line-height: 1.15; }
+    .ccf-header p { font-size: 1.02rem; font-weight: 600; color: #64748b; margin: 0; max-width: 42rem; line-height: 1.4; }
+    .ccf-tool-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .ccf-tool-btn {
+        display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.55rem 0.9rem;
+        border-radius: 9px; font-size: 0.95rem; font-weight: 800; text-decoration: none;
+        transition: transform 0.15s ease, box-shadow 0.2s ease; border: none;
+    }
+    .ccf-tool-btn:hover { transform: translateY(-2px); color: #fff; }
+    .ccf-tool-btn--excel { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: #fff; box-shadow: 0 3px 10px rgba(34,197,94,0.28); }
+    .ccf-tool-btn--csv { background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); color: #fff; box-shadow: 0 3px 10px rgba(6,182,212,0.28); }
+    .ccf-tool-btn--pdf { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #fff; box-shadow: 0 3px 10px rgba(220,38,38,0.28); }
+    .ccf-filter-card { border-radius: 12px !important; border: 1px solid #e2e8f0 !important; margin-bottom: 0.85rem; overflow: hidden; }
+    .ccf-filter-head {
+        padding: 0.65rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        font-size: 1rem; font-weight: 800; color: #334155; display: flex; align-items: center; gap: 0.4rem;
+    }
+    .ccf-filter-body { padding: 1rem 1.05rem !important; }
+    .ccf-wrap .form-label { font-size: 0.95rem; font-weight: 800; color: #334155; margin-bottom: 0.35rem; }
+    .ccf-wrap .form-control { font-size: 1.05rem; font-weight: 600; padding: 0.58rem 0.75rem; border-radius: 9px; border-color: #e2e8f0; }
+    .ccf-quick-dates { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+    .ccf-quick-date {
+        display: inline-flex; align-items: center; gap: 0.28rem; padding: 0.32rem 0.68rem;
+        border-radius: 999px; border: 1px solid #cbd5e1; background: #fff;
+        font-size: 0.88rem; font-weight: 700; color: #475569; text-decoration: none; transition: all 0.15s ease;
+    }
+    .ccf-quick-date:hover { background: var(--ccf-blue-soft); border-color: #93c5fd; color: #1d4ed8; transform: translateY(-1px); }
+    .ccf-filter-btn {
+        display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.58rem 1rem;
+        border-radius: 9px; font-size: 1rem; font-weight: 800; border: none; cursor: pointer;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #fff;
+        box-shadow: 0 3px 10px rgba(37,99,235,0.28); transition: transform 0.15s ease;
+    }
+    .ccf-filter-btn:hover { transform: translateY(-2px); }
+    .ccf-search-wrap { position: relative; margin-bottom: 0.75rem; }
+    .ccf-search-wrap i { position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1.1rem; }
+    .ccf-search {
+        width: 100%; padding: 0.62rem 0.85rem 0.62rem 2.5rem; border-radius: 10px;
+        border: 1px solid #e2e8f0; font-size: 1.05rem; font-weight: 600; color: #334155;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .ccf-search:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .ccf-alert {
+        border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 0.85rem;
+        font-size: 0.98rem; font-weight: 600; line-height: 1.45; display: flex; align-items: flex-start; gap: 0.5rem;
+    }
+    .ccf-alert--info { background: var(--ccf-blue-soft); border: 1px solid #bfdbfe; color: #1e40af; }
+    .ccf-alert--warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .ccf-alert a { color: inherit; font-weight: 800; text-decoration: underline; }
+    .ccf-kpi-row { --bs-gutter-x: 0.65rem; --bs-gutter-y: 0.65rem; margin-bottom: 0.85rem; }
+    .ccf-kpi {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important; padding: 1rem 1.05rem !important;
+        height: 100%; transition: transform 0.2s ease, box-shadow 0.2s ease; position: relative; overflow: hidden;
+    }
+    .ccf-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(15,23,42,0.1) !important; }
+    .ccf-kpi-icon {
+        width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.15rem; margin-bottom: 0.55rem; transition: transform 0.2s ease;
+    }
+    .ccf-kpi:hover .ccf-kpi-icon { transform: scale(1.08); }
+    .ccf-kpi-icon--navy { background: linear-gradient(145deg, #e2e8f0 0%, #cbd5e1 100%); color: var(--ccf-navy); }
+    .ccf-kpi-icon--green { background: linear-gradient(145deg, #dcfce7 0%, #bbf7d0 100%); color: var(--ccf-green); }
+    .ccf-kpi-icon--red { background: linear-gradient(145deg, #fee2e2 0%, #fecaca 100%); color: var(--ccf-red); }
+    .ccf-kpi-icon--purple { background: linear-gradient(145deg, #f3e8ff 0%, #e9d5ff 100%); color: var(--ccf-purple); }
+    .ccf-kpi-label { font-size: 0.82rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; margin-bottom: 0.25rem; }
+    .ccf-kpi-val { font-size: 1.75rem; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .ccf-kpi-val--navy { color: var(--ccf-navy); }
+    .ccf-kpi-val--green { color: var(--ccf-green); }
+    .ccf-kpi-val--red { color: var(--ccf-red); }
+    .ccf-kpi-val--purple { color: var(--ccf-purple); }
+    .ccf-kpi-sub { font-size: 0.88rem; font-weight: 600; color: #94a3b8; margin-top: 0.2rem; }
+    .ccf-table-card { border-radius: 12px !important; border: 1px solid #e2e8f0 !important; overflow: hidden; }
+    .ccf-table-head {
+        padding: 0.7rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;
+    }
+    .ccf-table-head h6 { margin: 0; font-size: 1.08rem; font-weight: 800; color: #1e293b; }
+    .ccf-count-badge {
+        display: inline-flex; padding: 0.25rem 0.6rem; border-radius: 999px;
+        font-size: 0.88rem; font-weight: 800; background: var(--ccf-blue-soft); color: var(--ccf-blue);
+    }
+    .ccf-table { margin-bottom: 0; width: 100%; }
+    .ccf-table thead th {
+        background: #f8fafc; font-size: 0.85rem; font-weight: 800; letter-spacing: 0.05em;
+        text-transform: uppercase; color: #64748b; padding: 0.75rem 0.85rem; border-bottom: 1px solid #e2e8f0;
+        white-space: nowrap;
+    }
+    .ccf-table tbody tr.ccf-row {
+        transition: background 0.18s ease, box-shadow 0.18s ease; border-bottom: 1px solid #f1f5f9; cursor: pointer;
+    }
+    .ccf-table tbody tr.ccf-row:hover, .ccf-table tbody tr.ccf-row--active {
+        background: linear-gradient(90deg, var(--ccf-blue-soft) 0%, #fff 100%);
+        box-shadow: inset 4px 0 0 var(--ccf-blue);
+    }
+    .ccf-table tbody tr.ccf-row--hidden { display: none; }
+    .ccf-table tbody td { padding: 0.75rem 0.85rem; vertical-align: middle; font-size: 1.05rem; font-weight: 700; color: #334155; }
+    .ccf-table tbody td:first-child, .ccf-table thead th:first-child { padding-left: 1rem; }
+    .ccf-table tfoot td {
+        background: #f8fafc; font-size: 1.05rem; font-weight: 900; color: #0f172a;
+        padding: 0.8rem 0.85rem; border-top: 2px solid #e2e8f0;
+    }
+    .ccf-id { font-size: 0.92rem; font-weight: 800; color: var(--ccf-blue); background: var(--ccf-blue-soft); padding: 0.2rem 0.5rem; border-radius: 6px; }
+    .ccf-badge {
+        display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.28rem 0.62rem;
+        border-radius: 999px; font-size: 0.88rem; font-weight: 800;
+    }
+    .ccf-badge--ccf { background: #cffafe; color: #0e7490; border: 1px solid #a5f3fc; }
+    .ccf-badge--factura { background: var(--ccf-blue-soft); color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .ccf-badge--ticket { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .ccf-money { font-variant-numeric: tabular-nums; font-weight: 800; }
+    .ccf-money--total { font-size: 1.08rem; font-weight: 900; color: var(--ccf-purple); }
+    .ccf-empty { text-align: center; padding: 2.5rem 1rem !important; font-size: 1.05rem; font-weight: 600; color: #94a3b8; }
+    .ccf-empty i { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; color: #cbd5e1; }
+    .ccf-empty-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-top: 1rem; }
+    .ccf-empty-btn {
+        display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.5rem 0.9rem;
+        border-radius: 9px; font-size: 0.95rem; font-weight: 800; text-decoration: none;
+        border: 1px solid #bfdbfe; background: #fff; color: #1d4ed8; transition: all 0.15s ease;
+    }
+    .ccf-empty-btn:hover { background: var(--ccf-blue-soft); transform: translateY(-1px); color: #1e40af; }
+</style>
+
+<div class="container-fluid px-4 mt-4 ccf-wrap">
+    <div class="ccf-header">
+        <div class="ccf-header-main">
+            <div>
+                <a href="{{ url_for('admin.reporte') }}" class="ccf-back"><i class="bi bi-arrow-left"></i> Reportes</a>
+                <div class="d-flex align-items-start gap-3">
+                    <span class="ccf-header-icon"><i class="bi bi-journal-bookmark-fill"></i></span>
+                    <div>
+                        <h2>Libro de Ventas a Contribuyentes (CCF)</h2>
+                        <p>Solo Crédito Fiscal (DTE clase 03). Facturas al consumidor final y tickets no aparecen aquí.</p>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="d-flex gap-2 flex-wrap">
-            <a href="{{ url_for('admin.reporte_libro_iva_exportar_excel') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-success fw-bold text-white"><i class="bi bi-file-earmark-excel"></i> Excel</a>
-            <a href="{{ url_for('admin.reporte_libro_iva_exportar_csv') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-info fw-bold text-white"><i class="bi bi-file-earmark-text"></i> CSV</a>
-            <a href="{{ url_for('admin.reporte_libro_iva_exportar_pdf') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-danger fw-bold text-white"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+        <div class="ccf-tool-row">
+            <a href="{{ url_for('admin.reporte_libro_iva_exportar_excel') }}?inicio={{ inicio }}&fin={{ fin }}" class="ccf-tool-btn ccf-tool-btn--excel"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+            <a href="{{ url_for('admin.reporte_libro_iva_exportar_csv') }}?inicio={{ inicio }}&fin={{ fin }}" class="ccf-tool-btn ccf-tool-btn--csv"><i class="bi bi-file-earmark-text"></i> CSV</a>
+            <a href="{{ url_for('admin.reporte_libro_iva_exportar_pdf') }}?inicio={{ inicio }}&fin={{ fin }}" class="ccf-tool-btn ccf-tool-btn--pdf"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
         </div>
     </div>
 
-    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
-        <form method="GET" action="{{ url_for('admin.reporte_libro_iva') }}" class="row g-3 align-items-end">
-            <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Desde</label>
-                <input type="date" name="inicio" class="form-control" value="{{ inicio }}">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Hasta</label>
-                <input type="date" name="fin" class="form-control" value="{{ fin }}">
-            </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-filter"></i> Filtrar</button>
-            </div>
-        </form>
-    </div>
-
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #1e3a5f;">
-                <small class="text-muted fw-bold">Ventas gravadas</small>
-                <h4 class="fw-bold text-dark">$ {{ "{:,.2f}".format(total_gravado|float) }}</h4>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #059669;">
-                <small class="text-muted fw-bold">IVA 13%</small>
-                <h4 class="fw-bold text-success">$ {{ "{:,.2f}".format(total_iva|float) }}</h4>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #dc2626;">
-                <small class="text-muted fw-bold">Retención IVA 1%</small>
-                <h4 class="fw-bold text-danger">$ {{ "{:,.2f}".format(total_retencion_iva|float) }}</h4>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card p-3 border-0 shadow-sm" style="border-radius: 15px; border-left: 4px solid #7c3aed;">
-                <small class="text-muted fw-bold">Total</small>
-                <h4 class="fw-bold" style="color:#7c3aed">$ {{ "{:,.2f}".format(total_gen|float) }}</h4>
-            </div>
+    <div class="card ccf-filter-card shadow-sm">
+        <div class="ccf-filter-head"><i class="bi bi-calendar-range"></i> Período del libro</div>
+        <div class="card-body ccf-filter-body">
+            <form method="GET" action="{{ url_for('admin.reporte_libro_iva') }}" class="row g-3 align-items-end" id="ccfFormFechas">
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Desde</label>
+                    <input type="date" name="inicio" class="form-control" value="{{ inicio }}" id="ccfInicio">
+                </div>
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" name="fin" class="form-control" value="{{ fin }}" id="ccfFin">
+                </div>
+                <div class="col-12 col-md-6 col-lg-4">
+                    <div class="ccf-quick-dates">
+                        <a href="{{ url_for('admin.reporte_libro_iva', inicio=fecha_hoy|default(fin), fin=fecha_hoy|default(fin)) }}" class="ccf-quick-date"><i class="bi bi-sun"></i> Hoy</a>
+                        <a href="{{ url_for('admin.reporte_libro_iva', inicio=fin[:7] ~ '-01', fin=fecha_hoy|default(fin)) }}" class="ccf-quick-date"><i class="bi bi-calendar-month"></i> Este mes</a>
+                        {% if ultima_fecha_ccf %}
+                        <a href="{{ url_for('admin.reporte_libro_iva', inicio=primera_fecha_ccf|default(ultima_fecha_ccf), fin=ultima_fecha_ccf) }}" class="ccf-quick-date"><i class="bi bi-clock-history"></i> Con CCF</a>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-12 col-lg-2">
+                    <button type="submit" class="ccf-filter-btn w-100"><i class="bi bi-funnel-fill"></i> Filtrar</button>
+                </div>
+            </form>
         </div>
     </div>
 
-    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
-        <div class="card-header bg-white py-3 border-bottom">
-            <h6 class="m-0 fw-bold text-primary">Detalle por documento</h6>
+    {% if fecha_auto %}
+    <div class="ccf-alert ccf-alert--info"><i class="bi bi-info-circle-fill"></i>
+        <span>No hay CCF en el mes actual. Se muestra el rango con documentos: <strong>{{ inicio }}</strong> → <strong>{{ fin }}</strong>.</span>
+    </div>
+    {% elif n_filas == 0 and ultima_fecha_ccf %}
+    <div class="ccf-alert ccf-alert--warn"><i class="bi bi-exclamation-triangle-fill"></i>
+        <span>Sin CCF entre {{ inicio }} y {{ fin }}. Hay registros del <strong>{{ primera_fecha_ccf or ultima_fecha_ccf }}</strong> al <strong>{{ ultima_fecha_ccf }}</strong> —
+            <a href="{{ url_for('admin.reporte_libro_iva', inicio=primera_fecha_ccf|default(ultima_fecha_ccf), fin=ultima_fecha_ccf) }}">Ver ese período</a>.
+        </span>
+    </div>
+    {% elif n_filas == 0 and total_ccf_empresa == 0 %}
+    <div class="ccf-alert ccf-alert--warn"><i class="bi bi-file-earmark-x"></i>
+        <span>No hay créditos fiscales (CCF) registrados en esta empresa.
+            {% if otros_periodo > 0 %}Hay <strong>{{ otros_periodo }}</strong> venta(s) ticket/factura CF en el período — no entran al libro CCF.{% endif %}
+            <a href="{{ url_for('admin.reporte') }}">Ver panel de ventas</a> para el IVA general.</span>
+    </div>
+    {% endif %}
+
+    <div class="row ccf-kpi-row">
+        <div class="col-6 col-xl-3">
+            <div class="card ccf-kpi shadow-sm">
+                <div class="ccf-kpi-icon ccf-kpi-icon--navy"><i class="bi bi-receipt-cutoff"></i></div>
+                <div class="ccf-kpi-label">Ventas gravadas</div>
+                <div class="ccf-kpi-val ccf-kpi-val--navy">$ {{ "{:,.2f}".format(total_gravado|float) }}</div>
+                <div class="ccf-kpi-sub">Base imponible</div>
+            </div>
         </div>
+        <div class="col-6 col-xl-3">
+            <div class="card ccf-kpi shadow-sm">
+                <div class="ccf-kpi-icon ccf-kpi-icon--green"><i class="bi bi-percent"></i></div>
+                <div class="ccf-kpi-label">IVA 13%</div>
+                <div class="ccf-kpi-val ccf-kpi-val--green">$ {{ "{:,.2f}".format(total_iva|float) }}</div>
+                <div class="ccf-kpi-sub">Débito fiscal</div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card ccf-kpi shadow-sm">
+                <div class="ccf-kpi-icon ccf-kpi-icon--red"><i class="bi bi-dash-circle"></i></div>
+                <div class="ccf-kpi-label">Retención IVA 1%</div>
+                <div class="ccf-kpi-val ccf-kpi-val--red">$ {{ "{:,.2f}".format(total_retencion_iva|float) }}</div>
+                <div class="ccf-kpi-sub">Retenido a contribuyente</div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card ccf-kpi shadow-sm">
+                <div class="ccf-kpi-icon ccf-kpi-icon--purple"><i class="bi bi-cash-stack"></i></div>
+                <div class="ccf-kpi-label">Total</div>
+                <div class="ccf-kpi-val ccf-kpi-val--purple">$ {{ "{:,.2f}".format(total_gen|float) }}</div>
+                <div class="ccf-kpi-sub">{{ n_filas }} documento{{ 's' if n_filas != 1 else '' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card ccf-table-card shadow-sm">
+        <div class="ccf-table-head">
+            <h6><i class="bi bi-list-ul"></i> Detalle por documento</h6>
+            <span class="ccf-count-badge" id="ccfVisibleCount">{{ n_filas }} visible{{ 's' if n_filas != 1 else '' }}</span>
+        </div>
+        {% if n_filas > 0 %}
+        <div class="px-3 pt-3">
+            <div class="ccf-search-wrap">
+                <i class="bi bi-search"></i>
+                <input type="search" class="ccf-search" id="ccfSearch" placeholder="Buscar por cliente, NRC, N° o fecha…" autocomplete="off">
+            </div>
+        </div>
+        {% endif %}
         <div class="table-responsive">
-            <table class="table align-middle m-0 table-hover table-sm">
-                <thead class="table-light">
+            <table class="table ccf-table align-middle" id="ccfTable">
+                <thead>
                     <tr>
-                        <th class="ps-4">N°</th>
+                        <th>N°</th>
                         <th>Fecha</th>
                         <th>Tipo DTE</th>
                         <th>Cliente</th>
@@ -79,32 +286,82 @@
                 </thead>
                 <tbody>
                     {% for r in filas %}
-                    <tr>
-                        <td class="ps-4">#{{ r[0] }}</td>
+                    <tr class="ccf-row" data-search="{{ ((r[3] or '') ~ ' ' ~ (r[4] or '') ~ ' ' ~ r[0]|string ~ ' ' ~ (r[1] or ''))|lower }}">
+                        <td><span class="ccf-id">#{{ r[0] }}</span></td>
                         <td>{{ r[1] }}</td>
                         <td>
-                            {% if r[2] == 'CREDITO_FISCAL' %}<span class="badge bg-info">Crédito Fiscal</span>
-                            {% elif r[2] == 'FACTURA' %}<span class="badge bg-primary">Factura</span>
-                            {% else %}<span class="badge bg-secondary">Ticket</span>{% endif %}
+                            {% if r[2] == 'CREDITO_FISCAL' %}
+                            <span class="ccf-badge ccf-badge--ccf"><i class="bi bi-file-earmark-text"></i> Crédito Fiscal</span>
+                            {% elif r[2] == 'FACTURA' %}
+                            <span class="ccf-badge ccf-badge--factura"><i class="bi bi-receipt"></i> Factura</span>
+                            {% else %}
+                            <span class="ccf-badge ccf-badge--ticket"><i class="bi bi-ticket"></i> Ticket</span>
+                            {% endif %}
                         </td>
-                        <td>{{ (r[3] or '')[:40] }}</td>
-                        <td class="small">{{ (r[4] or '—')[:25] }}</td>
-                        <td class="text-end">$ {{ "{:,.2f}".format(r[5]|float) }}</td>
-                        <td class="text-end">$ {{ "{:,.2f}".format(r[6]|float) }}</td>
-                        <td class="text-end">{{ "$ {:,.2f}".format(r[9]|float) if r|length > 9 else "$ 0.00" }}</td>
-                        <td class="text-end fw-bold">$ {{ "{:,.2f}".format(r[7]|float) }}</td>
+                        <td>{{ (r[3] or '')[:45] }}</td>
+                        <td class="text-muted">{{ (r[4] or '—')[:30] }}</td>
+                        <td class="text-end ccf-money">$ {{ "{:,.2f}".format(r[5]|float) }}</td>
+                        <td class="text-end ccf-money" style="color:var(--ccf-green)">$ {{ "{:,.2f}".format(r[6]|float) }}</td>
+                        <td class="text-end ccf-money" style="color:var(--ccf-red)">{{ "$ {:,.2f}".format(r[9]|float) if r|length > 9 else "$ 0.00" }}</td>
+                        <td class="text-end ccf-money ccf-money--total">$ {{ "{:,.2f}".format(r[7]|float) }}</td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="9" class="text-center py-5 text-muted">
-                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                            No hay créditos fiscales (CCF) en el período. Use el panel de control para ver IVA de facturas CF y tickets.
+                        <td colspan="9" class="ccf-empty">
+                            <i class="bi bi-inbox"></i>
+                            No hay créditos fiscales (CCF) en el período seleccionado.
+                            {% if otros_periodo > 0 %}
+                            <br><span class="text-muted" style="font-size:0.95rem">Hay {{ otros_periodo }} venta(s) ticket/factura CF que no van en este libro.</span>
+                            {% endif %}
+                            <div class="ccf-empty-actions">
+                                <a href="{{ url_for('admin.reporte') }}" class="ccf-empty-btn"><i class="bi bi-graph-up-arrow"></i> Panel de ventas</a>
+                                <a href="{{ url_for('admin.reporte_libro_iva', inicio=fin[:7] ~ '-01', fin=fecha_hoy|default(fin)) }}" class="ccf-empty-btn"><i class="bi bi-calendar-month"></i> Ampliar a este mes</a>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
+                {% if n_filas > 0 %}
+                <tfoot>
+                    <tr>
+                        <td colspan="5" class="text-end">Totales del período</td>
+                        <td class="text-end">$ {{ "{:,.2f}".format(total_gravado|float) }}</td>
+                        <td class="text-end" style="color:var(--ccf-green)">$ {{ "{:,.2f}".format(total_iva|float) }}</td>
+                        <td class="text-end" style="color:var(--ccf-red)">$ {{ "{:,.2f}".format(total_retencion_iva|float) }}</td>
+                        <td class="text-end ccf-money--total">$ {{ "{:,.2f}".format(total_gen|float) }}</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
             </table>
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    var search = document.getElementById('ccfSearch');
+    var rows = document.querySelectorAll('.ccf-row');
+    var countEl = document.getElementById('ccfVisibleCount');
+    if (!search || !rows.length) return;
+
+    function filterRows() {
+        var q = (search.value || '').trim().toLowerCase();
+        var visible = 0;
+        rows.forEach(function(row) {
+            var match = !q || (row.getAttribute('data-search') || '').indexOf(q) >= 0;
+            row.classList.toggle('ccf-row--hidden', !match);
+            if (match) visible++;
+        });
+        if (countEl) countEl.textContent = visible + ' visible' + (visible !== 1 ? 's' : '');
+    }
+    search.addEventListener('input', filterRows);
+
+    rows.forEach(function(row) {
+        row.addEventListener('click', function() {
+            rows.forEach(function(r) { r.classList.remove('ccf-row--active'); });
+            row.classList.add('ccf-row--active');
+        });
+    });
+})();
+</script>
 {% endblock %}

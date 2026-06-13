@@ -1,67 +1,235 @@
 {% extends "layout.html" %}
 {% block content %}
+{% set n_filas = clientes|length %}
 <style>
-    .card { border: none; border-radius: 15px; box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.1); }
-    .table thead { background-color: #4e73df; color: white; }
+    .cli-wrap {
+        --cli-blue: #2563eb;
+        --cli-blue-soft: #eff6ff;
+        --cli-green: #16a34a;
+        --cli-green-soft: #dcfce7;
+        --cli-purple: #7c3aed;
+        --cli-purple-soft: #f3e8ff;
+        --cli-teal: #0d9488;
+        --cli-teal-soft: #ccfbf1;
+    }
+    .cli-header {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start;
+        gap: 0.85rem; margin-bottom: 1rem;
+    }
+    .cli-header-icon {
+        width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem; color: #fff; flex-shrink: 0;
+        background: linear-gradient(145deg, #3b82f6 0%, #2563eb 100%);
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+    }
+    .cli-header h2 { font-size: 1.75rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .cli-header p { font-size: 1.05rem; font-weight: 600; color: #64748b; margin: 0; }
+    .cli-nav-btn {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.45rem 0.85rem;
+        border-radius: 999px; border: 1px solid #cbd5e1; background: #fff;
+        font-size: 0.95rem; font-weight: 700; color: #475569; text-decoration: none; transition: all 0.15s ease;
+    }
+    .cli-nav-btn:hover { background: var(--cli-blue-soft); border-color: #93c5fd; color: #1d4ed8; transform: translateY(-1px); }
+    .cli-nav-btn--primary { background: linear-gradient(135deg, #64748b 0%, #475569 100%); color: #fff; border: none; }
+    .cli-nav-btn--primary:hover { color: #fff; background: linear-gradient(135deg, #475569 0%, #334155 100%); }
+    .cli-kpi-row { --bs-gutter-x: 0.55rem; --bs-gutter-y: 0.55rem; margin-bottom: 1rem; }
+    .cli-kpi {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important; padding: 0.95rem 1rem !important;
+        height: 100%; transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .cli-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(15,23,42,0.1) !important; }
+    .cli-kpi-val { font-size: 1.55rem; font-weight: 900; line-height: 1.1; }
+    .cli-kpi-label { font-size: 0.82rem; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; }
+    .cli-form-card, .cli-table-card {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important; overflow: hidden;
+        box-shadow: 0 4px 20px rgba(15,23,42,0.06) !important;
+    }
+    .cli-form-card { padding: 1.15rem 1.2rem !important; }
+    .cli-form-card--edit { border: 2px solid var(--cli-blue) !important; background: linear-gradient(180deg, #eff6ff 0%, #fff 12%); }
+    .cli-form-card h5 { font-size: 1.25rem; font-weight: 800; color: #0f172a; margin-bottom: 0.75rem; }
+    .cli-wrap .form-label { font-size: 1rem; font-weight: 800; color: #334155; margin-bottom: 0.35rem; }
+    .cli-wrap .form-control, .cli-wrap .form-select { font-size: 1.08rem; font-weight: 600; padding: 0.58rem 0.75rem; border-radius: 9px; border-color: #e2e8f0; }
+    .cli-wrap .form-control:focus, .cli-wrap .form-select:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .cli-wrap small.text-muted { font-size: 0.92rem; font-weight: 600; }
+    .cli-btn-save {
+        display: flex; align-items: center; justify-content: center; gap: 0.35rem; width: 100%;
+        padding: 0.7rem 1rem; border-radius: 10px; font-size: 1.08rem; font-weight: 800; border: none; cursor: pointer;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #fff;
+        box-shadow: 0 4px 14px rgba(37,99,235,0.3); transition: transform 0.15s ease;
+    }
+    .cli-btn-save:hover { transform: translateY(-2px); color: #fff; }
+    .cli-table-head {
+        padding: 0.75rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;
+    }
+    .cli-table-head h6 { margin: 0; font-size: 1.1rem; font-weight: 800; color: #1e293b; }
+    .cli-search-wrap { position: relative; flex: 1; min-width: 180px; max-width: 320px; }
+    .cli-search-wrap i { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+    .cli-search {
+        width: 100%; padding: 0.55rem 0.75rem 0.55rem 2.25rem; border-radius: 9px;
+        border: 1px solid #e2e8f0; font-size: 1.02rem; font-weight: 600;
+    }
+    .cli-search:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
+    .cli-count-badge {
+        display: inline-flex; padding: 0.28rem 0.65rem; border-radius: 999px;
+        font-size: 0.92rem; font-weight: 800; background: var(--cli-blue-soft); color: var(--cli-blue);
+    }
+    .cli-table { margin-bottom: 0; width: 100%; }
+    .cli-table thead th {
+        background: #f8fafc; font-size: 0.92rem; font-weight: 800; letter-spacing: 0.04em;
+        text-transform: uppercase; color: #64748b; padding: 0.85rem 0.75rem; border-bottom: 1px solid #e2e8f0;
+        white-space: nowrap; cursor: pointer; user-select: none;
+    }
+    .cli-table thead th:hover { color: var(--cli-blue); }
+    .cli-table tbody tr.cli-row {
+        cursor: pointer; transition: background 0.18s ease, box-shadow 0.18s ease; border-bottom: 1px solid #f1f5f9;
+    }
+    .cli-table tbody tr.cli-row:hover, .cli-table tbody tr.cli-row--active {
+        background: linear-gradient(90deg, var(--cli-blue-soft) 0%, #fff 100%);
+        box-shadow: inset 4px 0 0 var(--cli-blue);
+    }
+    .cli-table tbody tr.cli-row--hidden { display: none; }
+    .cli-table tbody td { padding: 0.85rem 0.75rem; font-size: 1.08rem; font-weight: 700; color: #334155; vertical-align: middle; }
+    .cli-nombre { font-weight: 800; color: #0f172a; }
+    .cli-doc-num { font-variant-numeric: tabular-nums; color: #475569; }
+    .cli-badge {
+        display: inline-flex; padding: 0.28rem 0.62rem; border-radius: 999px;
+        font-size: 0.88rem; font-weight: 800; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
+    }
+    .cli-badge--gran { background: var(--cli-purple-soft); color: #6d28d9; border-color: #ddd6fe; }
+    .cli-badge--contrib { background: var(--cli-teal-soft); color: #0f766e; border-color: #99f6e4; }
+    .cli-btn-edit {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.75rem;
+        border-radius: 8px; font-size: 0.95rem; font-weight: 800; text-decoration: none;
+        border: 1px solid #93c5fd; background: var(--cli-blue-soft); color: #1d4ed8; transition: all 0.15s ease;
+    }
+    .cli-btn-edit:hover { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .cli-btn-del {
+        display: inline-flex; align-items: center; justify-content: center; padding: 0.4rem 0.65rem;
+        border-radius: 8px; font-size: 0.95rem; font-weight: 800; border: 1px solid #fca5a5;
+        background: #fee2e2; color: #b91c1c; cursor: pointer; transition: all 0.15s ease;
+    }
+    .cli-btn-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+    .cli-empty { text-align: center; padding: 2.5rem 1rem; font-size: 1.08rem; font-weight: 600; color: #94a3b8; }
+    .cli-empresa-tag {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.75rem;
+        border-radius: 999px; background: var(--cli-blue-soft); color: #1e40af;
+        font-size: 0.95rem; font-weight: 700; margin-bottom: 0.75rem;
+    }
 </style>
 
-<div class="container py-5">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold"><i class="bi bi-people-fill text-primary"></i> Gestión de Clientes</h2>
-        <div>
-            <a href="/configuracion" class="btn btn-outline-primary btn-sm rounded-pill me-2">Empresa</a>
-            <a href="/sucursales" class="btn btn-outline-primary btn-sm rounded-pill me-2">Sucursales</a>
-            <a href="/" class="btn btn-secondary btn-sm rounded-pill">Volver a Ventas</a>
+<div class="container-fluid px-4 py-4 cli-wrap">
+    <div class="cli-header">
+        <div class="d-flex align-items-start gap-3">
+            <span class="cli-header-icon"><i class="bi bi-people-fill"></i></span>
+            <div>
+                <h2>Gestión de Clientes</h2>
+                {% if empresa_nombre %}
+                <p><i class="bi bi-building"></i> {{ empresa_nombre }}</p>
+                {% else %}
+                <p>Registro de clientes para facturación y ventas</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="/configuracion" class="cli-nav-btn"><i class="bi bi-building-gear"></i> Empresa</a>
+            <a href="/sucursales" class="cli-nav-btn"><i class="bi bi-shop"></i> Sucursales</a>
+            <a href="/" class="cli-nav-btn cli-nav-btn--primary"><i class="bi bi-cart3"></i> Volver a Ventas</a>
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-md-4">
-            <div class="card p-4 {{ 'border-primary border-2' if cliente else '' }}" id="formCliente">
+    <div class="row cli-kpi-row">
+        <div class="col-4 col-md-4">
+            <div class="card cli-kpi shadow-sm">
+                <div class="cli-kpi-label">Total clientes</div>
+                <div class="cli-kpi-val" style="color:var(--cli-blue)">{{ n_clientes|default(n_filas) }}</div>
+            </div>
+        </div>
+        <div class="col-4 col-md-4">
+            <div class="card cli-kpi shadow-sm">
+                <div class="cli-kpi-label">Contribuyentes</div>
+                <div class="cli-kpi-val" style="color:var(--cli-teal)">{{ n_contribuyentes|default(0) }}</div>
+            </div>
+        </div>
+        <div class="col-4 col-md-4">
+            <div class="card cli-kpi shadow-sm">
+                <div class="cli-kpi-label">Gran contrib.</div>
+                <div class="cli-kpi-val" style="color:var(--cli-purple)">{{ n_gran_contrib|default(0) }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-4">
+            <div class="card cli-form-card {{ 'cli-form-card--edit' if cliente else '' }}" id="formCliente">
                 {% include '_cliente_form_card.html' %}
             </div>
         </div>
 
-        <div class="col-md-8">
-            <div class="card p-4">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th>Nombre</th>
-                            <th>Tipo Doc.</th>
-                            <th>Número</th>
-                            <th>Gran Contrib.</th>
-                            <th>Dirección</th>
-                            <th>Teléfono</th>
-                            <th class="text-center">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for c in clientes %}
-                        <tr>
-                            <td class="fw-bold">{{ c[1] if c|length > 1 else '' }}</td>
-                            <td><span class="badge bg-secondary">{{ (c[2] if c|length > 2 else '') or '—' }}</span></td>
-                            <td class="small">{{ (c[3] if c|length > 3 else '') or '—' }}</td>
-                            <td>{% if c|length > 6 and c[6] %}<span class="badge bg-info">Sí</span>{% else %}—{% endif %}</td>
-                            <td class="small text-muted">{% if c|length > 7 and c[7] %}{{ (c[7] or '')[:20] }}{{ '...' if (c[7] or '')|length > 20 else '' }}{% else %}—{% endif %}</td>
-                            <td class="small">{{ (c[8] if c|length > 8 else '') or '—' }}</td>
-                            <td class="text-center">
-                                <a href="/clientes/editar/{{ c[0] if c|length > 0 else '' }}" class="btn btn-sm btn-outline-primary" title="Editar" style="cursor:pointer;"><i class="bi bi-pencil"></i> Editar</a>
-                                <form action="/eliminar_cliente/{{ c[0] }}" method="POST" class="d-inline ms-1" onsubmit="return confirm('¿Eliminar este cliente?');">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="bi bi-trash"></i></button>
-                                </form>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="7" class="text-center text-muted py-4">No hay clientes.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        <div class="col-lg-8">
+            <div class="card cli-table-card shadow-sm">
+                <div class="cli-table-head">
+                    <h6><i class="bi bi-table"></i> Clientes registrados</h6>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <div class="cli-search-wrap">
+                            <i class="bi bi-search"></i>
+                            <input type="search" class="cli-search" id="cliSearch" placeholder="Buscar nombre, doc., tel…" autocomplete="off">
+                        </div>
+                        <span class="cli-count-badge" id="cliVisibleCount">{{ n_filas }} cliente{{ 's' if n_filas != 1 else '' }}</span>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table cli-table align-middle" id="cliTable">
+                        <thead>
+                            <tr>
+                                <th data-sort="text">Nombre</th>
+                                <th data-sort="text">Tipo Doc.</th>
+                                <th data-sort="text">Número</th>
+                                <th data-sort="text">Gran Contrib.</th>
+                                <th data-sort="text">Dirección</th>
+                                <th data-sort="text">Teléfono</th>
+                                <th class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cliBody">
+                            {% for c in clientes %}
+                            <tr class="cli-row" data-search="{{ ((c[1] or '') ~ ' ' ~ (c[2] or '') ~ ' ' ~ (c[3] or '') ~ ' ' ~ (c[8] or '') ~ ' ' ~ (c[7] or ''))|lower }}">
+                                <td><span class="cli-nombre">{{ c[1] or '—' }}</span></td>
+                                <td><span class="cli-badge">{{ (c[2] or '') or '—' }}</span></td>
+                                <td><span class="cli-doc-num">{{ (c[3] or '') or '—' }}</span></td>
+                                <td>
+                                    {% if c|length > 6 and c[6] %}
+                                    <span class="cli-badge cli-badge--gran"><i class="bi bi-star-fill"></i> Sí</span>
+                                    {% elif c|length > 5 and c[5] %}
+                                    <span class="cli-badge cli-badge--contrib">Contrib.</span>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td>{{ (c[7] or '—')[:35] }}{% if (c[7] or '')|length > 35 %}…{% endif %}</td>
+                                <td class="cli-doc-num">{{ (c[8] or '') or '—' }}</td>
+                                <td class="text-center text-nowrap">
+                                    <a href="/clientes/editar/{{ c[0] }}" class="cli-btn-edit" title="Editar"><i class="bi bi-pencil"></i> Editar</a>
+                                    <form action="/eliminar_cliente/{{ c[0] }}" method="POST" class="d-inline ms-1 form-del-cliente" data-nombre="{{ (c[1] or '')|e }}">
+                                        <button type="submit" class="cli-btn-del" title="Eliminar"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="7" class="cli-empty">
+                                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                    No hay clientes registrados para esta empresa.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
 {% endblock %}
+
 {% block scripts %}
 <script>
 (function() {
@@ -77,7 +245,7 @@
             maskDoc = IMask(inpDoc, { mask: '00000000-0', lazy: false });
         } else if (tipo === 'NRC') {
             maskDoc = IMask(inpDoc, { mask: '000000-0', lazy: false });
-        } else {
+        } else if (inpDoc) {
             inpDoc.placeholder = 'Según tipo (Pasaporte, Carné: texto libre)';
         }
     }
@@ -90,8 +258,7 @@
     if (selEmp && selSuc) {
         function filtrarSucursales() {
             const empId = String(selEmp.value || '');
-            const opts = selSuc.querySelectorAll('option');
-            opts.forEach(function(o) {
+            selSuc.querySelectorAll('option').forEach(function(o) {
                 const emp = o.dataset.emp || '';
                 const mostrar = !emp || emp === empId;
                 o.style.display = mostrar ? '' : 'none';
@@ -104,6 +271,56 @@
     {% if cliente %}
     document.getElementById('formCliente')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     {% endif %}
+
+    document.querySelectorAll('.form-del-cliente').forEach(function(frm) {
+        frm.addEventListener('submit', function(e) {
+            var nom = frm.getAttribute('data-nombre') || 'este cliente';
+            if (!confirm('¿Eliminar «' + nom + '»?')) e.preventDefault();
+        });
+    });
+
+    var search = document.getElementById('cliSearch');
+    var countEl = document.getElementById('cliVisibleCount');
+    var rows = document.querySelectorAll('.cli-row');
+    if (search) {
+        search.addEventListener('input', function() {
+            var q = (search.value || '').trim().toLowerCase();
+            var v = 0;
+            rows.forEach(function(row) {
+                var show = !q || (row.getAttribute('data-search') || '').indexOf(q) >= 0;
+                row.classList.toggle('cli-row--hidden', !show);
+                if (show) v++;
+            });
+            if (countEl) countEl.textContent = v + ' cliente' + (v !== 1 ? 's' : '');
+        });
+    }
+    rows.forEach(function(row) {
+        row.addEventListener('click', function(e) {
+            if (e.target.closest('a, button, form')) return;
+            rows.forEach(function(r) { r.classList.remove('cli-row--active'); });
+            row.classList.add('cli-row--active');
+        });
+    });
+
+    var tbody = document.getElementById('cliBody');
+    var headers = document.querySelectorAll('#cliTable thead th[data-sort]');
+    var sortCol = -1, sortAsc = true;
+    headers.forEach(function(th, idx) {
+        th.addEventListener('click', function() {
+            if (sortCol === idx) sortAsc = !sortAsc;
+            else { sortCol = idx; sortAsc = true; }
+            var arr = Array.from(rows);
+            arr.sort(function(a, b) {
+                var va = (a.cells[idx] ? a.cells[idx].textContent : '').trim().toLowerCase();
+                var vb = (b.cells[idx] ? b.cells[idx].textContent : '').trim().toLowerCase();
+                if (va < vb) return sortAsc ? -1 : 1;
+                if (va > vb) return sortAsc ? 1 : -1;
+                return 0;
+            });
+            arr.forEach(function(r) { tbody.appendChild(r); });
+            rows = document.querySelectorAll('.cli-row');
+        });
+    });
 })();
 </script>
 {% endblock %}

@@ -1,17 +1,253 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
+<style>
+    .compr-page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .compr-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        justify-content: flex-end;
+    }
+    .compr-tool-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.38rem;
+        padding: 0.42rem 0.72rem;
+        border-radius: 9px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid #e2e8f0;
+        transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+        cursor: pointer;
+        background: #f8fafc;
+        color: #334155;
+        line-height: 1.15;
+        white-space: nowrap;
+    }
+    .compr-tool-btn:hover { transform: translateY(-2px); color: inherit; }
+    .compr-tool-btn:active { transform: scale(0.98); }
+    .compr-tool-btn-icon {
+        width: 1.65rem;
+        height: 1.65rem;
+        border-radius: 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.88rem;
+        flex-shrink: 0;
+        transition: transform 0.2s ease;
+    }
+    .compr-tool-btn:hover .compr-tool-btn-icon { transform: scale(1.08); }
+    .compr-tool-btn--neutral {
+        border-color: #cbd5e1;
+        background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
+        color: #475569;
+    }
+    .compr-tool-btn--neutral .compr-tool-btn-icon {
+        background: rgba(100, 116, 139, 0.12);
+        color: #64748b;
+    }
+    .compr-tool-btn--neutral:hover {
+        border-color: #94a3b8;
+        box-shadow: 0 4px 14px rgba(71, 85, 105, 0.12);
+    }
+    .compr-tool-btn--list {
+        border-color: #86efac;
+        background: linear-gradient(135deg, #fff 0%, #f0fdf4 100%);
+        color: #15803d;
+    }
+    .compr-tool-btn--list .compr-tool-btn-icon {
+        background: rgba(34, 197, 94, 0.14);
+        color: #16a34a;
+    }
+    .compr-tool-btn--list:hover {
+        border-color: #4ade80;
+        box-shadow: 0 4px 14px rgba(34, 197, 94, 0.18);
+        color: #166534;
+    }
+    .compr-tool-btn--dte {
+        border-color: #bfdbfe;
+        background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+        color: #1d4ed8;
+    }
+    .compr-tool-btn--dte .compr-tool-btn-icon {
+        background: rgba(37, 99, 235, 0.14);
+        color: #2563eb;
+    }
+    .compr-tool-btn--dte:hover {
+        border-color: #93c5fd;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.18);
+        color: #1e40af;
+    }
+    .compr-tool-btn--primary {
+        border-color: #2563eb;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: #fff;
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.28);
+    }
+    .compr-tool-btn--primary .compr-tool-btn-icon {
+        background: rgba(255, 255, 255, 0.2);
+        color: #fff;
+    }
+    .compr-tool-btn--primary:hover {
+        box-shadow: 0 6px 18px rgba(37, 99, 235, 0.38);
+        color: #fff;
+    }
+    .compr-table-card { border-radius: 12px !important; overflow: hidden; }
+    .compr-table { margin-bottom: 0; font-size: 0.88rem; }
+    .compr-table thead th {
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+        padding: 0.55rem 0.65rem;
+        white-space: nowrap;
+    }
+    .compr-table thead th:first-child { padding-left: 1rem; }
+    .compr-table thead th:last-child { padding-right: 1rem; }
+    .compr-table tbody tr {
+        transition: background 0.18s ease, box-shadow 0.18s ease;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .compr-table tbody tr:hover {
+        background: linear-gradient(90deg, #f8fafc 0%, #fff 100%);
+        box-shadow: inset 3px 0 0 #3b82f6;
+    }
+    .compr-table tbody td {
+        padding: 0.48rem 0.65rem;
+        vertical-align: middle;
+    }
+    .compr-table tbody td:first-child { padding-left: 1rem; }
+    .compr-table tbody td:last-child { padding-right: 1rem; }
+    .compr-num {
+        font-size: 0.92rem;
+        font-weight: 800;
+        color: #475569;
+        font-variant-numeric: tabular-nums;
+    }
+    .compr-fecha {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: #334155;
+        font-variant-numeric: tabular-nums;
+    }
+    .compr-proveedor {
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: #1e293b;
+        line-height: 1.25;
+    }
+    .compr-factura {
+        font-size: 0.9rem;
+        font-weight: 800;
+        color: #2563eb;
+        font-variant-numeric: tabular-nums;
+    }
+    .compr-total {
+        font-size: 1.02rem;
+        font-weight: 800;
+        color: #0f172a;
+        font-variant-numeric: tabular-nums;
+    }
+    .compr-row-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.28rem;
+    }
+    .compr-row-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        padding: 0.32rem 0.52rem;
+        border-radius: 8px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #475569;
+        line-height: 1.1;
+        transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .compr-row-btn i { font-size: 0.82rem; }
+    .compr-row-btn:hover { transform: translateY(-1px); color: inherit; }
+    .compr-row-btn:active { transform: scale(0.97); }
+    .compr-row-btn--view {
+        border-color: #bfdbfe;
+        background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+        color: #1d4ed8;
+    }
+    .compr-row-btn--view:hover {
+        border-color: #93c5fd;
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.18);
+        color: #1e40af;
+    }
+    .compr-row-btn--edit {
+        border-color: #cbd5e1;
+        background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
+        color: #475569;
+    }
+    .compr-row-btn--edit:hover {
+        border-color: #94a3b8;
+        box-shadow: 0 3px 10px rgba(71, 85, 105, 0.12);
+        color: #334155;
+    }
+    .compr-row-btn--delete {
+        border-color: #fecaca;
+        background: linear-gradient(135deg, #fff 0%, #fef2f2 100%);
+        color: #b91c1c;
+    }
+    .compr-row-btn--delete:hover {
+        border-color: #fca5a5;
+        box-shadow: 0 3px 10px rgba(220, 38, 38, 0.15);
+        color: #991b1b;
+    }
+    .compr-empty {
+        padding: 2.5rem 1rem !important;
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: #64748b;
+    }
+</style>
 <div class="container-fluid px-4 mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div class="compr-page-header">
         <div>
-            <h2 class="fw-bold text-dark"><i class="bi bi-receipt text-primary"></i> Compras</h2>
+            <h2 class="fw-bold text-dark mb-1"><i class="bi bi-receipt text-primary"></i> Compras</h2>
             <p class="text-muted small mb-0">Facturas de proveedores. {% if puede_gestionar_compras|default(false) %}<strong>Gerente / superusuario:</strong> puede editar o eliminar desde esta lista (eliminar pide observación).{% else %}Use <strong>Ver</strong> para consultar cada factura.{% endif %}</p>
         </div>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="{{ url_for('admin.proveedores') }}" class="btn btn-outline-secondary btn-sm rounded-pill"><i class="bi bi-truck"></i> Proveedores</a>
-            <a href="{{ url_for('admin.reporte_lista_compras') }}" class="btn btn-outline-success btn-sm rounded-pill"><i class="bi bi-cart-check"></i> Lista de compras</a>
-            <a href="{{ url_for('admin.compras_cargar_dte') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-primary rounded-pill"><i class="bi bi-file-earmark-code"></i> Cargar DTE</a>
-            <a href="{{ url_for('admin.compras_nueva') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-primary rounded-pill"><i class="bi bi-plus-lg"></i> Registrar compra</a>
+        <div class="compr-toolbar">
+            <a href="{{ url_for('admin.proveedores') }}" class="compr-tool-btn compr-tool-btn--neutral">
+                <span class="compr-tool-btn-icon"><i class="bi bi-truck"></i></span>
+                Proveedores
+            </a>
+            <a href="{{ url_for('admin.reporte_lista_compras') }}" class="compr-tool-btn compr-tool-btn--list">
+                <span class="compr-tool-btn-icon"><i class="bi bi-cart-check"></i></span>
+                Lista de compras
+            </a>
+            <a href="{{ url_for('admin.compras_cargar_dte') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="compr-tool-btn compr-tool-btn--dte">
+                <span class="compr-tool-btn-icon"><i class="bi bi-file-earmark-code"></i></span>
+                Cargar DTE
+            </a>
+            <a href="{{ url_for('admin.compras_nueva') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="compr-tool-btn compr-tool-btn--primary">
+                <span class="compr-tool-btn-icon"><i class="bi bi-plus-lg"></i></span>
+                Registrar compra
+            </a>
         </div>
     </div>
 
@@ -27,37 +263,39 @@
     </div>
     {% endif %}
 
-    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+    <div class="card border-0 shadow-sm compr-table-card">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
+            <table class="table compr-table align-middle mb-0">
+                <thead>
                     <tr>
                         <th>N°</th>
                         <th>Fecha</th>
                         <th>Proveedor</th>
                         <th>N° Factura</th>
                         <th class="text-end">Total</th>
-                        <th class="text-end" style="min-width: 200px;">Acciones</th>
+                        <th class="text-end">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for c in compras %}
                     <tr>
-                        <td class="fw-bold">{{ c[0] }}</td>
-                        <td>{{ c[1] }}</td>
-                        <td>{{ c[2] }}</td>
-                        <td>{{ c[3] }}</td>
-                        <td class="text-end fw-bold">${{ "{:,.2f}".format(c[4]|float) }}</td>
-                        <td class="text-end text-nowrap">
-                            <a href="{{ url_for('admin.compras_ver', id=c[0]) }}{% if es_super %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-sm btn-outline-primary">Ver</a>
-                            {% if puede_gestionar_compras|default(false) %}
-                            <a href="{{ url_for('admin.compras_editar', id=c[0]) }}{% if es_super %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-sm btn-outline-secondary" title="Editar factura"><i class="bi bi-pencil me-1"></i>Editar</a>
-                            <button type="button" class="btn btn-sm btn-outline-danger btn-eliminar-compra" data-id="{{ c[0] }}" data-factura="{{ c[3] }}" title="Eliminar factura"><i class="bi bi-trash me-1"></i>Eliminar</button>
-                            {% endif %}
+                        <td><span class="compr-num">{{ c[0] }}</span></td>
+                        <td><span class="compr-fecha">{{ c[1] }}</span></td>
+                        <td><span class="compr-proveedor">{{ c[2] }}</span></td>
+                        <td><span class="compr-factura">{{ c[3] }}</span></td>
+                        <td class="text-end"><span class="compr-total">${{ "{:,.2f}".format(c[4]|float) }}</span></td>
+                        <td class="text-end">
+                            <div class="compr-row-actions">
+                                <a href="{{ url_for('admin.compras_ver', id=c[0]) }}{% if es_super %}?empresa_id={{ emp_id }}{% endif %}" class="compr-row-btn compr-row-btn--view">Ver</a>
+                                {% if puede_gestionar_compras|default(false) %}
+                                <a href="{{ url_for('admin.compras_editar', id=c[0]) }}{% if es_super %}?empresa_id={{ emp_id }}{% endif %}" class="compr-row-btn compr-row-btn--edit" title="Editar factura"><i class="bi bi-pencil"></i> Editar</a>
+                                <button type="button" class="compr-row-btn compr-row-btn--delete btn-eliminar-compra" data-id="{{ c[0] }}" data-factura="{{ c[3] }}" title="Eliminar factura"><i class="bi bi-trash"></i> Eliminar</button>
+                                {% endif %}
+                            </div>
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="6" class="text-center py-5 text-muted">No hay compras registradas. <a href="{{ url_for('admin.compras_nueva') }}">Registrar primera compra</a></td></tr>
+                    <tr><td colspan="6" class="text-center compr-empty">No hay compras registradas. <a href="{{ url_for('admin.compras_nueva') }}">Registrar primera compra</a></td></tr>
                     {% endfor %}
                 </tbody>
             </table>

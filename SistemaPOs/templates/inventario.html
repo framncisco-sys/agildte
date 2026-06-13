@@ -5,55 +5,315 @@
     .inv-page-header .inv-toolbar {
         display: flex;
         flex-wrap: wrap;
-        align-items: center;
+        align-items: stretch;
         justify-content: flex-end;
-        gap: 0.5rem;
-    }
-    .inv-page-header .inv-toolbar .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.4rem;
-        white-space: nowrap;
-        font-size: 0.8125rem;
-        font-weight: 600;
-        line-height: 1.25;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
-        min-height: 2.5rem;
-    }
-    .inv-page-header .inv-toolbar .btn i {
-        font-size: 1rem;
-        flex-shrink: 0;
+        gap: 0.45rem;
     }
     .inv-page-header .inv-toolbar-group {
         display: flex;
         flex-direction: column;
         align-items: stretch;
-        gap: 0.35rem;
-        padding: 0.5rem 0.6rem;
-        background: #f8fafc;
+        gap: 0.32rem;
+        padding: 0.42rem 0.52rem;
+        background: #fff;
         border: 1px solid #e2e8f0;
-        border-radius: 0.625rem;
+        border-radius: 10px;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .inv-page-header .inv-toolbar-group:hover {
+        border-color: #cbd5e1;
+        box-shadow: 0 3px 12px rgba(15, 23, 42, 0.07);
     }
     .inv-page-header .inv-toolbar-group-btns {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.35rem;
+        gap: 0.32rem;
     }
     .inv-page-header .inv-toolbar-group-label {
-        font-size: 0.65rem;
-        font-weight: 700;
+        font-size: 0.58rem;
+        font-weight: 800;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.06em;
         color: #64748b;
-        line-height: 1.2;
+        line-height: 1.1;
         margin: 0;
+    }
+    .inv-tool-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.38rem;
+        padding: 0.4rem 0.68rem;
+        border-radius: 9px;
+        font-size: 0.76rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid #e2e8f0;
+        transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+        cursor: pointer;
+        background: #f8fafc;
+        color: #334155;
+        line-height: 1.15;
+        white-space: nowrap;
+    }
+    .inv-tool-btn:hover {
+        transform: translateY(-2px);
+    }
+    .inv-tool-btn:active {
+        transform: translateY(0) scale(0.98);
+    }
+    .inv-tool-btn-icon {
+        width: 1.65rem;
+        height: 1.65rem;
+        border-radius: 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.88rem;
+        flex-shrink: 0;
+        transition: transform 0.2s ease, background 0.2s ease;
+    }
+    .inv-tool-btn:hover .inv-tool-btn-icon {
+        transform: scale(1.08);
+    }
+    .inv-tool-btn--excel {
+        border-color: #bfdbfe;
+        background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+        color: #1d4ed8;
+    }
+    .inv-tool-btn--excel .inv-tool-btn-icon {
+        background: rgba(37, 99, 235, 0.14);
+        color: #2563eb;
+    }
+    .inv-tool-btn--excel:hover {
+        border-color: #93c5fd;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.2);
+        color: #1e40af;
+    }
+    .inv-tool-btn--pdf {
+        border-color: #fecaca;
+        background: linear-gradient(135deg, #fff 0%, #fef2f2 100%);
+        color: #b91c1c;
+    }
+    .inv-tool-btn--pdf .inv-tool-btn-icon {
+        background: rgba(220, 38, 38, 0.12);
+        color: #dc2626;
+    }
+    .inv-tool-btn--pdf:hover {
+        border-color: #fca5a5;
+        box-shadow: 0 4px 14px rgba(220, 38, 38, 0.18);
+        color: #991b1b;
+    }
+    .inv-tool-btn--baja {
+        border-color: #cbd5e1;
+        background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
+        color: #475569;
+    }
+    .inv-tool-btn--baja .inv-tool-btn-icon {
+        background: rgba(100, 116, 139, 0.12);
+        color: #64748b;
+    }
+    .inv-tool-btn--baja:hover {
+        border-color: #94a3b8;
+        box-shadow: 0 4px 14px rgba(71, 85, 105, 0.12);
+        color: #334155;
+    }
+    .inv-tool-btn--upload {
+        border-color: #86efac;
+        background: linear-gradient(135deg, #fff 0%, #f0fdf4 100%);
+        color: #15803d;
+    }
+    .inv-tool-btn--upload .inv-tool-btn-icon {
+        background: rgba(34, 197, 94, 0.14);
+        color: #16a34a;
+    }
+    .inv-tool-btn--upload:hover {
+        border-color: #4ade80;
+        box-shadow: 0 4px 14px rgba(34, 197, 94, 0.2);
+        color: #166534;
+    }
+    .inv-tool-btn--primary {
+        border-color: #2563eb;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: #fff;
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.28);
+    }
+    .inv-tool-btn--primary .inv-tool-btn-icon {
+        background: rgba(255, 255, 255, 0.2);
+        color: #fff;
+    }
+    .inv-tool-btn--primary:hover {
+        box-shadow: 0 6px 18px rgba(37, 99, 235, 0.38);
+        color: #fff;
+        border-color: #1d4ed8;
     }
     @media (max-width: 991.98px) {
         .inv-page-header .inv-toolbar {
             justify-content: flex-start;
         }
+    }
+
+    /* —— Tabla inventario —— */
+    .inv-search-wrap { margin-bottom: 0.75rem; }
+    .inv-search {
+        max-width: 420px;
+        font-size: 0.92rem;
+        font-weight: 600;
+        padding: 0.55rem 0.85rem;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .inv-search:focus {
+        border-color: #93c5fd;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+    .inv-table-card { border-radius: 12px !important; overflow: hidden; }
+    .inv-table { margin-bottom: 0; font-size: 0.88rem; }
+    .inv-table thead th {
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+        padding: 0.55rem 0.65rem;
+        white-space: nowrap;
+    }
+    .inv-table thead th:first-child { padding-left: 1rem; }
+    .inv-table thead th:last-child { padding-right: 1rem; }
+    .inv-table tbody tr {
+        transition: background 0.18s ease, box-shadow 0.18s ease;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .inv-table tbody tr:hover {
+        background: linear-gradient(90deg, #f8fafc 0%, #fff 100%);
+        box-shadow: inset 3px 0 0 #3b82f6;
+    }
+    .inv-table tbody td {
+        padding: 0.48rem 0.65rem;
+        vertical-align: middle;
+    }
+    .inv-table tbody td:first-child { padding-left: 1rem; }
+    .inv-table tbody td:last-child { padding-right: 1rem; }
+    .inv-codigo {
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: #2563eb;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.01em;
+    }
+    .inv-nombre {
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: #1e293b;
+        line-height: 1.25;
+    }
+    .inv-sucursal {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #64748b;
+    }
+    .inv-precio {
+        font-size: 1rem;
+        font-weight: 800;
+        color: #0f172a;
+        font-variant-numeric: tabular-nums;
+    }
+    .inv-stock-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.12rem; }
+    .inv-stock-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.78rem;
+        font-weight: 800;
+        padding: 0.22rem 0.55rem;
+        border-radius: 999px;
+        line-height: 1.15;
+    }
+    .inv-stock-pill--ok {
+        background: #dcfce7;
+        color: #15803d;
+        border: 1px solid #86efac;
+    }
+    .inv-stock-pill--low {
+        background: #fee2e2;
+        color: #b91c1c;
+        border: 1px solid #fca5a5;
+    }
+    .inv-stock-unit {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: #64748b;
+        padding: 0.1rem 0.35rem;
+        border-radius: 6px;
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+    }
+    .inv-stock-detail {
+        font-size: 0.68rem;
+        font-weight: 600;
+        color: #94a3b8;
+        line-height: 1.2;
+    }
+    .inv-row-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.28rem;
+    }
+    .inv-row-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        padding: 0.32rem 0.52rem;
+        border-radius: 8px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #475569;
+        line-height: 1.1;
+        transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .inv-row-btn i { font-size: 0.82rem; }
+    .inv-row-btn:hover { transform: translateY(-1px); color: inherit; }
+    .inv-row-btn:active { transform: scale(0.97); }
+    .inv-row-btn--kardex:hover {
+        border-color: #cbd5e1;
+        background: #f8fafc;
+        box-shadow: 0 3px 10px rgba(71, 85, 105, 0.1);
+        color: #334155;
+    }
+    .inv-row-btn--edit {
+        border-color: #bfdbfe;
+        background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+        color: #1d4ed8;
+    }
+    .inv-row-btn--edit:hover {
+        border-color: #93c5fd;
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.18);
+        color: #1e40af;
+    }
+    .inv-row-btn--delete {
+        border-color: #fecaca;
+        background: linear-gradient(135deg, #fff 0%, #fef2f2 100%);
+        color: #b91c1c;
+    }
+    .inv-row-btn--delete:hover {
+        border-color: #fca5a5;
+        box-shadow: 0 3px 10px rgba(220, 38, 38, 0.15);
+        color: #991b1b;
+    }
+    .inv-promo-badge {
+        font-size: 0.62rem;
+        font-weight: 800;
+        vertical-align: middle;
     }
 </style>
 <div class="container-fluid mt-2">
@@ -89,11 +349,13 @@
                     <div class="inv-toolbar-group">
                         <span class="inv-toolbar-group-label">Exportar</span>
                         <div class="inv-toolbar-group-btns">
-                            <a href="{{ url_for('admin.inventario_exportar_excel') }}" class="btn btn-outline-primary" title="Descargar inventario en Excel">
-                                <i class="bi bi-file-earmark-excel"></i> Excel
+                            <a href="{{ url_for('admin.inventario_exportar_excel') }}" class="inv-tool-btn inv-tool-btn--excel" title="Descargar inventario en Excel">
+                                <span class="inv-tool-btn-icon"><i class="bi bi-file-earmark-excel"></i></span>
+                                Excel
                             </a>
-                            <a href="{{ url_for('admin.inventario_exportar_pdf') }}" class="btn btn-outline-danger" title="Descargar inventario en PDF">
-                                <i class="bi bi-file-earmark-pdf"></i> PDF
+                            <a href="{{ url_for('admin.inventario_exportar_pdf') }}" class="inv-tool-btn inv-tool-btn--pdf" title="Descargar inventario en PDF">
+                                <span class="inv-tool-btn-icon"><i class="bi bi-file-earmark-pdf"></i></span>
+                                PDF
                             </a>
                         </div>
                     </div>
@@ -101,8 +363,9 @@
                     <div class="inv-toolbar-group">
                         <span class="inv-toolbar-group-label">Bajas</span>
                         <div class="inv-toolbar-group-btns">
-                            <a href="{{ url_for('admin.reporte_productos_baja') }}" class="btn btn-outline-secondary" title="Productos dados de baja y reactivar">
-                                <i class="bi bi-archive"></i> Dados de baja
+                            <a href="{{ url_for('admin.reporte_productos_baja') }}" class="inv-tool-btn inv-tool-btn--baja" title="Productos dados de baja y reactivar">
+                                <span class="inv-tool-btn-icon"><i class="bi bi-archive"></i></span>
+                                Dados de baja
                             </a>
                         </div>
                     </div>
@@ -110,11 +373,13 @@
                     <div class="inv-toolbar-group">
                         <span class="inv-toolbar-group-label">Acciones</span>
                         <div class="inv-toolbar-group-btns">
-                            <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalCargarInventario">
-                                <i class="bi bi-upload"></i> Cargar inventario
+                            <button type="button" class="inv-tool-btn inv-tool-btn--upload" data-bs-toggle="modal" data-bs-target="#modalCargarInventario">
+                                <span class="inv-tool-btn-icon"><i class="bi bi-upload"></i></span>
+                                Cargar inventario
                             </button>
-                            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalProducto" id="btnNuevoProducto">
-                                <i class="bi bi-plus-lg"></i> Nuevo producto
+                            <button type="button" class="inv-tool-btn inv-tool-btn--primary" data-bs-toggle="modal" data-bs-target="#modalProducto" id="btnNuevoProducto">
+                                <span class="inv-tool-btn-icon"><i class="bi bi-plus-lg"></i></span>
+                                Nuevo producto
                             </button>
                         </div>
                     </div>
@@ -123,60 +388,64 @@
         </div>
     </div>
 
-    <div class="mb-3">
-        <input type="text" id="buscar_inventario" class="form-control form-control-lg" placeholder="🔍 Buscar por código o nombre..." style="max-width: 400px;">
+    <div class="inv-search-wrap">
+        <input type="text" id="buscar_inventario" class="form-control inv-search" placeholder="Buscar por código o nombre…">
     </div>
-    <div class="card border-0 shadow-sm rounded-4">
+    <div class="card border-0 shadow-sm inv-table-card">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="bg-light">
+                <table class="table inv-table align-middle mb-0">
+                    <thead>
                         <tr>
-                            <th class="ps-4 py-3 text-muted small">CÓDIGO</th>
-                            <th class="py-3 text-muted small">PRODUCTO</th>
-                            {% if es_superadmin %}<th class="py-3 text-muted small">EMPRESA</th>{% endif %}
-                            <th class="py-3 text-muted small">SUCURSAL</th>
-                            <th class="py-3 text-muted small text-center">PRECIO <span class="text-muted fw-normal">/ unidad</span></th>
-                            <th class="py-3 text-muted small text-center">STOCK <span class="text-muted fw-normal">(unidad pequeña)</span></th>
-                            <th class="py-3 text-muted small text-end pe-4">ACCIONES</th>
+                            <th>Código</th>
+                            <th>Producto</th>
+                            {% if es_superadmin %}<th>Empresa</th>{% endif %}
+                            <th>Sucursal</th>
+                            <th class="text-center">Precio <span class="fw-normal opacity-75">/ unidad</span></th>
+                            <th class="text-center">Stock <span class="fw-normal opacity-75">(unidad pequeña)</span></th>
+                            <th class="text-end">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tbody_productos">
                         {% for p in productos %}
                         <tr data-id="{{ p[0] }}" data-codigo="{{ (p[1] or '')|lower }}" data-nombre="{{ (p[2] or '')|lower }}" data-precio="{{ p[3] }}" data-stock="{{ p[4] }}" data-empresa-id="{{ p[5] if p[5] is not none else '' }}" data-sucursal-id="{{ p[6] if p[6] is not none else '' }}" data-costo="{{ p[9] if p|length > 9 and p[9] is not none else '0' }}" data-promocion-tipo="{{ (p[10] or '')|lower if p|length > 10 else '' }}" data-promocion-valor="{{ p[11] if p|length > 11 and p[11] is not none else '' }}" data-fraccionable="{{ '1' if p|length > 12 and p[12] else '0' }}" data-unidades-por-caja="{{ p[13] if p|length > 13 and p[13] is not none else '' }}" data-unidades-por-docena="{{ p[14] if p|length > 14 and p[14] is not none else '12' }}" data-mh-codigo="{{ p[15] if p|length > 15 else '59' }}">
-                            <td class="ps-4 fw-bold text-primary">{{ p[1] }}</td>
-                            <td>{{ p[2] }}{% if p|length > 10 and p[10] %}<span class="badge bg-warning text-dark ms-1">{% if p[10] == '2X1' %}2x1{% elif p[10] == 'PORCENTAJE' and p|length > 11 and p[11] %}−{{ p[11] }}%{% else %}{{ p[10] }}{% endif %}</span>{% endif %}</td>
-                            {% if es_superadmin %}<td class="small text-muted">{{ p[7] }}</td>{% endif %}
-                            <td class="small">{{ p[8] if p[8] != '—' else 'Todas' }}</td>
-                            <td class="text-center fw-bold">${{ "%.2f"|format(p[3] or 0) }}</td>
+                            <td><span class="inv-codigo">{{ p[1] }}</span></td>
+                            <td><span class="inv-nombre">{{ p[2] }}</span>{% if p|length > 10 and p[10] %}<span class="badge bg-warning text-dark ms-1 inv-promo-badge">{% if p[10] == '2X1' %}2x1{% elif p[10] == 'PORCENTAJE' and p|length > 11 and p[11] %}−{{ p[11] }}%{% else %}{{ p[10] }}{% endif %}</span>{% endif %}</td>
+                            {% if es_superadmin %}<td class="inv-sucursal">{{ p[7] }}</td>{% endif %}
+                            <td><span class="inv-sucursal">{{ p[8] if p[8] != '—' else 'Todas' }}</span></td>
+                            <td class="text-center"><span class="inv-precio">${{ "%.2f"|format(p[3] or 0) }}</span></td>
                             <td class="text-center">
+                                <div class="inv-stock-wrap">
                                 {% set stock_val = p[4] %}
                                 {% if stock_val <= 5 %}
-                                <span class="badge bg-danger-subtle text-danger rounded-pill px-3">
-                                    <i class="bi bi-exclamation-triangle-fill me-1"></i> {{ stock_val }} (Bajo)
+                                <span class="inv-stock-pill inv-stock-pill--low">
+                                    <i class="bi bi-exclamation-triangle-fill"></i> {{ stock_val }} (Bajo)
                                 </span>
                                 {% else %}
-                                <span class="badge bg-success-subtle text-success rounded-pill px-3">
+                                <span class="inv-stock-pill inv-stock-pill--ok">
                                     {{ stock_val }} disponibles
                                 </span>
                                 {% endif %}
                                 {% if p|length > 17 and p[17] %}
-                                <div class="small text-muted mt-1"><span class="badge bg-light text-dark border">{{ p[17] }}</span></div>
+                                <span class="inv-stock-unit">{{ p[17] }}</span>
                                 {% endif %}
                                 {% if p|length > 16 and p[16] %}
-                                <div class="small text-muted mt-1">{{ p[16] }}</div>
+                                <span class="inv-stock-detail">{{ p[16] }}</span>
                                 {% endif %}
+                                </div>
                             </td>
-                            <td class="text-end pe-4">
-                                <a href="{{ url_for('admin.inventario_kardex', producto_id=p[0]) }}" class="btn btn-sm btn-outline-secondary me-1" title="Kardex"><i class="bi bi-journal-text"></i> Kardex</a>
-                                <button type="button" class="btn btn-sm btn-outline-primary btn-editar-producto me-1" title="Editar" data-id="{{ p[0] }}" data-codigo="{{ p[1]|e }}" data-nombre="{{ p[2]|e }}" data-precio="{{ p[3] }}" data-stock="{{ p[4] }}" data-empresa-id="{{ p[5] if p[5] is not none else '' }}" data-sucursal-id="{{ p[6] if p[6] is not none else '' }}" data-costo="{{ p[9] if p|length > 9 and p[9] is not none else '0' }}" data-promocion-tipo="{{ (p[10] or '')|upper if p|length > 10 else '' }}" data-promocion-valor="{{ p[11] if p|length > 11 and p[11] is not none else '' }}" data-fraccionable="{{ '1' if p|length > 12 and p[12] else '0' }}" data-unidades-por-caja="{{ p[13] if p|length > 13 and p[13] is not none else '' }}" data-unidades-por-docena="{{ p[14] if p|length > 14 and p[14] is not none else '12' }}" data-mh-codigo="{{ p[15] if p|length > 15 else '59' }}"><i class="bi bi-pencil-square"></i> Editar</button>
+                            <td class="text-end">
+                                <div class="inv-row-actions">
+                                <a href="{{ url_for('admin.inventario_kardex', producto_id=p[0]) }}" class="inv-row-btn inv-row-btn--kardex" title="Kardex"><i class="bi bi-journal-text"></i> Kardex</a>
+                                <button type="button" class="inv-row-btn inv-row-btn--edit btn-editar-producto" title="Editar" data-id="{{ p[0] }}" data-codigo="{{ p[1]|e }}" data-nombre="{{ p[2]|e }}" data-precio="{{ p[3] }}" data-stock="{{ p[4] }}" data-empresa-id="{{ p[5] if p[5] is not none else '' }}" data-sucursal-id="{{ p[6] if p[6] is not none else '' }}" data-costo="{{ p[9] if p|length > 9 and p[9] is not none else '0' }}" data-promocion-tipo="{{ (p[10] or '')|upper if p|length > 10 else '' }}" data-promocion-valor="{{ p[11] if p|length > 11 and p[11] is not none else '' }}" data-fraccionable="{{ '1' if p|length > 12 and p[12] else '0' }}" data-unidades-por-caja="{{ p[13] if p|length > 13 and p[13] is not none else '' }}" data-unidades-por-docena="{{ p[14] if p|length > 14 and p[14] is not none else '12' }}" data-mh-codigo="{{ p[15] if p|length > 15 else '59' }}"><i class="bi bi-pencil-square"></i> Editar</button>
                                 {% if puede_dar_baja_producto %}
                                 <form action="/eliminar_producto/{{ p[0] }}" method="POST" class="d-inline form-eliminar-producto"
                                       data-nombre="{{ p[2]|e }}">
                                     <input type="hidden" name="motivo_baja" class="elim-motivo-baja" value="">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Dar de baja (solo Gerente o superusuario)"><i class="bi bi-trash3"></i> Eliminar</button>
+                                    <button type="submit" class="inv-row-btn inv-row-btn--delete" title="Dar de baja (solo Gerente o superusuario)"><i class="bi bi-trash3"></i> Eliminar</button>
                                 </form>
                                 {% endif %}
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -277,13 +546,6 @@
     </div>
 </div>
 
-<style>
-    .bg-danger-subtle { background-color: #fee2e2 !important; }
-    .bg-success-subtle { background-color: #dcfce7 !important; }
-    .table thead th { border-bottom: none; font-weight: 800; }
-    .table tbody tr { transition: 0.2s; }
-    .table tbody tr:hover { background-color: #f8fafc; }
-</style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     var buscar = document.getElementById('buscar_inventario');

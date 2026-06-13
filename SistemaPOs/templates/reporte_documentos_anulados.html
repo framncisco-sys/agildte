@@ -1,79 +1,381 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
-<div class="container-fluid px-4 mt-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+{% set n_filas = filas|length %}
+<style>
+    .dan-wrap {
+        --dan-red: #dc2626;
+        --dan-red-soft: #fee2e2;
+        --dan-red-dark: #b91c1c;
+        --dan-orange: #ea580c;
+        --dan-orange-soft: #ffedd5;
+        --dan-slate: #475569;
+        --dan-blue: #2563eb;
+        --dan-blue-soft: #eff6ff;
+    }
+    .dan-header {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start;
+        gap: 0.85rem; margin-bottom: 1rem;
+    }
+    .dan-back {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.75rem;
+        border-radius: 999px; border: 1px solid #cbd5e1; background: #fff;
+        font-size: 0.92rem; font-weight: 700; color: #475569; text-decoration: none;
+        margin-bottom: 0.55rem; transition: all 0.15s ease;
+    }
+    .dan-back:hover { background: #f8fafc; color: #1e293b; transform: translateX(-2px); }
+    .dan-header-icon {
+        width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem; color: #fff; flex-shrink: 0;
+        background: linear-gradient(145deg, #ef4444 0%, #dc2626 100%);
+        box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35);
+    }
+    .dan-header h2 { font-size: 1.55rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .dan-header p { font-size: 1.02rem; font-weight: 600; color: #64748b; margin: 0; max-width: 42rem; line-height: 1.4; }
+    .dan-tool-row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+    .dan-tool-btn {
+        display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.55rem 0.9rem;
+        border-radius: 9px; font-size: 0.95rem; font-weight: 800; text-decoration: none; color: #fff;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+    }
+    .dan-tool-btn:hover { transform: translateY(-2px); color: #fff; }
+    .dan-tool-btn--excel { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 3px 10px rgba(34,197,94,0.28); }
+    .dan-tool-btn--pdf { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); box-shadow: 0 3px 10px rgba(220,38,38,0.28); }
+    .dan-filter-card { border-radius: 12px !important; border: 1px solid #e2e8f0 !important; margin-bottom: 0.85rem; overflow: hidden; }
+    .dan-filter-head {
+        padding: 0.65rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        font-size: 1rem; font-weight: 800; color: #334155; display: flex; align-items: center; gap: 0.4rem;
+    }
+    .dan-filter-body { padding: 1rem 1.05rem !important; }
+    .dan-wrap .form-label { font-size: 0.95rem; font-weight: 800; color: #334155; margin-bottom: 0.35rem; }
+    .dan-wrap .form-control { font-size: 1.05rem; font-weight: 600; padding: 0.58rem 0.75rem; border-radius: 9px; border-color: #e2e8f0; }
+    .dan-quick-dates { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+    .dan-quick-date {
+        display: inline-flex; align-items: center; gap: 0.28rem; padding: 0.32rem 0.68rem;
+        border-radius: 999px; border: 1px solid #cbd5e1; background: #fff;
+        font-size: 0.88rem; font-weight: 700; color: #475569; text-decoration: none; transition: all 0.15s ease;
+    }
+    .dan-quick-date:hover { background: var(--dan-red-soft); border-color: #fca5a5; color: var(--dan-red-dark); transform: translateY(-1px); }
+    .dan-filter-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+        width: 100%; padding: 0.58rem 1rem; border-radius: 9px; font-size: 1rem; font-weight: 800;
+        border: none; cursor: pointer; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: #fff; box-shadow: 0 3px 10px rgba(37,99,235,0.28); transition: transform 0.15s ease;
+    }
+    .dan-filter-btn:hover { transform: translateY(-2px); }
+    .dan-alert {
+        border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 0.85rem;
+        font-size: 0.98rem; font-weight: 600; line-height: 1.45; display: flex; align-items: flex-start; gap: 0.5rem;
+    }
+    .dan-alert--info { background: var(--dan-blue-soft); border: 1px solid #bfdbfe; color: #1e40af; }
+    .dan-alert--ok { background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; }
+    .dan-alert--warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .dan-kpi-row { --bs-gutter-x: 0.65rem; --bs-gutter-y: 0.65rem; margin-bottom: 0.85rem; }
+    .dan-kpi {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important; padding: 1rem 1.05rem !important;
+        height: 100%; transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .dan-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(15,23,42,0.1) !important; }
+    .dan-kpi-icon {
+        width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.15rem; margin-bottom: 0.55rem; transition: transform 0.2s ease;
+    }
+    .dan-kpi:hover .dan-kpi-icon { transform: scale(1.08); }
+    .dan-kpi-icon--red { background: linear-gradient(145deg, #fee2e2 0%, #fecaca 100%); color: var(--dan-red); }
+    .dan-kpi-icon--orange { background: linear-gradient(145deg, #ffedd5 0%, #fed7aa 100%); color: var(--dan-orange); }
+    .dan-kpi-icon--slate { background: linear-gradient(145deg, #f1f5f9 0%, #e2e8f0 100%); color: var(--dan-slate); }
+    .dan-kpi-label { font-size: 0.82rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; margin-bottom: 0.25rem; }
+    .dan-kpi-val { font-size: 1.75rem; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .dan-kpi-val--red { color: var(--dan-red); }
+    .dan-kpi-val--orange { color: var(--dan-orange); }
+    .dan-kpi-val--slate { color: #334155; }
+    .dan-kpi-sub { font-size: 0.88rem; font-weight: 600; color: #94a3b8; margin-top: 0.2rem; }
+    .dan-tipo-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.85rem; }
+    .dan-tipo-chip {
+        display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem;
+        border-radius: 999px; border: 1px solid #e2e8f0; background: #fff;
+        font-size: 0.92rem; font-weight: 800; color: #475569; cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .dan-tipo-chip:hover, .dan-tipo-chip--active {
+        background: var(--dan-red-soft); border-color: #fca5a5; color: var(--dan-red-dark);
+        transform: translateY(-1px);
+    }
+    .dan-tipo-chip-n { background: var(--dan-red); color: #fff; border-radius: 999px; padding: 0.1rem 0.45rem; font-size: 0.82rem; }
+    .dan-search-wrap { position: relative; margin-bottom: 0.75rem; }
+    .dan-search-wrap i { position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1.1rem; }
+    .dan-search {
+        width: 100%; padding: 0.62rem 0.85rem 0.62rem 2.5rem; border-radius: 10px;
+        border: 1px solid #e2e8f0; font-size: 1.05rem; font-weight: 600; color: #334155;
+    }
+    .dan-search:focus { outline: none; border-color: #fca5a5; box-shadow: 0 0 0 3px rgba(220,38,38,0.12); }
+    .dan-table-card { border-radius: 12px !important; border: 1px solid #e2e8f0 !important; overflow: hidden; }
+    .dan-table-head {
+        padding: 0.7rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;
+    }
+    .dan-table-head h6 { margin: 0; font-size: 1.08rem; font-weight: 800; color: #1e293b; }
+    .dan-count-badge {
+        display: inline-flex; padding: 0.25rem 0.6rem; border-radius: 999px;
+        font-size: 0.88rem; font-weight: 800; background: var(--dan-red-soft); color: var(--dan-red);
+    }
+    .dan-table { margin-bottom: 0; width: 100%; }
+    .dan-table thead th {
+        background: #f8fafc; font-size: 0.85rem; font-weight: 800; letter-spacing: 0.05em;
+        text-transform: uppercase; color: #64748b; padding: 0.75rem 0.85rem; border-bottom: 1px solid #e2e8f0;
+        white-space: nowrap;
+    }
+    .dan-table tbody tr.dan-row {
+        cursor: pointer; transition: background 0.18s ease, box-shadow 0.18s ease; border-bottom: 1px solid #f1f5f9;
+    }
+    .dan-table tbody tr.dan-row:hover, .dan-table tbody tr.dan-row--active {
+        background: linear-gradient(90deg, var(--dan-red-soft) 0%, #fff 100%);
+        box-shadow: inset 4px 0 0 var(--dan-red);
+    }
+    .dan-table tbody tr.dan-row--hidden { display: none; }
+    .dan-table tbody td { padding: 0.75rem 0.85rem; font-size: 1.05rem; font-weight: 700; color: #334155; vertical-align: middle; }
+    .dan-table tbody td:first-child, .dan-table thead th:first-child { padding-left: 1rem; }
+    .dan-table tfoot td {
+        background: #f8fafc; font-size: 1.05rem; font-weight: 900; color: var(--dan-red-dark);
+        padding: 0.8rem 0.85rem; border-top: 2px solid #e2e8f0;
+    }
+    .dan-id { font-size: 0.92rem; font-weight: 800; color: var(--dan-red); background: var(--dan-red-soft); padding: 0.2rem 0.5rem; border-radius: 6px; }
+    .dan-badge {
+        display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.28rem 0.62rem;
+        border-radius: 999px; font-size: 0.88rem; font-weight: 800;
+    }
+    .dan-badge--anulado { background: var(--dan-red-soft); color: var(--dan-red); border: 1px solid #fecaca; }
+    .dan-badge--ticket { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .dan-badge--factura { background: var(--dan-blue-soft); color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .dan-badge--ccf { background: #cffafe; color: #0e7490; border: 1px solid #a5f3fc; }
+    .dan-money { font-variant-numeric: tabular-nums; font-weight: 900; color: var(--dan-red); font-size: 1.08rem; }
+    .dan-motivo { font-size: 0.98rem; font-weight: 600; color: #64748b; max-width: 14rem; }
+    .dan-print-btn {
+        display: inline-flex; align-items: center; gap: 0.28rem; padding: 0.4rem 0.7rem;
+        border-radius: 8px; font-size: 0.88rem; font-weight: 800; text-decoration: none;
+        border: 1px solid #fecaca; background: linear-gradient(135deg, #fff 0%, var(--dan-red-soft) 100%);
+        color: var(--dan-red); transition: transform 0.15s ease;
+    }
+    .dan-print-btn:hover { transform: translateY(-1px); color: var(--dan-red-dark); }
+    .dan-empty { text-align: center; padding: 2.5rem 1rem !important; font-size: 1.05rem; font-weight: 600; color: #94a3b8; }
+    .dan-empty i { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; color: #cbd5e1; }
+</style>
+
+<div class="container-fluid px-4 mt-4 dan-wrap">
+    <div class="dan-header">
         <div>
-            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
-            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-x-circle text-danger"></i> Documentos Anulados</h2>
-            <p class="text-muted small mb-0">Control de eventos de invalidación de DTE para conciliación tributaria</p>
+            <a href="{{ url_for('admin.reporte') }}" class="dan-back"><i class="bi bi-arrow-left"></i> Reportes</a>
+            <div class="d-flex align-items-start gap-3">
+                <span class="dan-header-icon"><i class="bi bi-x-octagon-fill"></i></span>
+                <div>
+                    <h2>Documentos Anulados</h2>
+                    <p>Control de eventos de invalidación de DTE para conciliación tributaria</p>
+                </div>
+            </div>
         </div>
-        <div class="d-flex gap-2 align-items-center">
-            <span class="fw-bold text-danger">Total anulado: $ {{ "{:,.2f}".format(total|float) }}</span>
-            <a href="{{ url_for('admin.reporte_documentos_anulados_exportar_excel') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-success fw-bold text-white"><i class="bi bi-file-earmark-excel"></i> Excel</a>
-            <a href="{{ url_for('admin.reporte_documentos_anulados_exportar_pdf') }}?inicio={{ inicio }}&fin={{ fin }}" class="btn btn-danger fw-bold text-white"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+        <div class="dan-tool-row">
+            <a href="{{ url_for('admin.reporte_documentos_anulados_exportar_excel') }}?inicio={{ inicio }}&fin={{ fin }}" class="dan-tool-btn dan-tool-btn--excel"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+            <a href="{{ url_for('admin.reporte_documentos_anulados_exportar_pdf') }}?inicio={{ inicio }}&fin={{ fin }}" class="dan-tool-btn dan-tool-btn--pdf"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
         </div>
     </div>
 
-    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
-        <form method="GET" action="{{ url_for('admin.reporte_documentos_anulados') }}" class="row g-3 align-items-end">
-            <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Desde</label>
-                <input type="date" name="inicio" class="form-control" value="{{ inicio }}">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Hasta</label>
-                <input type="date" name="fin" class="form-control" value="{{ fin }}">
-            </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-filter"></i> Filtrar</button>
-            </div>
-        </form>
+    <div class="card dan-filter-card shadow-sm">
+        <div class="dan-filter-head"><i class="bi bi-calendar-range"></i> Período de consulta</div>
+        <div class="card-body dan-filter-body">
+            <form method="GET" action="{{ url_for('admin.reporte_documentos_anulados') }}" class="row g-3 align-items-end">
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Desde</label>
+                    <input type="date" name="inicio" class="form-control" value="{{ inicio }}">
+                </div>
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" name="fin" class="form-control" value="{{ fin }}">
+                </div>
+                <div class="col-12 col-md-6 col-lg-4">
+                    <div class="dan-quick-dates">
+                        <a href="{{ url_for('admin.reporte_documentos_anulados', inicio=fecha_hoy|default(fin), fin=fecha_hoy|default(fin)) }}" class="dan-quick-date"><i class="bi bi-sun"></i> Hoy</a>
+                        <a href="{{ url_for('admin.reporte_documentos_anulados', inicio=fin[:7] ~ '-01', fin=fecha_hoy|default(fin)) }}" class="dan-quick-date"><i class="bi bi-calendar-month"></i> Este mes</a>
+                        {% if ultima_fecha_anul %}
+                        <a href="{{ url_for('admin.reporte_documentos_anulados', inicio=primera_fecha_anul|default(ultima_fecha_anul), fin=ultima_fecha_anul) }}" class="dan-quick-date"><i class="bi bi-clock-history"></i> Con anulados</a>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-12 col-lg-2">
+                    <button type="submit" class="dan-filter-btn"><i class="bi bi-funnel-fill"></i> Filtrar</button>
+                </div>
+            </form>
+        </div>
     </div>
 
-    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
-        <div class="card-header bg-white py-3 border-bottom">
-            <h6 class="m-0 fw-bold text-primary">Documentos anulados o invalidados</h6>
+    {% if fecha_auto %}
+    <div class="dan-alert dan-alert--info"><i class="bi bi-info-circle-fill"></i>
+        <span>No hay anulados en el mes actual. Se muestra el rango con registros: <strong>{{ inicio }}</strong> → <strong>{{ fin }}</strong>.</span>
+    </div>
+    {% elif n_filas == 0 and total_anulados_empresa == 0 %}
+    <div class="dan-alert dan-alert--ok"><i class="bi bi-check-circle-fill"></i>
+        <span>No hay documentos anulados registrados. El control está limpio para el período seleccionado.</span>
+    </div>
+    {% elif n_filas == 0 and ultima_fecha_anul %}
+    <div class="dan-alert dan-alert--warn"><i class="bi bi-exclamation-triangle-fill"></i>
+        <span>Sin anulados entre {{ inicio }} y {{ fin }}.
+            <a href="{{ url_for('admin.reporte_documentos_anulados', inicio=primera_fecha_anul|default(ultima_fecha_anul), fin=ultima_fecha_anul) }}">Ver período con anulados</a>.
+        </span>
+    </div>
+    {% endif %}
+
+    <div class="row dan-kpi-row">
+        <div class="col-6 col-md-4">
+            <div class="card dan-kpi shadow-sm">
+                <div class="dan-kpi-icon dan-kpi-icon--red"><i class="bi bi-cash-stack"></i></div>
+                <div class="dan-kpi-label">Total anulado</div>
+                <div class="dan-kpi-val dan-kpi-val--red">$ {{ "{:,.2f}".format(total|float) }}</div>
+                <div class="dan-kpi-sub">Monto del período</div>
+            </div>
         </div>
+        <div class="col-6 col-md-4">
+            <div class="card dan-kpi shadow-sm">
+                <div class="dan-kpi-icon dan-kpi-icon--orange"><i class="bi bi-file-earmark-x"></i></div>
+                <div class="dan-kpi-label">Documentos</div>
+                <div class="dan-kpi-val dan-kpi-val--orange">{{ n_docs|default(0) }}</div>
+                <div class="dan-kpi-sub">Invalidados en rango</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card dan-kpi shadow-sm">
+                <div class="dan-kpi-icon dan-kpi-icon--slate"><i class="bi bi-archive"></i></div>
+                <div class="dan-kpi-label">Histórico empresa</div>
+                <div class="dan-kpi-val dan-kpi-val--slate">{{ total_anulados_empresa|default(0) }}</div>
+                <div class="dan-kpi-sub">Anulados acumulados</div>
+            </div>
+        </div>
+    </div>
+
+    {% if por_tipo and n_filas > 0 %}
+    <div class="dan-tipo-chips" id="danTipoChips">
+        <button type="button" class="dan-tipo-chip dan-tipo-chip--active" data-tipo=""><i class="bi bi-grid"></i> Todos <span class="dan-tipo-chip-n">{{ n_filas }}</span></button>
+        {% for tipo, cnt in por_tipo.items() %}
+        <button type="button" class="dan-tipo-chip" data-tipo="{{ tipo|lower }}"><i class="bi bi-tag"></i> {{ tipo }} <span class="dan-tipo-chip-n">{{ cnt }}</span></button>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="card dan-table-card shadow-sm">
+        <div class="dan-table-head">
+            <h6><i class="bi bi-list-ul"></i> Documentos anulados o invalidados</h6>
+            <span class="dan-count-badge" id="danVisibleCount">{{ n_filas }} visible{{ 's' if n_filas != 1 else '' }}</span>
+        </div>
+        {% if n_filas > 0 %}
+        <div class="px-3 pt-3">
+            <div class="dan-search-wrap">
+                <i class="bi bi-search"></i>
+                <input type="search" class="dan-search" id="danSearch" placeholder="Buscar cliente, motivo, usuario, N° o tipo…" autocomplete="off">
+            </div>
+        </div>
+        {% endif %}
         <div class="table-responsive">
-            <table class="table align-middle m-0 table-hover table-sm">
-                <thead class="table-light">
+            <table class="table dan-table align-middle" id="danTable">
+                <thead>
                     <tr>
-                        <th class="ps-4">N°</th>
-                        <th>Fecha Doc.</th>
+                        <th>N°</th>
+                        <th>Fecha doc.</th>
                         <th class="text-end">Total</th>
                         <th>Cliente</th>
                         <th>Tipo</th>
                         <th>Motivo</th>
                         <th>Anuló</th>
-                        <th>Fecha Anul.</th>
-                        <th>Comprobante</th>
+                        <th>Fecha anul.</th>
+                        <th class="text-center">Comprobante</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for r in filas %}
-                    <tr>
-                        <td class="ps-4">#{{ r[0] }}</td>
+                    {% set tipo_raw = (r[4] or 'TICKET')|upper %}
+                    <tr class="dan-row" data-tipo="{{ tipo_raw|lower }}" data-search="{{ ((r[3] or '') ~ ' ' ~ (r[5] or '') ~ ' ' ~ (r[6] or '') ~ ' ' ~ tipo_raw ~ ' ' ~ r[0]|string ~ ' ' ~ (r[1] or ''))|lower }}">
+                        <td><span class="dan-id">#{{ r[0] }}</span></td>
                         <td>{{ r[1] }}</td>
-                        <td class="text-end fw-bold">$ {{ "{:,.2f}".format(r[2]|float) }}</td>
-                        <td>{{ (r[3] or '—')[:35] }}</td>
-                        <td><span class="badge bg-danger">Anulado</span> {{ r[4] or 'TICKET' }}</td>
-                        <td class="small">{{ (r[5] or '—')[:30] if r|length > 5 else '—' }}</td>
-                        <td class="small">{{ r[6] if r|length > 6 else '—' }}</td>
-                        <td class="small">{{ r[7] if r|length > 7 else '—' }}</td>
-                        <td><a href="{{ url_for('admin.imprimir_comprobante_invalidacion', venta_id=r[0]) }}" target="_blank" class="btn btn-sm btn-outline-danger" title="Imprimir comprobante de invalidación"><i class="bi bi-printer"></i></a></td>
+                        <td class="text-end"><span class="dan-money">$ {{ "{:,.2f}".format(r[2]|float) }}</span></td>
+                        <td title="{{ r[3] or '' }}">{{ (r[3] or '—')[:38] }}</td>
+                        <td>
+                            {% if 'CREDITO' in tipo_raw or tipo_raw == 'CCF' %}
+                            <span class="dan-badge dan-badge--ccf"><i class="bi bi-file-earmark-text"></i> {{ tipo_raw[:14] }}</span>
+                            {% elif 'FACTURA' in tipo_raw %}
+                            <span class="dan-badge dan-badge--factura"><i class="bi bi-receipt"></i> {{ tipo_raw[:14] }}</span>
+                            {% else %}
+                            <span class="dan-badge dan-badge--ticket"><i class="bi bi-ticket"></i> {{ tipo_raw[:14] }}</span>
+                            {% endif %}
+                            <span class="dan-badge dan-badge--anulado ms-1"><i class="bi bi-x-circle"></i></span>
+                        </td>
+                        <td><span class="dan-motivo" title="{{ r[5] if r|length > 5 else '' }}">{{ (r[5] or '—')[:35] if r|length > 5 else '—' }}</span></td>
+                        <td>{{ r[6] if r|length > 6 else '—' }}</td>
+                        <td>{{ r[7] if r|length > 7 else '—' }}</td>
+                        <td class="text-center">
+                            <a href="{{ url_for('admin.imprimir_comprobante_invalidacion', venta_id=r[0]) }}" target="_blank" class="dan-print-btn" onclick="event.stopPropagation()"><i class="bi bi-printer"></i> Imprimir</a>
+                        </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="9" class="text-center py-5 text-muted">
-                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                            No hay documentos anulados.
+                        <td colspan="9" class="dan-empty">
+                            <i class="bi bi-shield-check"></i>
+                            No hay documentos anulados en el período.
+                            {% if total_anulados_empresa == 0 %}
+                            <br><span style="font-size:0.95rem;color:#64748b">Sin invalidaciones registradas en la empresa.</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
+                {% if n_filas > 0 %}
+                <tfoot>
+                    <tr>
+                        <td colspan="2" class="text-end">Total anulado</td>
+                        <td class="text-end">$ {{ "{:,.2f}".format(total|float) }}</td>
+                        <td colspan="6"></td>
+                    </tr>
+                </tfoot>
+                {% endif %}
             </table>
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    var rows = document.querySelectorAll('.dan-row');
+    var search = document.getElementById('danSearch');
+    var countEl = document.getElementById('danVisibleCount');
+    var tipoFilter = '';
+    var chips = document.querySelectorAll('.dan-tipo-chip');
+
+    function applyFilters() {
+        var q = search ? (search.value || '').trim().toLowerCase() : '';
+        var visible = 0;
+        rows.forEach(function(row) {
+            var matchSearch = !q || (row.getAttribute('data-search') || '').indexOf(q) >= 0;
+            var matchTipo = !tipoFilter || (row.getAttribute('data-tipo') || '') === tipoFilter;
+            var show = matchSearch && matchTipo;
+            row.classList.toggle('dan-row--hidden', !show);
+            if (show) visible++;
+        });
+        if (countEl) countEl.textContent = visible + ' visible' + (visible !== 1 ? 's' : '');
+    }
+
+    if (search) search.addEventListener('input', applyFilters);
+
+    chips.forEach(function(chip) {
+        chip.addEventListener('click', function() {
+            chips.forEach(function(c) { c.classList.remove('dan-tipo-chip--active'); });
+            chip.classList.add('dan-tipo-chip--active');
+            tipoFilter = chip.getAttribute('data-tipo') || '';
+            applyFilters();
+        });
+    });
+
+    rows.forEach(function(row) {
+        row.addEventListener('click', function() {
+            rows.forEach(function(r) { r.classList.remove('dan-row--active'); });
+            row.classList.add('dan-row--active');
+        });
+    });
+})();
+</script>
 {% endblock %}

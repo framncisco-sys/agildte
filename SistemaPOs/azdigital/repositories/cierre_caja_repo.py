@@ -76,6 +76,39 @@ def crear_apertura(
     return int(cur.fetchone()[0])
 
 
+def obtener_ultima_fecha_ventas(
+    cur,
+    empresa_id: int,
+    usuario_id: int | None = None,
+    sucursal_id: int | None = None,
+) -> str | None:
+    """Última fecha (YYYY-MM-DD) con ventas activas para la empresa/filtros."""
+    params: list = [empresa_id]
+    where = [
+        "(v.empresa_id IS NULL OR v.empresa_id = %s)",
+        "COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'",
+    ]
+    if usuario_id is not None:
+        where.append("v.usuario_id = %s")
+        params.append(usuario_id)
+    if sucursal_id is not None:
+        where.append("(v.sucursal_id IS NULL OR v.sucursal_id = %s)")
+        params.append(sucursal_id)
+    w = " AND ".join(where)
+    cur.execute(
+        f"""
+        SELECT MAX(v.fecha_registro::date)
+        FROM ventas v
+        WHERE {w}
+        """,
+        params,
+    )
+    row = cur.fetchone()
+    if not row or not row[0]:
+        return None
+    return row[0].isoformat() if hasattr(row[0], "isoformat") else str(row[0])[:10]
+
+
 def obtener_datos_corte(
     cur,
     empresa_id: int,

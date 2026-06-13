@@ -1,112 +1,546 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
-<div class="container-fluid px-4 mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2 class="fw-bold text-dark"><i class="bi bi-truck text-primary"></i> Proveedores</h2>
-            <p class="text-muted small mb-0">Gestión de proveedores que suministran productos. Relacionados con compras e inventario.</p>
+{% set total_prov = proveedores|length %}
+{% set ns = namespace(activos=0) %}
+{% for p in proveedores %}{% if p[5] %}{% set ns.activos = ns.activos + 1 %}{% endif %}{% endfor %}
+<style>
+    .prov-wrap { --prov-gap: 0.75rem; }
+    .prov-header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: var(--prov-gap);
+        margin-bottom: 1rem;
+    }
+    .prov-header-main { display: flex; align-items: flex-start; gap: 0.65rem; min-width: 0; }
+    .prov-header-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+        color: #fff;
+        background: linear-gradient(145deg, #3b82f6 0%, #2563eb 100%);
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.28);
+        flex-shrink: 0;
+    }
+    .prov-header h2 {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0 0 0.2rem;
+        line-height: 1.15;
+    }
+    .prov-header p {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #64748b;
+        margin: 0;
+        line-height: 1.35;
+        max-width: 36rem;
+    }
+    .prov-toolbar { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; }
+    .prov-tool-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.38rem;
+        padding: 0.48rem 0.78rem;
+        border-radius: 9px;
+        font-size: 0.92rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid transparent;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .prov-tool-btn:hover { transform: translateY(-2px); color: inherit; }
+    .prov-tool-btn-icon {
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.95rem;
+        flex-shrink: 0;
+    }
+    .prov-tool-btn--list {
+        border-color: #86efac;
+        background: linear-gradient(135deg, #fff 0%, #f0fdf4 100%);
+        color: #15803d;
+    }
+    .prov-tool-btn--list .prov-tool-btn-icon { background: rgba(34, 197, 94, 0.14); color: #16a34a; }
+    .prov-tool-btn--list:hover { box-shadow: 0 4px 14px rgba(34, 197, 94, 0.2); color: #166534; }
+    .prov-tool-btn--primary {
+        border-color: #2563eb;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: #fff;
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.28);
+    }
+    .prov-tool-btn--primary .prov-tool-btn-icon { background: rgba(255, 255, 255, 0.2); color: #fff; }
+    .prov-tool-btn--primary:hover { box-shadow: 0 6px 18px rgba(37, 99, 235, 0.38); color: #fff; }
+    .prov-empresa-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.85rem;
+        padding: 0.55rem 0.85rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+    }
+    .prov-empresa-bar label {
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: #475569;
+        margin: 0;
+    }
+    .prov-empresa-bar .form-select {
+        font-size: 1rem;
+        font-weight: 600;
+        min-width: 12rem;
+        border-radius: 8px;
+    }
+    .prov-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-bottom: 0.85rem;
+    }
+    .prov-stat {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.38rem 0.72rem;
+        border-radius: 999px;
+        font-size: 0.95rem;
+        font-weight: 800;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #334155;
+    }
+    .prov-stat strong { font-size: 1.05rem; color: #0f172a; }
+    .prov-stat--ok { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
+    .prov-stat--ok strong { color: #15803d; }
+    .prov-stat--muted { border-color: #e2e8f0; background: #f8fafc; color: #64748b; }
+    .prov-layout { --bs-gutter-x: 0.85rem; --bs-gutter-y: 0.85rem; }
+    .prov-card {
+        border-radius: 12px !important;
+        border: 1px solid #e2e8f0 !important;
+        overflow: hidden;
+        height: 100%;
+    }
+    .prov-card-head {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.7rem 1rem;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .prov-card-head-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.95rem;
+        color: #fff;
+        flex-shrink: 0;
+    }
+    .prov-card-head-icon--form { background: linear-gradient(145deg, #6366f1 0%, #4f46e5 100%); }
+    .prov-card-head-icon--list { background: linear-gradient(145deg, #0ea5e9 0%, #0284c7 100%); }
+    .prov-card-head h6 {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #1e293b;
+    }
+    .prov-card-head-sub {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #94a3b8;
+        margin-left: auto;
+    }
+    .prov-card-body { padding: 1rem 1.05rem !important; }
+    .prov-section {
+        margin-bottom: 1.1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .prov-section:last-of-type { border-bottom: none; margin-bottom: 0.75rem; padding-bottom: 0; }
+    .prov-section-title {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 0.65rem;
+    }
+    .prov-section-title i { color: #3b82f6; font-size: 0.95rem; }
+    .prov-wrap .form-label {
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: #334155;
+        margin-bottom: 0.35rem;
+    }
+    .prov-wrap .form-control,
+    .prov-wrap .form-select,
+    .prov-wrap textarea.form-control {
+        font-size: 1.05rem;
+        font-weight: 600;
+        padding: 0.58rem 0.75rem;
+        border-radius: 9px;
+        border-color: #e2e8f0;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .prov-wrap .form-control:focus,
+    .prov-wrap .form-select:focus,
+    .prov-wrap textarea.form-control:focus {
+        border-color: #93c5fd;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+    .prov-wrap .form-check-label {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #334155;
+    }
+    .prov-wrap .form-check-input { width: 1.1rem; height: 1.1rem; margin-top: 0.15rem; }
+    .prov-hint {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #94a3b8;
+        margin-top: 0.25rem;
+    }
+    .prov-fiscal-note {
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: #64748b;
+        background: #f8fafc;
+        border-radius: 8px;
+        padding: 0.5rem 0.65rem;
+        margin-top: 0.5rem;
+        line-height: 1.35;
+    }
+    .prov-wrap [data-actividad-field] .form-label { font-size: 0.95rem; }
+    .prov-wrap [data-actividad-field] .form-control { font-size: 1rem; }
+    .prov-wrap [data-actividad-field] .btn-abrir-buscador-actividad {
+        padding: 0.55rem 0.85rem;
+        font-size: 1.05rem;
+    }
+    .prov-wrap [data-actividad-field] small { font-size: 0.88rem; font-weight: 600; }
+    .prov-submit {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        width: 100%;
+        padding: 0.72rem 1rem;
+        border: none;
+        border-radius: 10px;
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #fff;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+        cursor: pointer;
+    }
+    .prov-submit:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+        color: #fff;
+    }
+    .prov-cancel {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        width: 100%;
+        padding: 0.62rem 1rem;
+        border-radius: 10px;
+        font-size: 1rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #475569;
+        transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .prov-cancel:hover { background: #f8fafc; border-color: #94a3b8; color: #334155; }
+    .prov-search-wrap {
+        padding: 0.65rem 1rem;
+        border-bottom: 1px solid #e2e8f0;
+        background: #fff;
+    }
+    .prov-search {
+        position: relative;
+    }
+    .prov-search i {
+        position: absolute;
+        left: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94a3b8;
+        font-size: 1rem;
+        pointer-events: none;
+    }
+    .prov-search input {
+        width: 100%;
+        padding: 0.58rem 0.75rem 0.58rem 2.35rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 9px;
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: #334155;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .prov-search input:focus {
+        outline: none;
+        border-color: #93c5fd;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+    .prov-table { margin-bottom: 0; width: 100%; }
+    .prov-table thead th {
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+        padding: 0.65rem 0.75rem;
+        white-space: nowrap;
+    }
+    .prov-table thead th:first-child { padding-left: 1rem; }
+    .prov-table thead th:last-child { padding-right: 1rem; }
+    .prov-table tbody tr {
+        transition: background 0.18s ease, box-shadow 0.18s ease;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .prov-table tbody tr:hover {
+        background: linear-gradient(90deg, #f8fafc 0%, #fff 100%);
+        box-shadow: inset 3px 0 0 #3b82f6;
+    }
+    .prov-table tbody tr.is-inactive { opacity: 0.72; }
+    .prov-table tbody tr.is-hidden { display: none; }
+    .prov-table tbody td {
+        padding: 0.62rem 0.75rem;
+        vertical-align: middle;
+    }
+    .prov-table tbody td:first-child { padding-left: 1rem; }
+    .prov-table tbody td:last-child { padding-right: 1rem; }
+    .prov-nombre {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.25;
+    }
+    .prov-nit {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #475569;
+        font-variant-numeric: tabular-nums;
+    }
+    .prov-contacto {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #334155;
+    }
+    .prov-tel {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #475569;
+        font-variant-numeric: tabular-nums;
+    }
+    .prov-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.28rem 0.62rem;
+        border-radius: 999px;
+        font-size: 0.88rem;
+        font-weight: 800;
+    }
+    .prov-badge--ok { background: #dcfce7; color: #15803d; }
+    .prov-badge--off { background: #f1f5f9; color: #64748b; }
+    .prov-row-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.3rem;
+    }
+    .prov-row-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        padding: 0.38rem 0.62rem;
+        border-radius: 8px;
+        font-size: 0.88rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #334155;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        cursor: pointer;
+    }
+    .prov-row-btn:hover { transform: translateY(-1px); color: inherit; }
+    .prov-row-btn--edit {
+        border-color: #bfdbfe;
+        background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+        color: #1d4ed8;
+    }
+    .prov-row-btn--edit:hover { box-shadow: 0 3px 10px rgba(37, 99, 235, 0.15); color: #1e40af; }
+    .prov-row-btn--del {
+        border-color: #fecaca;
+        background: linear-gradient(135deg, #fff 0%, #fef2f2 100%);
+        color: #b91c1c;
+    }
+    .prov-row-btn--del:hover { box-shadow: 0 3px 10px rgba(220, 38, 38, 0.12); color: #991b1b; }
+    .prov-empty {
+        text-align: center;
+        padding: 2.5rem 1rem !important;
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: #94a3b8;
+    }
+    .prov-empty i { font-size: 2rem; display: block; margin-bottom: 0.5rem; color: #cbd5e1; }
+    @media (max-width: 991.98px) {
+        .prov-card { margin-bottom: 0.85rem; }
+    }
+</style>
+
+<div class="container-fluid px-4 mt-4 prov-wrap">
+    <div class="prov-header">
+        <div class="prov-header-main">
+            <span class="prov-header-icon" aria-hidden="true"><i class="bi bi-truck"></i></span>
+            <div>
+                <h2>Proveedores</h2>
+                <p>Gestión de proveedores que suministran productos. Relacionados con compras e inventario.</p>
+            </div>
         </div>
-        <div>
-            <a href="{{ url_for('admin.reporte_lista_compras') }}" class="btn btn-outline-success btn-sm rounded-pill me-2"><i class="bi bi-cart-check"></i> Lista de compras</a>
-            <a href="{{ url_for('admin.compras_nueva') }}" class="btn btn-primary rounded-pill"><i class="bi bi-plus-lg"></i> Registrar compra</a>
+        <div class="prov-toolbar">
+            <a href="{{ url_for('admin.reporte_lista_compras') }}" class="prov-tool-btn prov-tool-btn--list">
+                <span class="prov-tool-btn-icon"><i class="bi bi-cart-check"></i></span>
+                Lista de compras
+            </a>
+            <a href="{{ url_for('admin.compras_nueva') }}" class="prov-tool-btn prov-tool-btn--primary">
+                <span class="prov-tool-btn-icon"><i class="bi bi-plus-lg"></i></span>
+                Registrar compra
+            </a>
         </div>
     </div>
 
     {% if es_super and empresas %}
-    <div class="mb-3">
-        <form method="GET" class="d-inline">
-            <select name="empresa_id" class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="this.form.submit()">
-                {% for e in empresas %}
-                <option value="{{ e[0] }}" {{ 'selected' if emp_id == e[0] else '' }}>{{ e[1] }}</option>
-                {% endfor %}
-            </select>
-        </form>
-    </div>
+    <form method="GET" class="prov-empresa-bar">
+        <label for="provEmpresaSel"><i class="bi bi-building"></i> Empresa</label>
+        <select name="empresa_id" id="provEmpresaSel" class="form-select form-select-sm" onchange="this.form.submit()">
+            {% for e in empresas %}
+            <option value="{{ e[0] }}" {{ 'selected' if emp_id == e[0] else '' }}>{{ e[1] }}</option>
+            {% endfor %}
+        </select>
+    </form>
     {% endif %}
 
-    <div class="row">
-        <div class="col-lg-5">
-            <div class="card border-0 shadow-sm rounded-4 mb-4">
-                <div class="card-header bg-white py-3 border-bottom">
-                    <h6 class="mb-0 fw-bold">{{ 'Editar Proveedor' if proveedor else 'Nuevo Proveedor' }}</h6>
+    <div class="prov-stats">
+        <span class="prov-stat"><i class="bi bi-people"></i> Total <strong>{{ total_prov }}</strong></span>
+        <span class="prov-stat prov-stat--ok"><i class="bi bi-check-circle"></i> Activos <strong>{{ ns.activos }}</strong></span>
+        <span class="prov-stat prov-stat--muted"><i class="bi bi-dash-circle"></i> Inactivos <strong>{{ total_prov - ns.activos }}</strong></span>
+    </div>
+
+    <div class="row prov-layout">
+        <div class="col-xl-5 col-lg-6">
+            <div class="card prov-card shadow-sm mb-4 mb-xl-0">
+                <div class="prov-card-head">
+                    <span class="prov-card-head-icon prov-card-head-icon--form"><i class="bi bi-{{ 'pencil-square' if proveedor else 'person-plus' }}"></i></span>
+                    <h6>{{ 'Editar proveedor' if proveedor else 'Nuevo proveedor' }}</h6>
+                    {% if proveedor %}<span class="prov-card-head-sub">ID #{{ proveedor.id }}</span>{% endif %}
                 </div>
-                <div class="card-body">
+                <div class="card-body prov-card-body">
                     <form action="{{ url_for('admin.guardar_proveedor') }}" method="POST">
                         <input type="hidden" name="proveedor_id" value="{{ proveedor.id if proveedor else '' }}">
                         {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
 
-                        <!-- Identificación -->
-                        <div class="mb-4">
-                            <p class="small text-uppercase fw-bold text-muted mb-2"><i class="bi bi-building me-1"></i> Identificación</p>
+                        <div class="prov-section">
+                            <div class="prov-section-title"><i class="bi bi-building"></i> Identificación</div>
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">Nombre / Razón social <span class="text-danger">*</span></label>
+                                <label class="form-label">Nombre / Razón social <span class="text-danger">*</span></label>
                                 <input type="text" name="nombre" class="form-control" value="{{ proveedor.nombre if proveedor else '' }}" required placeholder="Razón social del proveedor">
                             </div>
                             <div class="row g-2">
                                 <div class="col-12 col-sm-4">
-                                    <label class="form-label small fw-bold">Tipo documento</label>
+                                    <label class="form-label">Tipo documento</label>
                                     <select name="tipo_documento" id="tipo_documento" class="form-select" required>
                                         <option value="NIT" {{ 'selected' if (proveedor and proveedor.tipo_documento == 'NIT') or not proveedor else '' }}>NIT</option>
                                         <option value="DUI" {{ 'selected' if proveedor and proveedor.tipo_documento == 'DUI' else '' }}>DUI</option>
                                     </select>
                                 </div>
                                 <div class="col-12 col-sm-4">
-                                    <label class="form-label small fw-bold">Número</label>
+                                    <label class="form-label">Número</label>
                                     <input type="text" name="nit" id="nit_dui" class="form-control" placeholder="{{ '0000-000000-000-0' if (proveedor and proveedor.tipo_documento == 'NIT') or not proveedor else '00000000-0' }}" value="{{ proveedor.nit if proveedor else '' }}" maxlength="17" inputmode="numeric" autocomplete="off">
-                                    <small class="text-muted" id="nit_dui_hint">0000-000000-000-0</small>
+                                    <div class="prov-hint" id="nit_dui_hint">Formato: 0000-000000-000-0</div>
                                 </div>
                                 <div class="col-12 col-sm-4">
-                                    <label class="form-label small fw-bold">NRC</label>
+                                    <label class="form-label">NRC</label>
                                     <input type="text" name="nrc" id="nrc" class="form-control" placeholder="123456-7" value="{{ proveedor.nrc if proveedor else '' }}" maxlength="8" inputmode="numeric" title="6-7 dígitos">
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Datos fiscales -->
-                        <div class="mb-4 pb-3 border-bottom">
-                            <p class="small text-uppercase fw-bold text-muted mb-2"><i class="bi bi-file-earmark-text me-1"></i> Datos fiscales</p>
+                        <div class="prov-section">
+                            <div class="prov-section-title"><i class="bi bi-file-earmark-text"></i> Datos fiscales</div>
                             {% set _giro = proveedor.giro_actividad if proveedor else '' %}
                             {% with field_name='giro_actividad', label='Giro o Actividad Económica (MH)', codigo_value=_giro, descripcion_value='', hint='Código de actividad según catálogo AgilDTE.' %}
                             {% include '_campo_actividad_economica.html' %}
                             {% endwith %}
-                            <div class="row g-2">
+                            <div class="row g-2 align-items-end">
                                 <div class="col-12 col-sm-6">
-                                    <label class="form-label small fw-bold">Clasificación</label>
+                                    <label class="form-label">Clasificación</label>
                                     <select name="clasificacion_contribuyente" class="form-select">
                                         <option value="PEQUEÑO" {{ 'selected' if (proveedor and proveedor.clasificacion_contribuyente == 'PEQUEÑO') or not proveedor else '' }}>Pequeño</option>
                                         <option value="MEDIANO" {{ 'selected' if proveedor and proveedor.clasificacion_contribuyente == 'MEDIANO' else '' }}>Mediano</option>
                                         <option value="GRANDE" {{ 'selected' if proveedor and proveedor.clasificacion_contribuyente == 'GRANDE' else '' }}>Grande</option>
                                     </select>
                                 </div>
-                                <div class="col-12 col-sm-6 d-flex align-items-end pb-2">
+                                <div class="col-12 col-sm-6 pb-1">
                                     <div class="form-check">
                                         <input type="checkbox" name="es_gran_contribuyente" class="form-check-input" id="es_gran" {{ 'checked' if proveedor and proveedor.es_gran_contribuyente else '' }}>
-                                        <label class="form-check-label small" for="es_gran">Gran Contribuyente</label>
+                                        <label class="form-check-label" for="es_gran">Gran Contribuyente</label>
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-0 mt-1"><i class="bi bi-info-circle me-1"></i> Retención IVA 1% aplica cuando uno es Grande y el otro no (base &gt; $100).</p>
+                            <div class="prov-fiscal-note"><i class="bi bi-info-circle me-1"></i> Retención IVA 1% aplica cuando uno es Grande y el otro no (base &gt; $100).</div>
                         </div>
 
-                        <!-- Contacto y comunicación -->
-                        <div class="mb-4">
-                            <p class="small text-uppercase fw-bold text-muted mb-2"><i class="bi bi-person-lines-fill me-1"></i> Contacto</p>
+                        <div class="prov-section">
+                            <div class="prov-section-title"><i class="bi bi-person-lines-fill"></i> Contacto</div>
                             <div class="row g-2">
                                 <div class="col-12 col-sm-6">
-                                    <label class="form-label small fw-bold">Nombre del contacto</label>
+                                    <label class="form-label">Nombre del contacto</label>
                                     <input type="text" name="contacto" class="form-control" value="{{ proveedor.contacto if proveedor else '' }}" placeholder="Persona de referencia">
                                 </div>
                                 <div class="col-12 col-sm-6">
-                                    <label class="form-label small fw-bold">Teléfono directo</label>
+                                    <label class="form-label">Teléfono directo</label>
                                     <input type="text" name="telefono" id="telefono" class="form-control" value="{{ proveedor.telefono if proveedor else '' }}" placeholder="2222-2222" maxlength="9">
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label small fw-bold">Correo</label>
+                                    <label class="form-label">Correo</label>
                                     <input type="email" name="correo" class="form-control" value="{{ proveedor.correo if proveedor else '' }}" placeholder="correo@proveedor.com">
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label small fw-bold">Dirección</label>
+                                    <label class="form-label">Dirección</label>
                                     <textarea name="direccion" class="form-control" rows="2" placeholder="Dirección del proveedor">{{ proveedor.direccion if proveedor else '' }}</textarea>
                                 </div>
                             </div>
@@ -120,21 +554,37 @@
                         {% endif %}
 
                         <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary btn-lg">{{ 'Actualizar' if proveedor else 'Guardar proveedor' }}</button>
-                            {% if proveedor %}<a href="{{ url_for('admin.proveedores') }}" class="btn btn-outline-secondary">Cancelar</a>{% endif %}
+                            <button type="submit" class="prov-submit">
+                                <i class="bi bi-{{ 'check2-circle' if proveedor else 'save' }}"></i>
+                                {{ 'Actualizar proveedor' if proveedor else 'Guardar proveedor' }}
+                            </button>
+                            {% if proveedor %}
+                            <a href="{{ url_for('admin.proveedores') }}{% if es_super %}?empresa_id={{ emp_id }}{% endif %}" class="prov-cancel">
+                                <i class="bi bi-x-lg"></i> Cancelar edición
+                            </a>
+                            {% endif %}
                         </div>
                     </form>
                 </div>
             </div>
         </div>
-        <div class="col-lg-7">
-            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
-                <div class="card-header bg-white py-3">
-                    <h6 class="mb-0 fw-bold">Listado de proveedores</h6>
+
+        <div class="col-xl-7 col-lg-6">
+            <div class="card prov-card shadow-sm">
+                <div class="prov-card-head">
+                    <span class="prov-card-head-icon prov-card-head-icon--list"><i class="bi bi-list-ul"></i></span>
+                    <h6>Listado de proveedores</h6>
+                    <span class="prov-card-head-sub">{{ total_prov }} registro{{ 's' if total_prov != 1 else '' }}</span>
+                </div>
+                <div class="prov-search-wrap">
+                    <div class="prov-search">
+                        <i class="bi bi-search"></i>
+                        <input type="search" id="provBuscar" placeholder="Buscar por nombre, NIT o contacto…" autocomplete="off">
+                    </div>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light">
+                    <table class="table prov-table align-middle">
+                        <thead>
                             <tr>
                                 <th>Nombre</th>
                                 <th>NIT</th>
@@ -144,23 +594,39 @@
                                 <th class="text-end">Acciones</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="provTableBody">
                             {% for p in proveedores %}
-                            <tr class="{{ '' if p[5] else 'text-muted' }}">
-                                <td>{{ p[1] }}</td>
-                                <td>{{ p[2] or '—' }}</td>
-                                <td>{{ p[4] or '—' }}</td>
-                                <td>{{ p[3] or '—' }}</td>
-                                <td><span class="badge {{ 'bg-success' if p[5] else 'bg-secondary' }}">{{ 'Activo' if p[5] else 'Inactivo' }}</span></td>
+                            <tr class="{{ '' if p[5] else 'is-inactive' }}" data-search="{{ (p[1] ~ ' ' ~ (p[2] or '') ~ ' ' ~ (p[4] or '') ~ ' ' ~ (p[3] or ''))|lower }}">
+                                <td><span class="prov-nombre">{{ p[1] }}</span></td>
+                                <td><span class="prov-nit">{{ p[2] or '—' }}</span></td>
+                                <td><span class="prov-contacto">{{ p[4] or '—' }}</span></td>
+                                <td><span class="prov-tel">{{ p[3] or '—' }}</span></td>
+                                <td>
+                                    <span class="prov-badge {{ 'prov-badge--ok' if p[5] else 'prov-badge--off' }}">
+                                        <i class="bi bi-{{ 'check-circle-fill' if p[5] else 'pause-circle' }}"></i>
+                                        {{ 'Activo' if p[5] else 'Inactivo' }}
+                                    </span>
+                                </td>
                                 <td class="text-end">
-                                    <a href="{{ url_for('admin.proveedores_editar', id=p[0]) }}{% if es_super %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-sm btn-outline-primary">Editar</a>
-                                    <form action="{{ url_for('admin.eliminar_proveedor', id=p[0]) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar este proveedor?');">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
-                                    </form>
+                                    <div class="prov-row-actions">
+                                        <a href="{{ url_for('admin.proveedores_editar', id=p[0]) }}{% if es_super %}?empresa_id={{ emp_id }}{% endif %}" class="prov-row-btn prov-row-btn--edit" title="Editar">
+                                            <i class="bi bi-pencil"></i> Editar
+                                        </a>
+                                        <form action="{{ url_for('admin.eliminar_proveedor', id=p[0]) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar este proveedor?');">
+                                            <button type="submit" class="prov-row-btn prov-row-btn--del" title="Eliminar">
+                                                <i class="bi bi-trash"></i> Eliminar
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="6" class="text-center py-5 text-muted">No hay proveedores. Cree uno para registrar compras.</td></tr>
+                            <tr id="provEmptyRow">
+                                <td colspan="6" class="prov-empty">
+                                    <i class="bi bi-inbox"></i>
+                                    No hay proveedores. Cree uno para registrar compras.
+                                </td>
+                            </tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -179,47 +645,37 @@
     function formatoNIT(val) {
         var d = (val || '').replace(/\D/g, '').slice(0, 14);
         if (d.length <= 4) return d;
-        if (d.length <= 10) return d.slice(0,4) + '-' + d.slice(4);
-        if (d.length <= 13) return d.slice(0,4) + '-' + d.slice(4,10) + '-' + d.slice(10);
-        return d.slice(0,4) + '-' + d.slice(4,10) + '-' + d.slice(10,13) + '-' + d.slice(13);
+        if (d.length <= 10) return d.slice(0, 4) + '-' + d.slice(4);
+        if (d.length <= 13) return d.slice(0, 4) + '-' + d.slice(4, 10) + '-' + d.slice(10);
+        return d.slice(0, 4) + '-' + d.slice(4, 10) + '-' + d.slice(10, 13) + '-' + d.slice(13);
     }
     function formatoDUI(val) {
         var d = (val || '').replace(/\D/g, '').slice(0, 9);
         if (d.length <= 8) return d;
-        return d.slice(0,8) + '-' + d.slice(8);
+        return d.slice(0, 8) + '-' + d.slice(8);
     }
-
     function aplicarMascara() {
         var tipo = sel.value;
-        var val = inp.value.replace(/\D/g, '');
         if (tipo === 'NIT') {
             inp.value = formatoNIT(inp.value);
             inp.placeholder = '0000-000000-000-0';
             inp.maxLength = 17;
-            hint.textContent = 'Formato: 0000-000000-000-0';
+            if (hint) hint.textContent = 'Formato: 0000-000000-000-0';
         } else {
             inp.value = formatoDUI(inp.value);
             inp.placeholder = '00000000-0';
             inp.maxLength = 10;
-            hint.textContent = 'Formato: 00000000-0';
+            if (hint) hint.textContent = 'Formato: 00000000-0';
         }
     }
-
-    sel.addEventListener('change', function() {
-        aplicarMascara();
-    });
-
-    inp.addEventListener('input', function() {
-        aplicarMascara();
-    });
-
+    sel.addEventListener('change', aplicarMascara);
+    inp.addEventListener('input', aplicarMascara);
     inp.addEventListener('paste', function(e) {
         e.preventDefault();
         var txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
         inp.value = sel.value === 'NIT' ? formatoNIT(txt) : formatoDUI(txt);
         aplicarMascara();
     });
-
     aplicarMascara();
 })();
 (function() {
@@ -251,6 +707,17 @@
         tel.value = txt.length > 4 ? txt.slice(0, 4) + '-' + txt.slice(4) : txt;
     });
     formatearTel();
+})();
+(function() {
+    var input = document.getElementById('provBuscar');
+    var rows = document.querySelectorAll('#provTableBody tr[data-search]');
+    if (!input || !rows.length) return;
+    input.addEventListener('input', function() {
+        var q = (input.value || '').trim().toLowerCase();
+        rows.forEach(function(tr) {
+            tr.classList.toggle('is-hidden', q.length > 0 && tr.getAttribute('data-search').indexOf(q) === -1);
+        });
+    });
 })();
 </script>
 {% endblock %}

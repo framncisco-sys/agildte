@@ -9,7 +9,7 @@
     {% endif %}
     <input type="hidden" name="cliente_id" value="{{ cliente_dict.id if cliente_dict else '' }}">
     <div class="mb-3">
-        <label class="form-label small fw-bold">Razón Social / Nombre <span class="text-danger">*</span></label>
+        <label class="form-label fw-bold">Razón Social / Nombre <span class="text-danger">*</span></label>
         <input type="text" name="nombre_cliente" class="form-control" value="{{ cliente_dict.nombre if cliente_dict else '' }}" required placeholder="Nombre o razón social del cliente">
     </div>
     {% set es_super = (es_superadmin or (rol_actual or session.get('rol')) in ('ADMIN', 'SUPERADMIN')) %}
@@ -103,7 +103,7 @@
         </div>
         <small class="text-muted">Retención IVA 1% aplica si cliente y empresa difieren en Gran Contribuyente y venta gravada &gt; $100.</small>
     </div>
-    <button type="submit" class="btn btn-primary w-100 fw-bold">{{ 'Actualizar Cliente' if cliente else 'Registrar Cliente' }}</button>
+    <button type="submit" class="btn btn-primary w-100 fw-bold cli-btn-save">{{ 'Actualizar Cliente' if cliente else 'Registrar Cliente' }}</button>
     {% if cliente %}
         {% if embed_mode|default(false) %}
         <button type="button" class="btn btn-outline-secondary w-100 mt-2" id="btnClienteEmbedVolver">Cerrar</button>

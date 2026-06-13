@@ -1,81 +1,315 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
+<style>
+    .cc-wrap { max-width: 720px; }
+    .cc-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.65rem;
+        margin-bottom: 1.25rem;
+    }
+    .cc-header-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+        color: #fff;
+        background: linear-gradient(145deg, #22c55e 0%, #16a34a 100%);
+        box-shadow: 0 4px 14px rgba(34, 197, 94, 0.28);
+        flex-shrink: 0;
+    }
+    .cc-header h2 {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0 0 0.15rem;
+        line-height: 1.15;
+    }
+    .cc-header p {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #64748b;
+        margin: 0;
+        line-height: 1.35;
+    }
+    .cc-card {
+        border-radius: 12px !important;
+        border: 1px solid #e2e8f0 !important;
+        overflow: hidden;
+        margin-bottom: 1rem;
+    }
+    .cc-card-head {
+        padding: 0.65rem 1rem;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .cc-card-title {
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: #1e293b;
+        margin: 0;
+        line-height: 1.2;
+    }
+    .cc-card-sub {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #64748b;
+        margin: 0.2rem 0 0;
+        line-height: 1.3;
+    }
+    .cc-card-body { padding: 1rem !important; }
+    .cc-status {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        border: 1px solid #86efac;
+        background: linear-gradient(135deg, #fff 0%, #f0fdf4 100%);
+        margin-bottom: 1rem;
+    }
+    .cc-status-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        color: #fff;
+        background: linear-gradient(145deg, #22c55e 0%, #16a34a 100%);
+        flex-shrink: 0;
+    }
+    .cc-status-text strong {
+        display: block;
+        font-size: 0.92rem;
+        font-weight: 800;
+        color: #15803d;
+    }
+    .cc-status-text span {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: #334155;
+    }
+    .cc-wrap .form-label {
+        font-size: 0.88rem;
+        font-weight: 800;
+        color: #334155;
+        margin-bottom: 0.4rem;
+    }
+    .cc-wrap .form-control {
+        font-size: 1.05rem;
+        font-weight: 700;
+        padding: 0.6rem 0.75rem;
+        border-radius: 10px;
+        border-color: #e2e8f0;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .cc-wrap .form-control:focus {
+        border-color: #86efac;
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
+    }
+    .cc-wrap .form-control-lg,
+    .cc-wrap .cc-input-hero {
+        font-size: 1.25rem;
+        font-weight: 800;
+        padding: 0.7rem 0.85rem;
+    }
+    .cc-action-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.45rem;
+        width: 100%;
+        padding: 0.72rem 1rem;
+        border: none;
+        border-radius: 10px;
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: #fff;
+        cursor: pointer;
+        text-decoration: none;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+        margin-top: 0.35rem;
+    }
+    .cc-action-btn:hover {
+        transform: translateY(-2px);
+        color: #fff;
+    }
+    .cc-action-btn:active { transform: scale(0.98); }
+    .cc-action-btn i { font-size: 1.05rem; }
+    .cc-action-btn--open {
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        box-shadow: 0 4px 14px rgba(34, 197, 94, 0.32);
+    }
+    .cc-action-btn--open:hover {
+        box-shadow: 0 6px 20px rgba(34, 197, 94, 0.42);
+    }
+    .cc-action-btn--close {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.32);
+    }
+    .cc-action-btn--close:hover {
+        box-shadow: 0 6px 20px rgba(37, 99, 235, 0.42);
+    }
+    .cc-history { max-width: 960px; margin-top: 1.5rem; }
+    .cc-table { margin-bottom: 0; font-size: 0.88rem; }
+    .cc-table thead th {
+        background: #f8fafc;
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+        padding: 0.55rem 0.65rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .cc-table tbody tr {
+        border-bottom: 1px solid #f1f5f9;
+        transition: background 0.18s ease;
+    }
+    .cc-table tbody tr:hover { background: #f8fafc; }
+    .cc-table tbody td {
+        padding: 0.48rem 0.65rem;
+        vertical-align: middle;
+        font-weight: 700;
+        color: #334155;
+    }
+    .cc-table .cc-money {
+        font-size: 0.92rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+    .cc-table .cc-diff-warn {
+        color: #dc2626;
+        font-weight: 900;
+    }
+    .cc-print-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        padding: 0.32rem 0.55rem;
+        border-radius: 8px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid #bfdbfe;
+        background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+        color: #1d4ed8;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+    }
+    .cc-print-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.18);
+        color: #1e40af;
+    }
+</style>
 <div class="container-fluid px-4 mt-4">
-    <h2 class="mb-4 fw-bold text-dark"><i class="bi bi-cash-coin text-success"></i> Cierre de Caja</h2>
-    <p class="text-muted">Apertura y cierre a ciegas para cuadre del turno.</p>
+    <div class="cc-wrap">
+        <div class="cc-header">
+            <span class="cc-header-icon" aria-hidden="true"><i class="bi bi-cash-coin"></i></span>
+            <div>
+                <h2>Cierre de Caja</h2>
+                <p>Apertura y cierre a ciegas para cuadre del turno.</p>
+            </div>
+        </div>
 
-    {% if apertura %}
-    <div class="card shadow-sm border-0 mb-4" style="border-radius: 15px; border-left: 4px solid #22c55e;">
-        <div class="card-body">
-            <h5 class="text-success"><i class="bi bi-unlock"></i> Caja abierta</h5>
-            <p class="mb-0">Apertura: $ {{ "{:,.2f}".format(apertura.monto_apertura|float) }} — {{ apertura.fecha_apertura }}</p>
+        {% if apertura %}
+        <div class="cc-status">
+            <span class="cc-status-icon"><i class="bi bi-unlock-fill"></i></span>
+            <div class="cc-status-text">
+                <strong>Caja abierta</strong>
+                <span>Apertura: $ {{ "{:,.2f}".format(apertura.monto_apertura|float) }} — {{ apertura.fecha_apertura }}</span>
+            </div>
         </div>
-    </div>
 
-    <div class="card shadow-sm border-0" style="border-radius: 15px;">
-        <div class="card-header bg-white">
-            <h6 class="mb-0 fw-bold">Cerrar turno (Cierre a ciegas)</h6>
-            <small class="text-muted">Ingrese el monto que contó. No se mostrará el esperado hasta después.</small>
+        <div class="card cc-card shadow-sm">
+            <div class="cc-card-head">
+                <h6 class="cc-card-title">Cerrar turno (Cierre a ciegas)</h6>
+                <p class="cc-card-sub">Ingrese el monto que contó. No se mostrará el esperado hasta después.</p>
+            </div>
+            <div class="card-body cc-card-body">
+                <form method="POST" action="{{ url_for('admin.cierre_caja_cerrar') }}">
+                    <input type="hidden" name="cierre_id" value="{{ apertura.id }}">
+                    <input type="hidden" name="ventas_efectivo" value="{{ datos.ventas_por_pago.EFECTIVO }}">
+                    <input type="hidden" name="ventas_tarjeta" value="{{ datos.ventas_por_pago.TARJETA }}">
+                    <input type="hidden" name="ventas_credito" value="{{ datos.ventas_por_pago.CREDITO }}">
+                    <input type="hidden" name="ventas_otro" value="{{ (datos.ventas_por_pago.TRANSFERENCIA|float) + (datos.ventas_por_pago.OTRO|float) }}">
+                    <div class="mb-3">
+                        <label class="form-label">Salidas de efectivo (gastos, sujeto excluido, etc.) $</label>
+                        <input type="number" name="salidas_efectivo" class="form-control" step="0.01" min="0" value="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Monto que contó en caja $ <span class="text-danger">*</span></label>
+                        <input type="number" name="monto_real" class="form-control cc-input-hero" step="0.01" min="0" required placeholder="Ingrese lo que contó">
+                    </div>
+                    <button type="submit" class="cc-action-btn cc-action-btn--close">
+                        <i class="bi bi-check-circle-fill"></i> Cerrar caja
+                    </button>
+                </form>
+            </div>
         </div>
-        <div class="card-body">
-            <form method="POST" action="{{ url_for('admin.cierre_caja_cerrar') }}">
-                <input type="hidden" name="cierre_id" value="{{ apertura.id }}">
-                <input type="hidden" name="ventas_efectivo" value="{{ datos.ventas_por_pago.EFECTIVO }}">
-                <input type="hidden" name="ventas_tarjeta" value="{{ datos.ventas_por_pago.TARJETA }}">
-                <input type="hidden" name="ventas_credito" value="{{ datos.ventas_por_pago.CREDITO }}">
-                <input type="hidden" name="ventas_otro" value="{{ (datos.ventas_por_pago.TRANSFERENCIA|float) + (datos.ventas_por_pago.OTRO|float) }}">
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Salidas de efectivo (gastos, sujeto excluido, etc.) $</label>
-                    <input type="number" name="salidas_efectivo" class="form-control" step="0.01" min="0" value="0">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Monto que contó en caja $ <span class="text-danger">*</span></label>
-                    <input type="number" name="monto_real" class="form-control form-control-lg" step="0.01" min="0" required placeholder="Ingrese lo que contó">
-                </div>
-                <button type="submit" class="btn btn-primary btn-lg"><i class="bi bi-check-circle"></i> Cerrar caja</button>
-            </form>
+        {% else %}
+        <div class="card cc-card shadow-sm">
+            <div class="cc-card-head">
+                <h6 class="cc-card-title">Abrir turno</h6>
+                <p class="cc-card-sub">Indique el efectivo inicial con el que abre la caja.</p>
+            </div>
+            <div class="card-body cc-card-body">
+                <form method="POST" action="{{ url_for('admin.cierre_caja_apertura') }}">
+                    <div class="mb-3">
+                        <label class="form-label">Monto de apertura $</label>
+                        <input type="number" name="monto_apertura" class="form-control cc-input-hero" step="0.01" min="0" value="0" required>
+                    </div>
+                    <button type="submit" class="cc-action-btn cc-action-btn--open">
+                        <i class="bi bi-unlock-fill"></i> Abrir caja
+                    </button>
+                </form>
+            </div>
         </div>
+        {% endif %}
     </div>
-    {% else %}
-    <div class="card shadow-sm border-0" style="border-radius: 15px;">
-        <div class="card-header bg-white">
-            <h6 class="mb-0 fw-bold">Abrir turno</h6>
-        </div>
-        <div class="card-body">
-            <form method="POST" action="{{ url_for('admin.cierre_caja_apertura') }}">
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Monto de apertura $</label>
-                    <input type="number" name="monto_apertura" class="form-control" step="0.01" min="0" value="0" required>
-                </div>
-                <button type="submit" class="btn btn-success btn-lg"><i class="bi bi-unlock"></i> Abrir caja</button>
-            </form>
-        </div>
-    </div>
-    {% endif %}
 
     {% if ultimos_cierres|default([])|length > 0 %}
-    <div class="card shadow-sm border-0 mt-4" style="border-radius: 15px;">
-        <div class="card-header bg-white">
-            <h6 class="mb-0 fw-bold">Últimos cierres — Ver comprobante</h6>
-            <small class="text-muted">Imprimir en ticket 80mm o ver en pantalla</small>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-sm mb-0">
-                    <thead><tr><th>Cierre</th><th>Fecha cierre</th><th>Contado</th><th>Diferencia</th><th></th></tr></thead>
-                    <tbody>
-                        {% for c in ultimos_cierres %}
-                        <tr>
-                            <td>#{{ c[0] }}</td>
-                            <td>{{ c[3].strftime('%d/%m/%Y %I:%M %p') if c[3] else '—' }}</td>
-                            <td>$ {{ "{:,.2f}".format(c[4]|float) }}</td>
-                            <td class="{% if (c[5]|float) != 0 %}text-danger fw-bold{% endif %}">$ {{ "{:,.2f}".format(c[5]|float) }}</td>
-                            <td><a href="{{ url_for('admin.cierre_caja_comprobante', cierre_id=c[0]) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-printer"></i> Ver / Imprimir</a></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+    <div class="cc-history">
+        <div class="card cc-card shadow-sm">
+            <div class="cc-card-head">
+                <h6 class="cc-card-title">Últimos cierres — Ver comprobante</h6>
+                <p class="cc-card-sub">Imprimir en ticket 80mm o ver en pantalla</p>
+            </div>
+            <div class="card-body cc-card-body p-0">
+                <div class="table-responsive">
+                    <table class="table cc-table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Cierre</th>
+                                <th>Fecha cierre</th>
+                                <th>Contado</th>
+                                <th>Diferencia</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in ultimos_cierres %}
+                            <tr>
+                                <td class="cc-money">#{{ c[0] }}</td>
+                                <td>{{ c[3].strftime('%d/%m/%Y %I:%M %p') if c[3] else '—' }}</td>
+                                <td class="cc-money">$ {{ "{:,.2f}".format(c[4]|float) }}</td>
+                                <td class="cc-money {% if (c[5]|float) != 0 %}cc-diff-warn{% endif %}">$ {{ "{:,.2f}".format(c[5]|float) }}</td>
+                                <td>
+                                    <a href="{{ url_for('admin.cierre_caja_comprobante', cierre_id=c[0]) }}" class="cc-print-btn">
+                                        <i class="bi bi-printer"></i> Ver / Imprimir
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

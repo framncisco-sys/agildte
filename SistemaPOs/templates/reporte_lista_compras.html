@@ -1,574 +1,1208 @@
 <!-- Programador: Oscar Amaya Romero -->
-
 {% extends "layout.html" %}
-
 {% block content %}
+{% set total_filas = filas|length %}
+<style>
+    .lc-wrap { --lc-gap: 0.75rem; }
+    .lc-header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: var(--lc-gap);
+        margin-bottom: 1rem;
+    }
+    .lc-header-main { display: flex; align-items: flex-start; gap: 0.65rem; min-width: 0; }
+    .lc-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: #64748b;
+        text-decoration: none;
+        margin-bottom: 0.35rem;
+        transition: color 0.2s ease;
+    }
+    .lc-back:hover { color: #2563eb; }
+    .lc-header-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+        color: #fff;
+        background: linear-gradient(145deg, #059669 0%, #047857 100%);
+        box-shadow: 0 4px 14px rgba(5, 150, 105, 0.28);
+        flex-shrink: 0;
+    }
+    .lc-header h2 {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0 0 0.2rem;
+        line-height: 1.15;
+    }
+    .lc-header p {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #64748b;
+        margin: 0;
+        line-height: 1.35;
+        max-width: 40rem;
+    }
+    .lc-toolbar { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; }
+    .lc-tool-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.38rem;
+        padding: 0.48rem 0.78rem;
+        border-radius: 9px;
+        font-size: 0.92rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid transparent;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+        white-space: nowrap;
+        cursor: pointer;
+        background: none;
+    }
+    .lc-tool-btn:hover { transform: translateY(-2px); color: inherit; }
+    .lc-tool-btn:active { transform: translateY(0) scale(0.97); }
+    .lc-tool-btn:hover .lc-tool-btn-icon { transform: scale(1.1); }
+    .lc-tool-btn-icon { transition: transform 0.2s ease; }
+    .lc-tool-btn-icon {
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.95rem;
+        flex-shrink: 0;
+    }
+    .lc-tool-btn--neutral {
+        border-color: #cbd5e1;
+        background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
+        color: #475569;
+    }
+    .lc-tool-btn--neutral .lc-tool-btn-icon { background: rgba(100,116,139,0.12); color: #64748b; }
+    .lc-tool-btn--neutral:hover { box-shadow: 0 4px 14px rgba(71,85,105,0.12); }
+    .lc-tool-btn--dte {
+        border-color: #bfdbfe;
+        background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+        color: #1d4ed8;
+    }
+    .lc-tool-btn--dte .lc-tool-btn-icon { background: rgba(37,99,235,0.14); color: #2563eb; }
+    .lc-tool-btn--dte:hover { box-shadow: 0 4px 14px rgba(37,99,235,0.18); color: #1e40af; }
+    .lc-tool-btn--primary {
+        border-color: #2563eb;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: #fff;
+        box-shadow: 0 3px 10px rgba(37,99,235,0.28);
+    }
+    .lc-tool-btn--primary .lc-tool-btn-icon { background: rgba(255,255,255,0.2); color: #fff; }
+    .lc-tool-btn--primary:hover { box-shadow: 0 6px 18px rgba(37,99,235,0.38); color: #fff; }
+    .lc-filter-card {
+        border-radius: 12px !important;
+        border: 1px solid #e2e8f0 !important;
+        margin-bottom: 0.85rem;
+        overflow: hidden;
+    }
+    .lc-filter-head {
+        padding: 0.65rem 1rem;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+        font-size: 1rem;
+        font-weight: 800;
+        color: #334155;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .lc-filter-body { padding: 1rem 1.05rem !important; }
+    .lc-wrap .form-label {
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: #334155;
+        margin-bottom: 0.35rem;
+    }
+    .lc-wrap .form-control,
+    .lc-wrap .form-select {
+        font-size: 1.05rem;
+        font-weight: 600;
+        padding: 0.58rem 0.75rem;
+        border-radius: 9px;
+        border-color: #e2e8f0;
+    }
+    .lc-wrap .form-control:focus,
+    .lc-wrap .form-select:focus {
+        border-color: #93c5fd;
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+    }
+    .lc-filter-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        width: 100%;
+        padding: 0.62rem 0.75rem;
+        border: none;
+        border-radius: 9px;
+        font-size: 1rem;
+        font-weight: 800;
+        color: #fff;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        box-shadow: 0 3px 10px rgba(37,99,235,0.28);
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+        cursor: pointer;
+    }
+    .lc-filter-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 18px rgba(37,99,235,0.38);
+    }
+    .lc-info {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #64748b;
+        background: #f8fafc;
+        border-radius: 8px;
+        padding: 0.6rem 0.75rem;
+        margin-top: 0.75rem;
+        line-height: 1.4;
+    }
+    .lc-tabs-card {
+        border-radius: 12px !important;
+        border: 1px solid #e2e8f0 !important;
+        overflow: hidden;
+        margin-bottom: 0.85rem;
+    }
+    .lc-tabs-card .lc-quick-tabs {
+        border-bottom: none;
+        margin: 0;
+    }
+    .lc-quick-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        padding: 0.85rem 1rem;
+        border-bottom: 1px solid #e2e8f0;
+        background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+    }
+    .lc-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.55rem 1rem 0.55rem 0.55rem;
+        border-radius: 14px;
+        border: 2px solid #e2e8f0;
+        background: #fff;
+        font-size: 1.02rem;
+        font-weight: 800;
+        color: #334155;
+        cursor: pointer;
+        transition: transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+        position: relative;
+        overflow: hidden;
+    }
+    .lc-tab::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at var(--lc-ripple-x, 50%) var(--lc-ripple-y, 50%), rgba(255,255,255,0.55) 0%, transparent 65%);
+        opacity: 0;
+        transition: opacity 0.35s ease;
+        pointer-events: none;
+    }
+    .lc-tab.lc-tab--ripple::after { opacity: 1; }
+    .lc-tab:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+    }
+    .lc-tab:active { transform: translateY(-1px) scale(0.98); }
+    .lc-tab-icon {
+        width: 2.35rem;
+        height: 2.35rem;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+        flex-shrink: 0;
+        transition: transform 0.25s cubic-bezier(0.34, 1.5, 0.64, 1), box-shadow 0.22s ease, background 0.22s ease;
+        position: relative;
+    }
+    .lc-tab:hover .lc-tab-icon { transform: scale(1.12) rotate(-4deg); }
+    .lc-tab.is-active .lc-tab-icon { transform: scale(1.08); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+    .lc-tab-icon--all {
+        background: linear-gradient(145deg, #dbeafe 0%, #bfdbfe 100%);
+        color: #1d4ed8;
+    }
+    .lc-tab-icon--costo {
+        background: linear-gradient(145deg, #dcfce7 0%, #bbf7d0 100%);
+        color: #15803d;
+    }
+    .lc-tab-icon--nocosto {
+        background: linear-gradient(145deg, #fef3c7 0%, #fde68a 100%);
+        color: #b45309;
+    }
+    .lc-tab-icon--critico {
+        background: linear-gradient(145deg, #fee2e2 0%, #fecaca 100%);
+        color: #dc2626;
+    }
+    .lc-tab.is-active.lc-tab--all {
+        border-color: #3b82f6;
+        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        color: #1d4ed8;
+        box-shadow: 0 4px 18px rgba(59, 130, 246, 0.28), inset 0 0 0 1px rgba(59, 130, 246, 0.15);
+    }
+    .lc-tab.is-active.lc-tab--all .lc-tab-icon {
+        background: linear-gradient(145deg, #3b82f6 0%, #2563eb 100%);
+        color: #fff;
+        animation: lcIconPop 0.45s ease;
+    }
+    .lc-tab.is-active.lc-tab--costo {
+        border-color: #16a34a;
+        background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+        color: #047857;
+        box-shadow: 0 4px 18px rgba(22, 163, 74, 0.28), inset 0 0 0 1px rgba(22, 163, 74, 0.15);
+    }
+    .lc-tab.is-active.lc-tab--costo .lc-tab-icon {
+        background: linear-gradient(145deg, #22c55e 0%, #16a34a 100%);
+        color: #fff;
+        animation: lcIconCheck 0.5s ease;
+    }
+    .lc-tab.is-active.lc-tab--nocosto {
+        border-color: #f59e0b;
+        background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+        color: #b45309;
+        box-shadow: 0 4px 18px rgba(245, 158, 11, 0.25), inset 0 0 0 1px rgba(245, 158, 11, 0.15);
+    }
+    .lc-tab.is-active.lc-tab--nocosto .lc-tab-icon {
+        background: linear-gradient(145deg, #fbbf24 0%, #f59e0b 100%);
+        color: #fff;
+        animation: lcIconWobble 0.5s ease;
+    }
+    .lc-tab.is-active.lc-tab--critico {
+        border-color: #dc2626;
+        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        color: #b91c1c;
+        box-shadow: 0 4px 18px rgba(220, 38, 38, 0.28), inset 0 0 0 1px rgba(220, 38, 38, 0.15);
+    }
+    .lc-tab.is-active.lc-tab--critico .lc-tab-icon {
+        background: linear-gradient(145deg, #ef4444 0%, #dc2626 100%);
+        color: #fff;
+        animation: lcIconAlert 0.6s ease infinite;
+    }
+    @keyframes lcIconPop {
+        0% { transform: scale(0.7); }
+        60% { transform: scale(1.15); }
+        100% { transform: scale(1.08); }
+    }
+    @keyframes lcIconCheck {
+        0% { transform: scale(0.8) rotate(-15deg); }
+        50% { transform: scale(1.2) rotate(5deg); }
+        100% { transform: scale(1.08) rotate(0); }
+    }
+    @keyframes lcIconWobble {
+        0%, 100% { transform: scale(1.08) rotate(0); }
+        25% { transform: scale(1.12) rotate(-6deg); }
+        75% { transform: scale(1.12) rotate(6deg); }
+    }
+    @keyframes lcIconAlert {
+        0%, 100% { transform: scale(1.08); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+        50% { transform: scale(1.14); box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+    }
+    .lc-tab-label { line-height: 1.1; }
+    .lc-tab-count {
+        min-width: 1.65rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.08);
+        font-size: 0.88rem;
+        font-weight: 900;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        transition: transform 0.2s ease, background 0.2s ease;
+    }
+    .lc-tab:hover .lc-tab-count { transform: scale(1.08); }
+    .lc-tab.is-active .lc-tab-count {
+        background: rgba(255, 255, 255, 0.85);
+        transform: scale(1.1);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+    .lc-tab.is-active.lc-tab--all .lc-tab-count { color: #1d4ed8; }
+    .lc-tab.is-active.lc-tab--costo .lc-tab-count { color: #15803d; }
+    .lc-tab.is-active.lc-tab--nocosto .lc-tab-count { color: #b45309; }
+    .lc-tab.is-active.lc-tab--critico .lc-tab-count { color: #b91c1c; }
+    .lc-live-search {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.55rem 1rem;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .lc-live-search-box {
+        flex: 1;
+        position: relative;
+        min-width: 0;
+    }
+    .lc-live-search-box i {
+        position: absolute;
+        left: 0.85rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #64748b;
+        font-size: 1.05rem;
+        pointer-events: none;
+    }
+    .lc-live-search-box input {
+        width: 100%;
+        padding: 0.62rem 0.85rem 0.62rem 2.5rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 10px;
+        font-size: 1.05rem;
+        font-weight: 600;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .lc-live-search-box input:focus {
+        outline: none;
+        border-color: #059669;
+        box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.15);
+    }
+    .lc-live-count {
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: #64748b;
+        white-space: nowrap;
+    }
+    .lc-live-count strong { color: #059669; font-size: 1.1rem; }
+    .lc-bulk-bar {
+        border-radius: 12px !important;
+        border: 1px solid #bbf7d0 !important;
+        background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%) !important;
+        padding: 0.75rem 1rem !important;
+        margin-bottom: 0.85rem;
+    }
+    .lc-bulk-title {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #15803d;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .lc-bulk-sub {
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: #64748b;
+    }
+    .lc-bulk-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; }
+    .lc-bulk-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.42rem 0.72rem;
+        border-radius: 8px;
+        font-size: 0.92rem;
+        font-weight: 700;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #334155;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .lc-bulk-btn:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(15,23,42,0.08); }
+    .lc-bulk-btn--success {
+        border-color: #16a34a;
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        color: #fff;
+    }
+    .lc-bulk-btn--primary {
+        border-color: #2563eb;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: #fff;
+    }
+    .lc-table-card {
+        border-radius: 12px !important;
+        border: 1px solid #e2e8f0 !important;
+        overflow: hidden;
+    }
+    .lc-table-head {
+        padding: 0.7rem 1rem;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .lc-table-head h6 {
+        margin: 0 0 0.25rem;
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #1e293b;
+    }
+    .lc-table-head p {
+        margin: 0;
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: #94a3b8;
+    }
+    .lc-table { margin-bottom: 0; width: 100%; }
+    .lc-table thead th {
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+        padding: 0.65rem 0.55rem;
+        white-space: nowrap;
+        vertical-align: middle;
+    }
+    .lc-table thead th:first-child { padding-left: 0.85rem; }
+    .lc-table thead th:last-child { padding-right: 0.85rem; }
+    .lc-table tbody tr.lc-data-row {
+        cursor: pointer;
+        transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .lc-table tbody tr.lc-data-row:hover {
+        background: linear-gradient(90deg, #ecfdf5 0%, #fff 100%);
+        box-shadow: inset 4px 0 0 #059669;
+    }
+    .lc-table tbody tr.lc-data-row.lc-row--selected {
+        background: linear-gradient(90deg, #d1fae5 0%, #ecfdf5 100%) !important;
+        box-shadow: inset 5px 0 0 #059669, 0 2px 12px rgba(5, 150, 105, 0.12);
+    }
+    .lc-table tbody tr.lc-data-row.lc-row--hidden { display: none; }
+    .lc-table tbody tr.lc-row--search { background: #fffbeb; }
+    .lc-table tbody tr.lc-row--nocosto { opacity: 0.92; }
+    .lc-table thead th.lc-sortable {
+        cursor: pointer;
+        user-select: none;
+        transition: color 0.15s ease, background 0.15s ease;
+    }
+    .lc-table thead th.lc-sortable:hover { color: #059669; background: #ecfdf5; }
+    .lc-sort-icon { font-size: 0.65rem; margin-left: 0.15rem; opacity: 0.5; }
+    .lc-table thead th.lc-sortable.is-sorted { color: #047857; }
+    .lc-table thead th.lc-sortable.is-sorted .lc-sort-icon { opacity: 1; color: #059669; }
+    .lc-table tbody td {
+        padding: 0.62rem 0.55rem;
+        vertical-align: middle;
+    }
+    .lc-table tbody td:first-child { padding-left: 0.85rem; }
+    .lc-table tbody td:last-child { padding-right: 0.85rem; }
+    .lc-prod {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.25;
+    }
+    .lc-badges { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.2rem; }
+    .lc-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+        padding: 0.18rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 800;
+    }
+    .lc-badge--search { background: #fef3c7; color: #92400e; }
+    .lc-badge--nocosto { background: #f1f5f9; color: #64748b; }
+    .lc-codigo {
+        font-size: 0.98rem;
+        font-weight: 700;
+        color: #dc2626;
+        font-variant-numeric: tabular-nums;
+        background: #fef2f2;
+        padding: 0.15rem 0.45rem;
+        border-radius: 6px;
+    }
+    .lc-num {
+        font-size: 1.02rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        color: #334155;
+    }
+    .lc-num--stock-low { color: #dc2626; }
+    .lc-num--stock-warn { color: #d97706; }
+    .lc-num--buy { color: #2563eb; font-size: 1.08rem; }
+    .lc-num--cost {
+        font-size: 1.02rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .lc-origen {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #94a3b8;
+        margin-top: 0.15rem;
+    }
+    .lc-sin-costo {
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: #94a3b8;
+        font-style: italic;
+    }
+    .lc-margen--ok { color: #16a34a; }
+    .lc-margen--warn { color: #d97706; }
+    .lc-margen--bad { color: #dc2626; }
+    .lc-precio-sug {
+        font-size: 1.08rem;
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+    }
+    .lc-precio-sug--ok { color: #15803d; }
+    .lc-precio-sug--na { color: #94a3b8; font-weight: 700; }
+    .lc-row-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.28rem;
+    }
+    .lc-row-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.38rem 0.58rem;
+        border-radius: 8px;
+        font-size: 0.88rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #334155;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        white-space: nowrap;
+    }
+    .lc-row-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1); color: inherit; }
+    .lc-row-btn:active { transform: scale(0.96); }
+    .lc-bulk-bar.lc-bulk-bar--pulse {
+        animation: lcPulseBar 0.45s ease;
+        border-color: #16a34a !important;
+        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2) !important;
+    }
+    @keyframes lcPulseBar {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.008); }
+        100% { transform: scale(1); }
+    }
+    .lc-select-float {
+        position: fixed;
+        bottom: 1.25rem;
+        left: 50%;
+        transform: translateX(-50%) translateY(120%);
+        z-index: 1050;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+        padding: 0.75rem 1.15rem;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #047857 0%, #059669 100%);
+        color: #fff;
+        box-shadow: 0 12px 40px rgba(5, 150, 105, 0.45);
+        transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        max-width: calc(100vw - 2rem);
+    }
+    .lc-select-float.is-visible { transform: translateX(-50%) translateY(0); }
+    .lc-select-float-text { font-size: 1.05rem; font-weight: 800; }
+    .lc-select-float-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.5rem 0.9rem;
+        border: none;
+        border-radius: 9px;
+        font-size: 0.95rem;
+        font-weight: 800;
+        cursor: pointer;
+        transition: transform 0.15s ease;
+    }
+    .lc-select-float-btn--apply { background: #fff; color: #047857; }
+    .lc-select-float-btn--apply:hover { transform: scale(1.04); }
+    .lc-select-float-btn--clear { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.35); }
+    .lc-highlight { background: #fef08a; color: #854d0e; padding: 0 0.12rem; border-radius: 3px; }
+    .lc-row-btn--apply {
+        border-color: #86efac;
+        background: linear-gradient(135deg, #fff 0%, #f0fdf4 100%);
+        color: #15803d;
+    }
+    .lc-row-btn--apply:hover { box-shadow: 0 3px 10px rgba(34,197,94,0.15); color: #166534; }
+    .lc-row-btn--compra {
+        border-color: #bfdbfe;
+        background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+        color: #1d4ed8;
+    }
+    .lc-row-btn--compra:hover { box-shadow: 0 3px 10px rgba(37,99,235,0.15); color: #1e40af; }
+    .lc-row-btn--adj {
+        border-color: #e2e8f0;
+        background: #f8fafc;
+        color: #475569;
+    }
+    .lc-row-btn--stock {
+        border-color: #cbd5e1;
+        background: #fff;
+        color: #334155;
+    }
+    .lc-empty {
+        text-align: center;
+        padding: 2.5rem 1rem !important;
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: #94a3b8;
+    }
+    .lc-empty i { font-size: 2.2rem; display: block; margin-bottom: 0.5rem; color: #cbd5e1; }
+    .lc-wrap .form-check-input { width: 1.15rem; height: 1.15rem; }
+    .lc-wrap .modal-title { font-size: 1.15rem; font-weight: 800; }
+    .lc-wrap .modal-body .form-label { font-size: 1rem; }
+    .lc-wrap .modal-body .form-control { font-size: 1.05rem; padding: 0.58rem 0.75rem; }
+    @media (max-width: 1199.98px) {
+        .lc-table { font-size: 0.95rem; }
+    }
+</style>
 
-<div class="container-fluid px-4 mt-4">
-
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-
-        <div>
-
-            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
-
-            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-cart-check" style="color:#059669"></i> Lista de compras y precios sugeridos</h2>
-
-            <p class="text-muted small mb-0">Reposición de stock y actualización de precios según costo real (última compra o historial)</p>
-
+<div class="container-fluid px-4 mt-4 lc-wrap">
+    <div class="lc-header">
+        <div class="lc-header-main">
+            <div>
+                <a href="{{ url_for('admin.reporte') }}" class="lc-back"><i class="bi bi-arrow-left"></i> Reportes</a>
+                <div class="d-flex align-items-start gap-2">
+                    <span class="lc-header-icon" aria-hidden="true"><i class="bi bi-cart-check"></i></span>
+                    <div>
+                        <h2>Lista de compras y precios sugeridos</h2>
+                        <p>Reposición de stock y actualización de precios según costo real (última compra o historial)</p>
+                    </div>
+                </div>
+            </div>
         </div>
-
-        <div>
-
-            <a href="{{ url_for('admin.proveedores') }}" class="btn btn-outline-secondary btn-sm rounded-pill me-2"><i class="bi bi-truck"></i> Proveedores</a>
-
-            <a href="{{ url_for('admin.compras_cargar_dte') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="btn btn-outline-primary rounded-pill me-2"><i class="bi bi-file-earmark-code"></i> Cargar DTE</a>
-
-            <a href="{{ url_for('admin.compras_nueva') }}" class="btn btn-primary rounded-pill"><i class="bi bi-receipt"></i> Registrar compra (factura)</a>
-
+        <div class="lc-toolbar">
+            <a href="{{ url_for('admin.proveedores') }}" class="lc-tool-btn lc-tool-btn--neutral">
+                <span class="lc-tool-btn-icon"><i class="bi bi-truck"></i></span> Proveedores
+            </a>
+            <a href="{{ url_for('admin.compras_cargar_dte') }}{% if es_super and emp_id %}?empresa_id={{ emp_id }}{% endif %}" class="lc-tool-btn lc-tool-btn--dte">
+                <span class="lc-tool-btn-icon"><i class="bi bi-file-earmark-code"></i></span> Cargar DTE
+            </a>
+            <a href="{{ url_for('admin.compras_nueva') }}" class="lc-tool-btn lc-tool-btn--primary">
+                <span class="lc-tool-btn-icon"><i class="bi bi-receipt"></i></span> Registrar compra
+            </a>
         </div>
-
     </div>
 
-
-
-    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
-
-        <form method="GET" action="{{ url_for('admin.reporte_lista_compras') }}" class="row g-3 align-items-end">
-
-            {% if es_super and empresas %}
-
-            <div class="col-md-2">
-
-                <label class="form-label small fw-bold text-muted">Empresa</label>
-
-                <select name="empresa_id" class="form-select">
-
-                    {% for e in empresas %}
-
-                    <option value="{{ e[0] }}" {{ 'selected' if emp_id == e[0] else '' }}>{{ e[1] }}</option>
-
-                    {% endfor %}
-
-                </select>
-
+    <div class="card lc-filter-card shadow-sm">
+        <div class="lc-filter-head"><i class="bi bi-funnel"></i> Filtros</div>
+        <div class="card-body lc-filter-body">
+            <form method="GET" action="{{ url_for('admin.reporte_lista_compras') }}" class="row g-3 align-items-end">
+                {% if es_super and empresas %}
+                <div class="col-md-6 col-lg-2">
+                    <label class="form-label">Empresa</label>
+                    <select name="empresa_id" class="form-select">
+                        {% for e in empresas %}
+                        <option value="{{ e[0] }}" {{ 'selected' if emp_id == e[0] else '' }}>{{ e[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Desde</label>
+                    <input type="date" name="inicio" class="form-control" value="{{ inicio }}">
+                </div>
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" name="fin" class="form-control" value="{{ fin }}">
+                </div>
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Stock menor a</label>
+                    <input type="number" name="umbral" class="form-control" value="{{ umbral }}" min="1" step="1" placeholder="10">
+                </div>
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Margen %</label>
+                    <input type="number" name="margen" class="form-control" value="{{ margen_sugerido }}" min="0" max="100" step="0.5" placeholder="25">
+                </div>
+                <div class="col-12 col-md-6 col-lg-3">
+                    <label class="form-label">Buscar producto</label>
+                    <input type="search" name="buscar" id="inpBuscarListaCompras" class="form-control" value="{{ buscar or '' }}" placeholder="Nombre o código de barras" autocomplete="off">
+                </div>
+                <div class="col-12 col-md-6 col-lg-1">
+                    <button type="submit" class="lc-filter-btn"><i class="bi bi-search"></i> Filtrar</button>
+                </div>
+            </form>
+            <div class="lc-info">
+                <i class="bi bi-info-circle me-1"></i>
+                <strong>Cantidad a comprar:</strong> el mayor entre (ventas del período) y (umbral − stock).
+                <strong>Precio sugerido:</strong> costo base × (1 + margen %). El costo prioriza la <strong>última factura de compra</strong>, luego historial y ficha del producto.
+                {% if buscar %}<span class="d-block mt-1">Búsqueda «<strong>{{ buscar }}</strong>»: también muestra coincidencias aunque el stock sea ≥ {{ umbral }}.</span>{% endif %}
             </div>
-
-            {% endif %}
-
-            <div class="col-md-2">
-
-                <label class="form-label small fw-bold text-muted">Desde</label>
-
-                <input type="date" name="inicio" class="form-control" value="{{ inicio }}">
-
-            </div>
-
-            <div class="col-md-2">
-
-                <label class="form-label small fw-bold text-muted">Hasta</label>
-
-                <input type="date" name="fin" class="form-control" value="{{ fin }}">
-
-            </div>
-
-            <div class="col-md-2">
-
-                <label class="form-label small fw-bold text-muted">Stock menor a</label>
-
-                <input type="number" name="umbral" class="form-control" value="{{ umbral }}" min="1" step="1" placeholder="10">
-
-            </div>
-
-            <div class="col-md-2">
-
-                <label class="form-label small fw-bold text-muted">Margen %</label>
-
-                <input type="number" name="margen" class="form-control" value="{{ margen_sugerido }}" min="0" max="100" step="0.5" placeholder="25">
-
-            </div>
-
-            <div class="col-md-3">
-
-                <label class="form-label small fw-bold text-muted">Buscar producto</label>
-
-                <input type="search" name="buscar" id="inpBuscarListaCompras" class="form-control" value="{{ buscar or '' }}" placeholder="Nombre o código de barras" autocomplete="off">
-
-            </div>
-
-            <div class="col-md-2">
-
-                <button type="submit" class="btn btn-primary fw-bold w-100"><i class="bi bi-filter"></i> Filtrar</button>
-
-            </div>
-
-        </form>
-
-        <p class="small text-muted mt-2 mb-0">
-
-            <i class="bi bi-info-circle"></i> <strong>Cantidad a comprar:</strong> el mayor entre (ventas del período) y (umbral − stock).
-
-            <strong>Precio sugerido:</strong> costo base × (1 + margen %). El costo base prioriza la <strong>última factura de compra</strong>, luego historial y ficha del producto.
-
-            {% if buscar %}<span class="d-block mt-1">Búsqueda «<strong>{{ buscar }}</strong>»: también muestra coincidencias aunque el stock sea ≥ {{ umbral }}.</span>{% endif %}
-
-        </p>
-
+        </div>
     </div>
 
-
+    <div class="card lc-tabs-card shadow-sm mb-3">
+        <div class="lc-quick-tabs" role="tablist" id="lcQuickTabs">
+            <button type="button" class="lc-tab lc-tab--all is-active" data-lc-tab="all">
+                <span class="lc-tab-icon lc-tab-icon--all"><i class="bi bi-grid-fill"></i></span>
+                <span class="lc-tab-label">Todos</span>
+                <span class="lc-tab-count" id="lcTabAll">{{ total_filas }}</span>
+            </button>
+            <button type="button" class="lc-tab lc-tab--costo" data-lc-tab="costo">
+                <span class="lc-tab-icon lc-tab-icon--costo"><i class="bi bi-check-circle-fill"></i></span>
+                <span class="lc-tab-label">Con costo</span>
+                <span class="lc-tab-count">{{ n_con_costo or 0 }}</span>
+            </button>
+            <button type="button" class="lc-tab lc-tab--nocosto" data-lc-tab="nocosto">
+                <span class="lc-tab-icon lc-tab-icon--nocosto"><i class="bi bi-dash-circle-fill"></i></span>
+                <span class="lc-tab-label">Sin costo</span>
+                <span class="lc-tab-count">{{ n_sin_costo or 0 }}</span>
+            </button>
+            <button type="button" class="lc-tab lc-tab--critico" data-lc-tab="critico">
+                <span class="lc-tab-icon lc-tab-icon--critico"><i class="bi bi-exclamation-triangle-fill"></i></span>
+                <span class="lc-tab-label">Stock crítico</span>
+                <span class="lc-tab-count" id="lcTabCrit">0</span>
+            </button>
+        </div>
+    </div>
 
     {% if filas %}
-
-    <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}" id="formPreciosMasivo" class="card border-0 shadow-sm mb-3 p-3" style="border-radius: 12px; background: #f0fdf4;">
-
+    <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}" id="formPreciosMasivo" class="card lc-bulk-bar shadow-sm">
         <input type="hidden" name="accion" value="aplicar_precios_masivo">
-
         <input type="hidden" name="umbral" value="{{ umbral }}">
-
         <input type="hidden" name="margen" value="{{ margen_sugerido }}">
-
         <input type="hidden" name="inicio" value="{{ inicio }}">
-
         <input type="hidden" name="fin" value="{{ fin }}">
-
         <input type="hidden" name="buscar" value="{{ buscar or '' }}">
-
         {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
-
         <div class="d-flex flex-wrap align-items-center gap-2">
-
-            <span class="fw-bold text-success"><i class="bi bi-lightning-charge"></i> Actualizar precios</span>
-
-            <span class="small text-muted">{{ n_con_costo or 0 }} con costo · {{ n_sin_costo or 0 }} sin costo (registre compra primero)</span>
-
-            <div class="ms-auto d-flex flex-wrap gap-2">
-
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnSelTodosCosto">Seleccionar con costo</button>
-
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnSelNinguno">Quitar selección</button>
-
-                <button type="submit" class="btn btn-sm btn-success fw-bold" id="btnAplicarSeleccionados"
-
-                    onclick="return confirm('¿Aplicar precio sugerido (margen {{ margen_sugerido }}%) a los productos marcados?');">
-
-                    <i class="bi bi-check2-all"></i> Aplicar a seleccionados
-
-                </button>
-
-                <button type="submit" name="aplicar_todos" value="1" class="btn btn-sm btn-primary fw-bold"
-
-                    onclick="return confirm('¿Aplicar precio sugerido a TODOS los productos de esta lista que tengan costo ({{ n_con_costo or 0 }})?');">
-
-                    <i class="bi bi-arrow-repeat"></i> Aplicar a todos con costo
-
-                </button>
-
+            <div>
+                <div class="lc-bulk-title"><i class="bi bi-lightning-charge-fill"></i> Actualizar precios masivamente</div>
+                <div class="lc-bulk-sub">{{ n_con_costo or 0 }} con costo · {{ n_sin_costo or 0 }} sin costo — registre compra para calcular precio sugerido</div>
             </div>
-
+            <div class="lc-bulk-actions ms-auto">
+                <button type="button" class="lc-bulk-btn" id="btnSelTodosCosto"><i class="bi bi-check2-square"></i> Seleccionar con costo</button>
+                <button type="button" class="lc-bulk-btn" id="btnSelNinguno"><i class="bi bi-x-square"></i> Quitar selección</button>
+                <button type="submit" class="lc-bulk-btn lc-bulk-btn--success" id="btnAplicarSeleccionados"
+                    onclick="return confirm('¿Aplicar precio sugerido (margen {{ margen_sugerido }}%) a los productos marcados?');">
+                    <i class="bi bi-check2-all"></i> Aplicar seleccionados
+                </button>
+                <button type="submit" name="aplicar_todos" value="1" class="lc-bulk-btn lc-bulk-btn--primary"
+                    onclick="return confirm('¿Aplicar precio sugerido a TODOS los productos de esta lista que tengan costo ({{ n_con_costo or 0 }})?');">
+                    <i class="bi bi-arrow-repeat"></i> Aplicar todos con costo
+                </button>
+            </div>
         </div>
-
     </form>
-
     {% endif %}
 
-
-
-    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
-
-        <div class="card-header bg-white py-3 border-bottom">
-
-            <h6 class="m-0 fw-bold text-primary">Productos a comprar (stock &lt; {{ umbral }}) — Ventas del {{ inicio }} al {{ fin }} <span id="listaComprasFilasVisibles" class="text-muted small fw-normal"></span></h6>
-
-            <p class="small text-muted mb-0 mt-1">Un clic en <strong>Aplicar</strong> guarda costo y precio sugerido. Use <strong>Ajustar</strong> solo si necesita valores distintos.</p>
-
+    <div class="card lc-table-card shadow-sm">
+        <div class="lc-table-head">
+            <h6>Productos a comprar (stock &lt; {{ umbral }}) <span id="listaComprasFilasVisibles" class="text-muted fw-normal"></span></h6>
+            <p><i class="bi bi-hand-index-thumb text-success me-1"></i> <strong>Clic en la fila</strong> para seleccionar · Pestañas con iconos animados · Búsqueda en vivo · Ordene por columna</p>
         </div>
-
+        <div class="lc-live-search">
+            <div class="lc-live-search-box">
+                <i class="bi bi-search"></i>
+                <input type="search" id="lcBuscarLive" placeholder="Buscar en vivo por nombre o código…" autocomplete="off">
+            </div>
+            <span class="lc-live-count">Mostrando <strong id="lcVisCount">{{ total_filas }}</strong> de {{ total_filas }}</span>
+        </div>
         <div class="table-responsive">
-
-            <table class="table align-middle m-0 table-hover table-sm">
-
-                <thead class="table-light">
-
+            <table class="table lc-table align-middle">
+                <thead>
                     <tr>
-
-                        <th class="ps-2" style="width:2rem" title="Seleccionar para actualización masiva"></th>
-
-                        <th class="ps-2">Producto</th>
-
-                        <th>Código</th>
-
-                        <th class="text-end">Stock</th>
-
-                        <th class="text-end">Ventas</th>
-
-                        <th class="text-end">A comprar</th>
-
+                        <th style="width:2.2rem" title="Clic en fila para seleccionar"></th>
+                        <th class="lc-sortable" data-lc-sort="nombre">Producto <i class="bi bi-arrow-down-up lc-sort-icon"></i></th>
+                        <th class="lc-sortable" data-lc-sort="codigo">Código <i class="bi bi-arrow-down-up lc-sort-icon"></i></th>
+                        <th class="text-end lc-sortable" data-lc-sort="stock">Stock <i class="bi bi-arrow-down-up lc-sort-icon"></i></th>
+                        <th class="text-end lc-sortable" data-lc-sort="ventas">Ventas <i class="bi bi-arrow-down-up lc-sort-icon"></i></th>
+                        <th class="text-end lc-sortable" data-lc-sort="comprar">A comprar <i class="bi bi-arrow-down-up lc-sort-icon"></i></th>
                         <th class="text-end">Costo base</th>
-
-                        <th class="text-end">Precio actual</th>
-
+                        <th class="text-end lc-sortable" data-lc-sort="precio">Precio actual <i class="bi bi-arrow-down-up lc-sort-icon"></i></th>
                         <th class="text-end">Margen %</th>
-
                         <th class="text-end">Precio sugerido</th>
-
                         <th>Acciones</th>
-
                     </tr>
-
                 </thead>
-
                 <tbody id="tbodyListaCompras">
-
                     {% for f in filas %}
-
-                    <tr data-nombre="{{ (f.nombre or '')|e }}" data-codigo="{{ (f.codigo or '')|e }}" data-tiene-costo="{{ '1' if f.puede_aplicar_precio else '0' }}" class="{% if f.stock >= umbral %}table-warning{% elif f.sin_costo %}table-light{% endif %}">
-
-                        <td class="ps-2">
-
+                    <tr class="lc-data-row {% if f.stock >= umbral %}lc-row--search{% elif f.sin_costo %}lc-row--nocosto{% endif %}"
+                        data-nombre="{{ (f.nombre or '')|e }}"
+                        data-codigo="{{ (f.codigo or '')|e }}"
+                        data-tiene-costo="{{ '1' if f.puede_aplicar_precio else '0' }}"
+                        data-sin-costo="{{ '1' if f.sin_costo else '0' }}"
+                        data-stock="{{ f.stock }}"
+                        data-ventas="{{ f.ventas_periodo or 0 }}"
+                        data-comprar="{{ f.cant_sugerida or 0 }}"
+                        data-precio="{{ f.precio_actual or 0 }}">
+                        <td onclick="event.stopPropagation()">
                             {% if f.puede_aplicar_precio %}
-
                             <input type="checkbox" class="form-check-input chk-aplicar-precio" name="aplicar_pid" value="{{ f.id }}" form="formPreciosMasivo">
-
                             {% endif %}
-
                         </td>
-
-                        <td class="ps-2">
-
-                            {{ f.nombre or '—' }}
-
-                            {% if f.stock >= umbral %}<span class="badge bg-warning text-dark ms-1">Búsqueda</span>{% endif %}
-
-                            {% if f.sin_costo %}<span class="badge bg-secondary ms-1" title="Registre una compra con costo o edite en inventario">Sin costo</span>{% endif %}
-
+                        <td>
+                            <div class="lc-prod lc-cell-nombre">{{ f.nombre or '—' }}</div>
+                            <div class="lc-badges">
+                                {% if f.stock >= umbral %}<span class="lc-badge lc-badge--search"><i class="bi bi-search"></i> Búsqueda</span>{% endif %}
+                                {% if f.sin_costo %}<span class="lc-badge lc-badge--nocosto"><i class="bi bi-dash-circle"></i> Sin costo</span>{% endif %}
+                            </div>
                         </td>
-
-                        <td><code class="small">{{ f.codigo or '—' }}</code></td>
-
-                        <td class="text-end">{{ "%.1f"|format(f.stock) }}</td>
-
-                        <td class="text-end">{{ "%.0f"|format(f.ventas_periodo) if f.ventas_periodo else "—" }}</td>
-
-                        <td class="text-end fw-bold text-primary">{{ "%.0f"|format(f.cant_sugerida) if f.cant_sugerida else "—" }}</td>
-
+                        <td><span class="lc-codigo lc-cell-codigo">{{ f.codigo or '—' }}</span></td>
                         <td class="text-end">
-
+                            <span class="lc-num {% if f.stock <= 0 %}lc-num--stock-low{% elif f.stock < umbral / 2 %}lc-num--stock-warn{% endif %}">{{ "%.1f"|format(f.stock) }}</span>
+                        </td>
+                        <td class="text-end"><span class="lc-num">{{ "%.0f"|format(f.ventas_periodo) if f.ventas_periodo else "—" }}</span></td>
+                        <td class="text-end"><span class="lc-num lc-num--buy">{{ "%.0f"|format(f.cant_sugerida) if f.cant_sugerida else "—" }}</span></td>
+                        <td class="text-end">
                             {% if f.costo_base > 0 %}
-
-                            $ {{ "%.2f"|format(f.costo_base) }}
-
-                            <span class="badge bg-light text-muted border d-block mt-1" style="font-weight:normal;font-size:0.65rem">{{ f.origen_costo }}</span>
-
+                            <span class="lc-num lc-num--cost">$ {{ "%.2f"|format(f.costo_base) }}</span>
+                            <span class="lc-origen">{{ f.origen_costo }}</span>
                             {% else %}
-
-                            <span class="text-danger">—</span>
-
+                            <span class="lc-sin-costo">Sin compra</span>
                             {% endif %}
-
                         </td>
-
-                        <td class="text-end">$ {{ "%.2f"|format(f.precio_actual) }}</td>
-
-                        <td class="text-end {{ 'text-success' if f.margen_actual >= f.margen_sugerido else 'text-warning' if f.margen_actual > 0 else 'text-danger' }}">
-
-                            {{ "%.1f"|format(f.margen_actual) }}%
-
+                        <td class="text-end"><span class="lc-num">$ {{ "%.2f"|format(f.precio_actual) }}</span></td>
+                        <td class="text-end">
+                            <span class="lc-num {% if f.margen_actual >= f.margen_sugerido %}lc-margen--ok{% elif f.margen_actual > 0 %}lc-margen--warn{% else %}lc-margen--bad{% endif %}">
+                                {{ "%.1f"|format(f.margen_actual) }}%
+                            </span>
                         </td>
-
-                        <td class="text-end fw-bold {{ 'text-success' if f.puede_aplicar_precio else 'text-muted' }}">
-
-                            {% if f.puede_aplicar_precio %}$ {{ "%.2f"|format(f.precio_sugerido) }}{% else %}—{% endif %}
-
-                        </td>
-
-                        <td class="text-nowrap">
-
+                        <td class="text-end">
                             {% if f.puede_aplicar_precio %}
-
-                            <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}" class="d-inline" onsubmit="return confirm('¿Aplicar precio $ {{ "%.2f"|format(f.precio_sugerido) }} (costo $ {{ "%.2f"|format(f.costo_base) }} + {{ margen_sugerido }}%)?');">
-
-                                <input type="hidden" name="accion" value="aplicar_precio_rapido">
-
-                                <input type="hidden" name="producto_id" value="{{ f.id }}">
-
-                                <input type="hidden" name="umbral" value="{{ umbral }}">
-
-                                <input type="hidden" name="margen" value="{{ margen_sugerido }}">
-
-                                <input type="hidden" name="inicio" value="{{ inicio }}">
-
-                                <input type="hidden" name="fin" value="{{ fin }}">
-
-                                <input type="hidden" name="buscar" value="{{ buscar or '' }}">
-
-                                {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
-
-                                <button type="submit" class="btn btn-sm btn-success" title="Guardar precio sugerido sin abrir ventana"><i class="bi bi-check-lg"></i> Aplicar</button>
-
-                            </form>
-
+                            <span class="lc-precio-sug lc-precio-sug--ok">$ {{ "%.2f"|format(f.precio_sugerido) }}</span>
                             {% else %}
-
-                            <a href="{{ url_for('admin.compras_nueva') }}" class="btn btn-sm btn-outline-primary" title="Registrar factura con costo"><i class="bi bi-receipt"></i> Compra</a>
-
+                            <span class="lc-precio-sug lc-precio-sug--na">—</span>
                             {% endif %}
-
-                            <button type="button" class="btn btn-sm btn-link text-muted p-0 ms-1" data-bs-toggle="modal" data-bs-target="#modalPrecio{{ f.id }}">Ajustar</button>
-
-                            <button type="button" class="btn btn-sm btn-outline-secondary ms-1" data-bs-toggle="modal" data-bs-target="#modalCompra{{ f.id }}" title="Entrada rápida de stock">+ Stock</button>
-
                         </td>
-
+                        <td onclick="event.stopPropagation()">
+                            <div class="lc-row-actions">
+                                {% if f.puede_aplicar_precio %}
+                                <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}" class="d-inline" onsubmit="return confirm('¿Aplicar precio $ {{ "%.2f"|format(f.precio_sugerido) }} (costo $ {{ "%.2f"|format(f.costo_base) }} + {{ margen_sugerido }}%)?');">
+                                    <input type="hidden" name="accion" value="aplicar_precio_rapido">
+                                    <input type="hidden" name="producto_id" value="{{ f.id }}">
+                                    <input type="hidden" name="umbral" value="{{ umbral }}">
+                                    <input type="hidden" name="margen" value="{{ margen_sugerido }}">
+                                    <input type="hidden" name="inicio" value="{{ inicio }}">
+                                    <input type="hidden" name="fin" value="{{ fin }}">
+                                    <input type="hidden" name="buscar" value="{{ buscar or '' }}">
+                                    {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
+                                    <button type="submit" class="lc-row-btn lc-row-btn--apply" title="Guardar precio sugerido"><i class="bi bi-check-lg"></i> Aplicar</button>
+                                </form>
+                                {% else %}
+                                <a href="{{ url_for('admin.compras_nueva') }}" class="lc-row-btn lc-row-btn--compra" title="Registrar factura con costo"><i class="bi bi-receipt"></i> Compra</a>
+                                {% endif %}
+                                <button type="button" class="lc-row-btn lc-row-btn--adj" data-bs-toggle="modal" data-bs-target="#modalPrecio{{ f.id }}"><i class="bi bi-sliders"></i> Ajustar</button>
+                                <button type="button" class="lc-row-btn lc-row-btn--stock" data-bs-toggle="modal" data-bs-target="#modalCompra{{ f.id }}" title="Entrada rápida de stock"><i class="bi bi-plus-lg"></i> Stock</button>
+                            </div>
+                        </td>
                     </tr>
-
                     {% else %}
-
                     <tr>
-
-                        <td colspan="11" class="text-center py-5 text-muted">
-
-                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-
+                        <td colspan="11" class="lc-empty">
+                            <i class="bi bi-inbox"></i>
                             {% if buscar %}No se encontró «{{ buscar }}». Pruebe otro nombre o código, o suba el umbral de stock.{% else %}No hay productos con stock menor a {{ umbral }}. Ajuste el umbral o registre productos.{% endif %}
-
                         </td>
-
                     </tr>
-
                     {% endfor %}
-
                 </tbody>
-
             </table>
-
         </div>
-
     </div>
-
-
 
     {% for f in filas %}
-
     <div class="modal fade" id="modalPrecio{{ f.id }}" tabindex="-1">
-
         <div class="modal-dialog">
-
             <div class="modal-content">
-
                 <div class="modal-header">
-
-                    <h5 class="modal-title">Ajustar precio — {{ f.nombre[:40] }}{% if f.nombre|length > 40 %}...{% endif %}</h5>
-
+                    <h5 class="modal-title"><i class="bi bi-sliders text-primary me-1"></i> Ajustar precio — {{ f.nombre[:40] }}{% if f.nombre|length > 40 %}...{% endif %}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-
                 </div>
-
                 <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}">
-
                     <input type="hidden" name="accion" value="actualizar_precio">
-
                     <input type="hidden" name="producto_id" value="{{ f.id }}">
-
                     <input type="hidden" name="umbral" value="{{ umbral }}">
-
                     <input type="hidden" name="margen" value="{{ margen_sugerido }}">
-
                     <input type="hidden" name="inicio" value="{{ inicio }}">
-
                     <input type="hidden" name="fin" value="{{ fin }}">
-
                     <input type="hidden" name="buscar" value="{{ buscar or '' }}">
-
                     {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
-
                     <div class="modal-body">
-
-                        <p class="small text-muted">Origen del costo: <strong>{{ f.origen_costo }}</strong></p>
-
+                        <p class="text-muted fw-semibold">Origen del costo: <strong>{{ f.origen_costo }}</strong></p>
                         <div class="mb-3">
-
                             <label class="form-label">Costo unitario</label>
-
                             <input type="text" name="costo_nuevo" class="form-control" value="{{ "%.2f"|format(f.costo_base if f.costo_base > 0 else f.costo_promedio) }}" placeholder="Costo">
-
                         </div>
-
                         <div class="mb-3">
-
                             <label class="form-label">Precio de venta</label>
-
                             <input type="text" name="precio_nuevo" class="form-control" value="{% if f.precio_sugerido %}{{ '%.2f'|format(f.precio_sugerido) }}{% else %}{{ '%.2f'|format(f.precio_actual) }}{% endif %}" placeholder="Precio">
-
                         </div>
-
                     </div>
-
                     <div class="modal-footer">
-
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-
-                        <button type="submit" class="btn btn-success"><i class="bi bi-check-lg"></i> Guardar</button>
-
+                        <button type="submit" class="btn btn-success fw-bold"><i class="bi bi-check-lg"></i> Guardar</button>
                     </div>
-
                 </form>
-
             </div>
-
         </div>
-
     </div>
-
     <div class="modal fade" id="modalCompra{{ f.id }}" tabindex="-1">
-
         <div class="modal-dialog">
-
             <div class="modal-content">
-
                 <div class="modal-header bg-info text-white">
-
-                    <h5 class="modal-title">Entrada de stock — {{ f.nombre[:35] }}{% if f.nombre|length > 35 %}...{% endif %}</h5>
-
+                    <h5 class="modal-title"><i class="bi bi-cart-plus me-1"></i> Entrada de stock — {{ f.nombre[:35] }}{% if f.nombre|length > 35 %}...{% endif %}</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-
                 </div>
-
                 <form method="POST" action="{{ url_for('admin.reporte_lista_compras') }}">
-
                     <input type="hidden" name="accion" value="registrar_compra">
-
                     <input type="hidden" name="producto_id" value="{{ f.id }}">
-
                     <input type="hidden" name="umbral" value="{{ umbral }}">
-
                     <input type="hidden" name="margen" value="{{ margen_sugerido }}">
-
                     <input type="hidden" name="inicio" value="{{ inicio }}">
-
                     <input type="hidden" name="fin" value="{{ fin }}">
-
                     <input type="hidden" name="buscar" value="{{ buscar or '' }}">
-
                     {% if es_super %}<input type="hidden" name="empresa_id" value="{{ emp_id }}">{% endif %}
-
                     <div class="modal-body">
-
-                        <p class="small text-muted">Actualiza costo y suma cantidad al stock (Kardex).</p>
-
+                        <p class="text-muted fw-semibold">Actualiza costo y suma cantidad al stock (Kardex).</p>
                         <div class="mb-3">
-
                             <label class="form-label fw-bold">Costo de compra (por unidad) <span class="text-danger">*</span></label>
-
                             <input type="text" name="costo_compra" class="form-control" required placeholder="Ej: 2.50" value="{{ "%.2f"|format(f.costo_base) if f.costo_base > 0 else '' }}">
-
                         </div>
-
                         <div class="mb-3">
-
                             <label class="form-label">Cantidad</label>
-
                             <input type="text" name="cantidad_compra" class="form-control" value="{{ "%.0f"|format(f.cant_sugerida) if f.cant_sugerida and f.cant_sugerida > 0 else '1' }}">
-
                         </div>
-
                     </div>
-
                     <div class="modal-footer">
-
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-
-                        <button type="submit" class="btn btn-info text-white"><i class="bi bi-cart-plus"></i> Registrar</button>
-
+                        <button type="submit" class="btn btn-info text-white fw-bold"><i class="bi bi-cart-plus"></i> Registrar</button>
                     </div>
-
                 </form>
-
             </div>
-
         </div>
-
     </div>
-
     {% endfor %}
 
+    <div id="lcSelectFloat" class="lc-select-float" aria-live="polite">
+        <span class="lc-select-float-text"><i class="bi bi-check2-square me-1"></i> <span id="lcSelCount">0</span> seleccionado(s)</span>
+        <button type="button" class="lc-select-float-btn lc-select-float-btn--apply" id="lcFloatApply"><i class="bi bi-lightning-charge"></i> Aplicar precios</button>
+        <button type="button" class="lc-select-float-btn lc-select-float-btn--clear" id="lcFloatClear"><i class="bi bi-x-lg"></i> Limpiar</button>
+    </div>
 </div>
-
 <script>
-
 (function() {
-
-    var inp = document.getElementById('inpBuscarListaCompras');
-
     var tbody = document.getElementById('tbodyListaCompras');
+    if (!tbody) return;
 
-    if (inp && tbody) {
+    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr.lc-data-row'));
+    var tabFilter = 'all';
+    var searchQ = '';
+    var sortKey = null;
+    var sortDir = 1;
 
-        function filtrarFilas() {
-
-            var q = (inp.value || '').toLowerCase().trim();
-
-            var vis = 0;
-
-            tbody.querySelectorAll('tr[data-nombre]').forEach(function(tr) {
-
-                var nom = (tr.getAttribute('data-nombre') || '').toLowerCase();
-
-                var cod = (tr.getAttribute('data-codigo') || '').toLowerCase();
-
-                var ok = !q || nom.indexOf(q) !== -1 || cod.indexOf(q) !== -1;
-
-                tr.style.display = ok ? '' : 'none';
-
-                if (ok) vis++;
-
-            });
-
-            var hint = document.getElementById('listaComprasFilasVisibles');
-
-            if (hint) hint.textContent = q ? vis + ' fila(s) visibles' : '';
-
-        }
-
-        inp.addEventListener('input', filtrarFilas);
-
-        if ((inp.value || '').trim()) filtrarFilas();
-
+    var inpForm = document.getElementById('inpBuscarListaCompras');
+    var inpLive = document.getElementById('lcBuscarLive');
+    if (inpLive && inpForm && inpForm.value) {
+        inpLive.value = inpForm.value;
+        searchQ = inpForm.value.toLowerCase().trim();
     }
+
+    function countCritico() {
+        var n = 0;
+        rows.forEach(function(tr) {
+            if (parseFloat(tr.getAttribute('data-stock') || '0') <= 0) n++;
+        });
+        var el2 = document.getElementById('lcTabCrit');
+        if (el2) el2.textContent = n;
+    }
+    countCritico();
+
+    function rowMatchesTab(tr) {
+        if (tabFilter === 'costo') return tr.getAttribute('data-tiene-costo') === '1';
+        if (tabFilter === 'nocosto') return tr.getAttribute('data-sin-costo') === '1';
+        if (tabFilter === 'critico') return parseFloat(tr.getAttribute('data-stock') || '0') <= 0;
+        return true;
+    }
+
+    function rowMatchesSearch(tr) {
+        if (!searchQ) return true;
+        var nom = (tr.getAttribute('data-nombre') || '').toLowerCase();
+        var cod = (tr.getAttribute('data-codigo') || '').toLowerCase();
+        return nom.indexOf(searchQ) !== -1 || cod.indexOf(searchQ) !== -1;
+    }
+
+    function highlightCells(tr, show) {
+        var nomEl = tr.querySelector('.lc-cell-nombre');
+        var codEl = tr.querySelector('.lc-cell-codigo');
+        if (!show || !searchQ) {
+            if (nomEl) nomEl.textContent = tr.getAttribute('data-nombre') || '—';
+            if (codEl) codEl.textContent = tr.getAttribute('data-codigo') || '—';
+            return;
+        }
+        function hi(text) {
+            if (!text) return '—';
+            var low = text.toLowerCase();
+            var i = low.indexOf(searchQ);
+            if (i === -1) return text;
+            return text.slice(0, i) + '<mark class="lc-highlight">' + text.slice(i, i + searchQ.length) + '</mark>' + text.slice(i + searchQ.length);
+        }
+        if (nomEl) nomEl.innerHTML = hi(tr.getAttribute('data-nombre') || '—');
+        if (codEl) codEl.innerHTML = hi(tr.getAttribute('data-codigo') || '—');
+    }
+
+    function applyFilters() {
+        var vis = 0;
+        rows.forEach(function(tr) {
+            var ok = rowMatchesTab(tr) && rowMatchesSearch(tr);
+            tr.classList.toggle('lc-row--hidden', !ok);
+            if (ok) {
+                vis++;
+                highlightCells(tr, true);
+            }
+        });
+        var visEl = document.getElementById('lcVisCount');
+        var hint = document.getElementById('listaComprasFilasVisibles');
+        if (visEl) visEl.textContent = vis;
+        if (hint) hint.textContent = (searchQ || tabFilter !== 'all') ? '· ' + vis + ' visibles' : '';
+    }
+
+    function setTab(filter) {
+        tabFilter = filter;
+        document.querySelectorAll('.lc-tab[data-lc-tab]').forEach(function(btn) {
+            var f = btn.getAttribute('data-lc-tab');
+            btn.classList.toggle('is-active', f === filter);
+        });
+        applyFilters();
+    }
+
+    function tabRipple(btn, e) {
+        if (!btn || !e) return;
+        var rect = btn.getBoundingClientRect();
+        btn.style.setProperty('--lc-ripple-x', ((e.clientX - rect.left) / rect.width * 100) + '%');
+        btn.style.setProperty('--lc-ripple-y', ((e.clientY - rect.top) / rect.height * 100) + '%');
+        btn.classList.add('lc-tab--ripple');
+        setTimeout(function() { btn.classList.remove('lc-tab--ripple'); }, 400);
+    }
+
+    document.querySelectorAll('.lc-tab[data-lc-tab]').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            tabRipple(btn, e);
+            setTab(btn.getAttribute('data-lc-tab'));
+        });
+    });
+
+    function onSearchInput(val) {
+        searchQ = (val || '').toLowerCase().trim();
+        applyFilters();
+    }
+    if (inpLive) {
+        inpLive.addEventListener('input', function() { onSearchInput(inpLive.value); });
+        inpLive.focus();
+    }
+    if (inpForm) {
+        inpForm.addEventListener('input', function() {
+            if (inpLive) inpLive.value = inpForm.value;
+            onSearchInput(inpForm.value);
+        });
+    }
+
+    function updateSelectionUI() {
+        var checked = document.querySelectorAll('.chk-aplicar-precio:checked');
+        var n = checked.length;
+        rows.forEach(function(tr) {
+            var cb = tr.querySelector('.chk-aplicar-precio');
+            tr.classList.toggle('lc-row--selected', cb && cb.checked);
+        });
+        var floatBar = document.getElementById('lcSelectFloat');
+        var countEl = document.getElementById('lcSelCount');
+        var bulkBar = document.getElementById('formPreciosMasivo');
+        if (countEl) countEl.textContent = n;
+        if (floatBar) floatBar.classList.toggle('is-visible', n > 0);
+        if (bulkBar && n > 0) {
+            bulkBar.classList.add('lc-bulk-bar--pulse');
+            setTimeout(function() { bulkBar.classList.remove('lc-bulk-bar--pulse'); }, 500);
+        }
+    }
+
+    rows.forEach(function(tr) {
+        tr.addEventListener('click', function(e) {
+            if (e.target.closest('a, button, form, input, .lc-row-actions')) return;
+            var cb = tr.querySelector('.chk-aplicar-precio');
+            if (!cb) return;
+            cb.checked = !cb.checked;
+            updateSelectionUI();
+        });
+    });
+    document.querySelectorAll('.chk-aplicar-precio').forEach(function(cb) {
+        cb.addEventListener('change', updateSelectionUI);
+        cb.addEventListener('click', function(e) { e.stopPropagation(); updateSelectionUI(); });
+    });
 
     var btnTodos = document.getElementById('btnSelTodosCosto');
-
     var btnNinguno = document.getElementById('btnSelNinguno');
-
     if (btnTodos) {
-
         btnTodos.addEventListener('click', function() {
-
             document.querySelectorAll('.chk-aplicar-precio').forEach(function(c) {
-
                 var tr = c.closest('tr');
-
-                if (tr && tr.style.display !== 'none') c.checked = true;
-
+                if (tr && !tr.classList.contains('lc-row--hidden')) c.checked = true;
             });
-
+            updateSelectionUI();
         });
-
     }
-
     if (btnNinguno) {
-
         btnNinguno.addEventListener('click', function() {
-
             document.querySelectorAll('.chk-aplicar-precio').forEach(function(c) { c.checked = false; });
-
+            updateSelectionUI();
         });
-
     }
 
+    var floatApply = document.getElementById('lcFloatApply');
+    var floatClear = document.getElementById('lcFloatClear');
+    var formBulk = document.getElementById('formPreciosMasivo');
+    if (floatApply && formBulk) {
+        floatApply.addEventListener('click', function() {
+            if (!document.querySelector('.chk-aplicar-precio:checked')) {
+                alert('Seleccione al menos un producto con costo.');
+                return;
+            }
+            if (confirm('¿Aplicar precio sugerido a los productos seleccionados?')) formBulk.submit();
+        });
+    }
+    if (floatClear) {
+        floatClear.addEventListener('click', function() {
+            document.querySelectorAll('.chk-aplicar-precio').forEach(function(c) { c.checked = false; });
+            updateSelectionUI();
+        });
+    }
+
+    function sortRows(key) {
+        if (sortKey === key) sortDir = -sortDir;
+        else { sortKey = key; sortDir = 1; }
+        document.querySelectorAll('.lc-sortable').forEach(function(th) {
+            var k = th.getAttribute('data-lc-sort');
+            th.classList.toggle('is-sorted', k === sortKey);
+            var icon = th.querySelector('.lc-sort-icon');
+            if (icon) {
+                icon.className = 'bi lc-sort-icon ' + (k === sortKey ? (sortDir > 0 ? 'bi-sort-down' : 'bi-sort-up') : 'bi-arrow-down-up');
+            }
+        });
+        rows.sort(function(a, b) {
+            var va, vb;
+            if (key === 'nombre') { va = a.getAttribute('data-nombre') || ''; vb = b.getAttribute('data-nombre') || ''; return sortDir * va.localeCompare(vb); }
+            if (key === 'codigo') { va = a.getAttribute('data-codigo') || ''; vb = b.getAttribute('data-codigo') || ''; return sortDir * va.localeCompare(vb); }
+            va = parseFloat(a.getAttribute('data-' + (key === 'comprar' ? 'comprar' : key)) || '0');
+            vb = parseFloat(b.getAttribute('data-' + (key === 'comprar' ? 'comprar' : key)) || '0');
+            return sortDir * (va - vb);
+        });
+        rows.forEach(function(tr) { tbody.appendChild(tr); });
+    }
+    document.querySelectorAll('.lc-sortable[data-lc-sort]').forEach(function(th) {
+        th.addEventListener('click', function() { sortRows(th.getAttribute('data-lc-sort')); });
+    });
+
+    applyFilters();
+    updateSelectionUI();
 })();
-
 </script>
-
 {% endblock %}
-

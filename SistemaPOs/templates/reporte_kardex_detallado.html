@@ -1,75 +1,261 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
-<div class="container-fluid px-4 mt-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+{% set n_filas = filas|length %}
+{% set show_producto = not producto_id %}
+<style>
+    .kdx-wrap {
+        --kdx-blue: #2563eb;
+        --kdx-blue-soft: #eff6ff;
+        --kdx-green: #16a34a;
+        --kdx-green-soft: #dcfce7;
+        --kdx-red: #dc2626;
+        --kdx-red-soft: #fee2e2;
+        --kdx-amber: #d97706;
+        --kdx-amber-soft: #fef3c7;
+    }
+    .kdx-header {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start;
+        gap: 0.85rem; margin-bottom: 1rem;
+    }
+    .kdx-back {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.75rem;
+        border-radius: 999px; border: 1px solid #cbd5e1; background: #fff;
+        font-size: 0.92rem; font-weight: 700; color: #475569; text-decoration: none;
+        margin-bottom: 0.55rem; transition: all 0.15s ease;
+    }
+    .kdx-back:hover { background: #f8fafc; color: #1e293b; transform: translateX(-2px); }
+    .kdx-header-icon {
+        width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem; color: #fff; flex-shrink: 0;
+        background: linear-gradient(145deg, #3b82f6 0%, #1d4ed8 100%);
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+    }
+    .kdx-header h2 { font-size: 1.75rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .kdx-header p { font-size: 1.08rem; font-weight: 600; color: #64748b; margin: 0; max-width: 48rem; line-height: 1.45; }
+    .kdx-filter-card { border-radius: 12px !important; border: 1px solid #e2e8f0 !important; margin-bottom: 0.85rem; overflow: hidden; }
+    .kdx-filter-head {
+        padding: 0.65rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        font-size: 1rem; font-weight: 800; color: #334155; display: flex; align-items: center; gap: 0.4rem;
+    }
+    .kdx-filter-body { padding: 1rem 1.05rem !important; }
+    .kdx-wrap .form-label { font-size: 1.02rem; font-weight: 800; color: #334155; margin-bottom: 0.35rem; }
+    .kdx-wrap .form-control, .kdx-wrap .form-select { font-size: 1.12rem; font-weight: 600; padding: 0.62rem 0.8rem; border-radius: 9px; border-color: #e2e8f0; }
+    .kdx-quick-dates { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+    .kdx-quick-date {
+        display: inline-flex; align-items: center; gap: 0.28rem; padding: 0.32rem 0.68rem;
+        border-radius: 999px; border: 1px solid #cbd5e1; background: #fff;
+        font-size: 0.88rem; font-weight: 700; color: #475569; text-decoration: none; transition: all 0.15s ease;
+    }
+    .kdx-quick-date:hover { background: var(--kdx-blue-soft); border-color: #93c5fd; color: #1d4ed8; transform: translateY(-1px); }
+    .kdx-filter-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+        width: 100%; padding: 0.58rem 1rem; border-radius: 9px; font-size: 1rem; font-weight: 800;
+        border: none; cursor: pointer; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: #fff; box-shadow: 0 3px 10px rgba(37,99,235,0.28); transition: transform 0.15s ease;
+    }
+    .kdx-filter-btn:hover { transform: translateY(-2px); }
+    .kdx-tool-row { display: flex; gap: 0.35rem; }
+    .kdx-tool-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+        flex: 1; padding: 0.55rem 0.75rem; border-radius: 9px; font-size: 0.95rem; font-weight: 800;
+        text-decoration: none; color: #fff; transition: transform 0.15s ease;
+    }
+    .kdx-tool-btn:hover { transform: translateY(-2px); color: #fff; }
+    .kdx-tool-btn--excel { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
+    .kdx-tool-btn--pdf { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+    .kdx-kpi-row { --bs-gutter-x: 0.65rem; --bs-gutter-y: 0.65rem; margin-bottom: 0.85rem; }
+    .kdx-kpi {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important; padding: 1rem 1.05rem !important;
+        height: 100%; transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .kdx-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(15,23,42,0.1) !important; }
+    .kdx-kpi-icon {
+        width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.15rem; margin-bottom: 0.55rem;
+    }
+    .kdx-kpi-icon--blue { background: linear-gradient(145deg, #dbeafe 0%, #bfdbfe 100%); color: var(--kdx-blue); }
+    .kdx-kpi-icon--green { background: linear-gradient(145deg, #dcfce7 0%, #bbf7d0 100%); color: var(--kdx-green); }
+    .kdx-kpi-icon--red { background: linear-gradient(145deg, #fee2e2 0%, #fecaca 100%); color: var(--kdx-red); }
+    .kdx-kpi-label { font-size: 0.82rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; margin-bottom: 0.25rem; }
+    .kdx-kpi-val { font-size: 1.65rem; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.1; color: #0f172a; }
+    .kdx-kpi-sub { font-size: 0.88rem; font-weight: 600; color: #94a3b8; margin-top: 0.2rem; }
+    .kdx-tipo-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+    .kdx-tipo-chip {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.75rem;
+        border-radius: 999px; border: 1px solid #e2e8f0; background: #fff;
+        font-size: 0.92rem; font-weight: 800; color: #475569; cursor: pointer; transition: all 0.15s ease;
+    }
+    .kdx-tipo-chip:hover, .kdx-tipo-chip--active { background: var(--kdx-blue-soft); border-color: #93c5fd; color: #1d4ed8; }
+    .kdx-search-wrap { position: relative; margin-bottom: 0.75rem; }
+    .kdx-search-wrap i { position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1.1rem; }
+    .kdx-search {
+        width: 100%; padding: 0.62rem 0.85rem 0.62rem 2.5rem; border-radius: 10px;
+        border: 1px solid #e2e8f0; font-size: 1.05rem; font-weight: 600; color: #334155;
+    }
+    .kdx-search:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .kdx-table-card { border-radius: 12px !important; border: 1px solid #e2e8f0 !important; overflow: hidden; }
+    .kdx-table-head {
+        padding: 0.7rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;
+    }
+    .kdx-table-head h6 { margin: 0; font-size: 1.05rem; font-weight: 800; color: #1e293b; }
+    .kdx-count-badge {
+        display: inline-flex; padding: 0.25rem 0.6rem; border-radius: 999px;
+        font-size: 0.88rem; font-weight: 800; background: var(--kdx-blue-soft); color: var(--kdx-blue);
+    }
+    .kdx-table { margin-bottom: 0; width: 100%; }
+    .kdx-table thead th {
+        background: #f8fafc; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.04em;
+        text-transform: uppercase; color: #64748b; padding: 0.85rem 0.9rem; border-bottom: 1px solid #e2e8f0;
+        white-space: nowrap;
+    }
+    .kdx-table tbody tr.kdx-row {
+        cursor: pointer; transition: background 0.18s ease, box-shadow 0.18s ease; border-bottom: 1px solid #f1f5f9;
+    }
+    .kdx-table tbody tr.kdx-row:hover, .kdx-table tbody tr.kdx-row--active {
+        background: linear-gradient(90deg, var(--kdx-blue-soft) 0%, #fff 100%);
+        box-shadow: inset 4px 0 0 var(--kdx-blue);
+    }
+    .kdx-table tbody tr.kdx-row--hidden { display: none; }
+    .kdx-table tbody td { padding: 0.85rem 0.9rem; font-size: 1.12rem; font-weight: 700; color: #334155; vertical-align: middle; }
+    .kdx-table tbody td:first-child, .kdx-table thead th:first-child { padding-left: 1rem; }
+    .kdx-fecha { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 1.08rem; }
+    .kdx-badge {
+        display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.28rem 0.62rem;
+        border-radius: 999px; font-size: 0.88rem; font-weight: 800;
+    }
+    .kdx-badge--venta { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .kdx-badge--entrada { background: var(--kdx-green-soft); color: #15803d; border: 1px solid #bbf7d0; }
+    .kdx-badge--salida { background: var(--kdx-amber-soft); color: #92400e; border: 1px solid #fde68a; }
+    .kdx-badge--traslado { background: #cffafe; color: #0e7490; border: 1px solid #a5f3fc; }
+    .kdx-badge--otro { background: #f1f5f9; color: #64748b; }
+    .kdx-num { font-variant-numeric: tabular-nums; font-weight: 800; }
+    .kdx-num--in { color: var(--kdx-green); }
+    .kdx-num--out { color: var(--kdx-red); }
+    .kdx-saldo { font-size: 1.18rem; font-weight: 900; color: var(--kdx-blue); font-variant-numeric: tabular-nums; }
+    .kdx-ref { font-size: 0.95rem; font-weight: 700; color: #64748b; }
+    .kdx-prod { font-size: 0.95rem; font-weight: 700; color: #334155; max-width: 12rem; }
+    .kdx-empty { text-align: center; padding: 2.5rem 1rem !important; font-size: 1.05rem; font-weight: 600; color: #94a3b8; }
+    .kdx-empty i { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; color: #cbd5e1; }
+</style>
+
+<div class="container-fluid px-4 mt-4 kdx-wrap">
+    <div class="kdx-header">
         <div>
-            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
-            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-journal-text text-primary"></i> Kardex Detallado</h2>
-            <p class="text-muted small mb-0">Art. 142 y 142-A Código Tributario — Registro de control de inventarios. Las cantidades y saldos están en la <strong>unidad mínima (UMB)</strong> definida por producto (sobre, libra, etc.).</p>
+            <a href="{{ url_for('admin.reporte') }}" class="kdx-back"><i class="bi bi-arrow-left"></i> Reportes</a>
+            <div class="d-flex align-items-start gap-3">
+                <span class="kdx-header-icon"><i class="bi bi-journal-text"></i></span>
+                <div>
+                    <h2>Kardex Detallado</h2>
+                    <p>Art. 142 y 142-A Código Tributario — cantidades y saldos en <strong>unidad mínima (UMB)</strong> por producto.</p>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
-        <form method="GET" action="{{ url_for('admin.reporte_kardex_detallado') }}" class="row g-3 align-items-end">
-            <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Producto</label>
-                <select name="producto_id" class="form-select" id="filtro_producto_kardex">
-                    <option value="">— Todos —</option>
-                    {% for p in productos %}
-                    <option value="{{ p[0] }}" {{ 'selected' if producto_id == p[0] else '' }}>{{ (p[1] or '')[:40] }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Sucursal</label>
-                <select name="sucursal_id" class="form-select" id="filtro_sucursal_kardex">
-                    <option value="">— Todas —</option>
-                    {% for s in sucursales %}
-                    <option value="{{ s[0] }}" {{ 'selected' if sucursal_id == s[0] else '' }}>{{ s[1] }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Desde</label>
-                <input type="date" name="inicio" class="form-control" value="{{ inicio }}" id="filtro_inicio_kardex">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Hasta</label>
-                <input type="date" name="fin" class="form-control" value="{{ fin }}" id="filtro_fin_kardex">
-            </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-primary w-100 fw-bold"><i class="bi bi-filter"></i> Filtrar</button>
-            </div>
-            <div class="col-md-2 d-flex gap-1">
-                <a href="#" class="btn btn-success flex-grow-1 fw-bold text-white" id="btn_excel_kardex" title="Exportar Excel"><i class="bi bi-file-earmark-excel"></i></a>
-                <a href="#" class="btn btn-danger flex-grow-1 fw-bold text-white" id="btn_pdf_kardex" title="Exportar PDF"><i class="bi bi-file-earmark-pdf"></i></a>
-            </div>
-        </form>
-    </div>
-    <script>
-    (function() {
-        function qs() {
-            var p = document.getElementById('filtro_producto_kardex').value;
-            var s = document.getElementById('filtro_sucursal_kardex').value;
-            var i = document.getElementById('filtro_inicio_kardex').value;
-            var f = document.getElementById('filtro_fin_kardex').value;
-            return '?producto_id=' + encodeURIComponent(p) + '&sucursal_id=' + encodeURIComponent(s) + '&inicio=' + encodeURIComponent(i) + '&fin=' + encodeURIComponent(f);
-        }
-        document.getElementById('btn_excel_kardex').href = '{{ url_for("admin.reporte_kardex_exportar_excel") }}' + qs();
-        document.getElementById('btn_pdf_kardex').href = '{{ url_for("admin.reporte_kardex_exportar_pdf") }}' + qs();
-    })();
-    </script>
-
-    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
-        <div class="card-header bg-white py-3 border-bottom">
-            <h6 class="m-0 fw-bold text-primary">Detalle: Fecha, tipo documento, entrada/salida, costo unitario, saldo existencial</h6>
+    <div class="card kdx-filter-card shadow-sm">
+        <div class="kdx-filter-head"><i class="bi bi-funnel"></i> Filtros del kardex</div>
+        <div class="card-body kdx-filter-body">
+            <form method="GET" action="{{ url_for('admin.reporte_kardex_detallado') }}" class="row g-3 align-items-end" id="kdxForm">
+                <div class="col-12 col-md-6 col-lg-3">
+                    <label class="form-label">Producto</label>
+                    <select name="producto_id" class="form-select" id="filtro_producto_kardex">
+                        <option value="">— Todos —</option>
+                        {% for p in productos %}
+                        <option value="{{ p[0] }}" {{ 'selected' if producto_id == p[0] else '' }}>{{ (p[1] or '')[:45] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Sucursal</label>
+                    <select name="sucursal_id" class="form-select" id="filtro_sucursal_kardex">
+                        <option value="">— Todas —</option>
+                        {% for s in sucursales %}
+                        <option value="{{ s[0] }}" {{ 'selected' if sucursal_id == s[0] else '' }}>{{ s[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Desde</label>
+                    <input type="date" name="inicio" class="form-control" value="{{ inicio }}" id="filtro_inicio_kardex">
+                </div>
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" name="fin" class="form-control" value="{{ fin }}" id="filtro_fin_kardex">
+                </div>
+                <div class="col-12 col-lg-3">
+                    <div class="kdx-quick-dates mb-2">
+                        <a href="{{ url_for('admin.reporte_kardex_detallado', producto_id=producto_id or '', sucursal_id=sucursal_id or '', inicio=fecha_hoy|default(fin), fin=fecha_hoy|default(fin)) }}" class="kdx-quick-date"><i class="bi bi-sun"></i> Hoy</a>
+                        <a href="{{ url_for('admin.reporte_kardex_detallado', producto_id=producto_id or '', sucursal_id=sucursal_id or '', inicio=fin[:7] ~ '-01', fin=fecha_hoy|default(fin)) }}" class="kdx-quick-date"><i class="bi bi-calendar-month"></i> Este mes</a>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="kdx-filter-btn flex-grow-1"><i class="bi bi-funnel-fill"></i> Filtrar</button>
+                    </div>
+                </div>
+                <div class="col-12 col-lg-12">
+                    <div class="kdx-tool-row">
+                        <a href="#" class="kdx-tool-btn kdx-tool-btn--excel" id="btn_excel_kardex"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+                        <a href="#" class="kdx-tool-btn kdx-tool-btn--pdf" id="btn_pdf_kardex"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+                    </div>
+                </div>
+            </form>
         </div>
+    </div>
+
+    <div class="row kdx-kpi-row">
+        <div class="col-6 col-md-4">
+            <div class="card kdx-kpi shadow-sm">
+                <div class="kdx-kpi-icon kdx-kpi-icon--blue"><i class="bi bi-list-ol"></i></div>
+                <div class="kdx-kpi-label">Movimientos</div>
+                <div class="kdx-kpi-val">{{ n_movimientos|default(0) }}</div>
+                <div class="kdx-kpi-sub">{{ inicio }} → {{ fin }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4">
+            <div class="card kdx-kpi shadow-sm">
+                <div class="kdx-kpi-icon kdx-kpi-icon--green"><i class="bi bi-box-arrow-in-down"></i></div>
+                <div class="kdx-kpi-label">Total entradas</div>
+                <div class="kdx-kpi-val" style="color:var(--kdx-green)">{{ "{:,.2f}".format(total_entrada|default(0)|float) }}</div>
+                <div class="kdx-kpi-sub">UMB acumulada</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card kdx-kpi shadow-sm">
+                <div class="kdx-kpi-icon kdx-kpi-icon--red"><i class="bi bi-box-arrow-up"></i></div>
+                <div class="kdx-kpi-label">Total salidas</div>
+                <div class="kdx-kpi-val" style="color:var(--kdx-red)">{{ "{:,.2f}".format(total_salida|default(0)|float) }}</div>
+                <div class="kdx-kpi-sub">UMB acumulada</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card kdx-table-card shadow-sm">
+        <div class="kdx-table-head">
+            <h6><i class="bi bi-table"></i> Detalle de movimientos</h6>
+            <span class="kdx-count-badge" id="kdxVisibleCount">{{ n_filas }} visible{{ 's' if n_filas != 1 else '' }}</span>
+        </div>
+        {% if n_filas > 0 %}
+        <div class="px-3 pt-3">
+            <div class="kdx-tipo-chips" id="kdxTipoChips">
+                <button type="button" class="kdx-tipo-chip kdx-tipo-chip--active" data-tipo=""><i class="bi bi-grid"></i> Todos</button>
+                <button type="button" class="kdx-tipo-chip" data-tipo="entrada"><i class="bi bi-plus-circle"></i> Entradas</button>
+                <button type="button" class="kdx-tipo-chip" data-tipo="venta"><i class="bi bi-cart"></i> Ventas</button>
+                <button type="button" class="kdx-tipo-chip" data-tipo="salida"><i class="bi bi-dash-circle"></i> Salidas</button>
+                <button type="button" class="kdx-tipo-chip" data-tipo="traslado"><i class="bi bi-arrow-left-right"></i> Traslados</button>
+            </div>
+            <div class="kdx-search-wrap">
+                <i class="bi bi-search"></i>
+                <input type="search" class="kdx-search" id="kdxSearch" placeholder="Buscar producto, referencia, sucursal…" autocomplete="off">
+            </div>
+        </div>
+        {% endif %}
         <div class="table-responsive">
-            <table class="table align-middle m-0 table-hover table-sm">
-                <thead class="table-light">
+            <table class="table kdx-table align-middle" id="kdxTable">
+                <thead>
                     <tr>
-                        <th class="ps-4">Fecha</th>
+                        <th>Fecha</th>
+                        {% if show_producto %}<th>Producto</th>{% endif %}
                         <th>Tipo</th>
                         <th class="text-end">Entrada</th>
                         <th class="text-end">Salida</th>
@@ -81,26 +267,36 @@
                 </thead>
                 <tbody>
                     {% for r in filas %}
-                    <tr>
-                        <td class="ps-4 small text-nowrap">{{ r[0] }}</td>
+                    {% set tipo_raw = (r[1] or '')|upper %}
+                    {% set tipo_key = 'entrada' if 'ENTRADA' in tipo_raw else ('venta' if 'VENTA' in tipo_raw else ('salida' if 'SALIDA' in tipo_raw else ('traslado' if 'TRASLADO' in tipo_raw else 'otro'))) %}
+                    <tr class="kdx-row" data-tipo="{{ tipo_key }}" data-search="{{ ((r[10] if r|length > 10 else '') ~ ' ' ~ (r[7] or '') ~ ' ' ~ (r[8] or '') ~ ' ' ~ (r[9] or '') ~ ' ' ~ tipo_raw)|lower }}">
+                        <td class="kdx-fecha">{{ r[0] }}</td>
+                        {% if show_producto %}
+                        <td><span class="kdx-prod text-truncate d-inline-block" title="{{ r[10] if r|length > 10 else '' }}">{{ (r[10] if r|length > 10 else '—')[:32] }}</span></td>
+                        {% endif %}
                         <td>
-                            {% if r[1] == 'SALIDA_VENTA' %}<span class="badge bg-secondary">Venta</span>
-                            {% elif r[1] == 'ENTRADA' %}<span class="badge bg-success">Entrada</span>
-                            {% elif r[1] == 'SALIDA' %}<span class="badge bg-warning text-dark">Salida</span>
-                            {% elif r[1] == 'TRASLADO' %}<span class="badge bg-info text-dark">Traslado</span>
-                            {% else %}<span class="badge bg-light text-dark">{{ r[1] }}</span>{% endif %}
+                            {% if 'VENTA' in tipo_raw %}<span class="kdx-badge kdx-badge--venta"><i class="bi bi-cart"></i> Venta</span>
+                            {% elif 'ENTRADA' in tipo_raw %}<span class="kdx-badge kdx-badge--entrada"><i class="bi bi-plus-lg"></i> Entrada</span>
+                            {% elif 'SALIDA' in tipo_raw %}<span class="kdx-badge kdx-badge--salida"><i class="bi bi-dash-lg"></i> Salida</span>
+                            {% elif 'TRASLADO' in tipo_raw %}<span class="kdx-badge kdx-badge--traslado"><i class="bi bi-arrow-left-right"></i> Traslado</span>
+                            {% else %}<span class="kdx-badge kdx-badge--otro">{{ r[1] }}</span>{% endif %}
                         </td>
-                        <td class="text-end">{{ "%.2f"|format(r[3]|float) if r[3] else '0.00' }}</td>
-                        <td class="text-end">{{ "%.2f"|format(r[4]|float) if r[4] else '0.00' }}</td>
-                        <td class="text-end">$ {{ "%.4f"|format(r[5]|float) if r[5] else '0.00' }}</td>
-                        <td class="text-end fw-bold">{{ "%.2f"|format(r[6]|float) if r[6] is defined else '—' }}</td>
-                        <td class="small">{{ (r[8] or '') + (' → ' + (r[9] or '') if r[9] else '') }}</td>
-                        <td class="small text-muted">{{ r[7] or '' }}</td>
+                        <td class="text-end"><span class="kdx-num kdx-num--in">{{ "%.2f"|format(r[3]|float) if r[3] else '—' }}</span></td>
+                        <td class="text-end"><span class="kdx-num kdx-num--out">{{ "%.2f"|format(r[4]|float) if r[4] else '—' }}</span></td>
+                        <td class="text-end kdx-num">{% if r[5] %}$ {{ "%.2f"|format(r[5]|float) }}{% else %}—{% endif %}</td>
+                        <td class="text-end"><span class="kdx-saldo">{{ "%.2f"|format(r[6]|float) }}</span></td>
+                        <td>
+                            {% if r[8] and r[9] %}{{ r[8] }} → {{ r[9] }}
+                            {% elif r[8] %}{{ r[8] }}
+                            {% elif r[9] %}{{ r[9] }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td><span class="kdx-ref">{{ r[7] or '—' }}</span></td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="8" class="text-center py-5 text-muted">
-                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                        <td colspan="{{ 9 if show_producto else 8 }}" class="kdx-empty">
+                            <i class="bi bi-inbox"></i>
                             No hay movimientos en el período seleccionado.
                         </td>
                     </tr>
@@ -110,4 +306,54 @@
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    function qs() {
+        var p = document.getElementById('filtro_producto_kardex').value;
+        var s = document.getElementById('filtro_sucursal_kardex').value;
+        var i = document.getElementById('filtro_inicio_kardex').value;
+        var f = document.getElementById('filtro_fin_kardex').value;
+        return '?producto_id=' + encodeURIComponent(p) + '&sucursal_id=' + encodeURIComponent(s) + '&inicio=' + encodeURIComponent(i) + '&fin=' + encodeURIComponent(f);
+    }
+    var btnX = document.getElementById('btn_excel_kardex');
+    var btnP = document.getElementById('btn_pdf_kardex');
+    if (btnX) btnX.href = '{{ url_for("admin.reporte_kardex_exportar_excel") }}' + qs();
+    if (btnP) btnP.href = '{{ url_for("admin.reporte_kardex_exportar_pdf") }}' + qs();
+
+    var rows = document.querySelectorAll('.kdx-row');
+    var search = document.getElementById('kdxSearch');
+    var countEl = document.getElementById('kdxVisibleCount');
+    var tipoFilter = '';
+    var chips = document.querySelectorAll('.kdx-tipo-chip');
+
+    function applyFilters() {
+        var q = search ? (search.value || '').trim().toLowerCase() : '';
+        var visible = 0;
+        rows.forEach(function(row) {
+            var matchSearch = !q || (row.getAttribute('data-search') || '').indexOf(q) >= 0;
+            var matchTipo = !tipoFilter || (row.getAttribute('data-tipo') || '') === tipoFilter;
+            var show = matchSearch && matchTipo;
+            row.classList.toggle('kdx-row--hidden', !show);
+            if (show) visible++;
+        });
+        if (countEl) countEl.textContent = visible + ' visible' + (visible !== 1 ? 's' : '');
+    }
+    if (search) search.addEventListener('input', applyFilters);
+    chips.forEach(function(chip) {
+        chip.addEventListener('click', function() {
+            chips.forEach(function(c) { c.classList.remove('kdx-tipo-chip--active'); });
+            chip.classList.add('kdx-tipo-chip--active');
+            tipoFilter = chip.getAttribute('data-tipo') || '';
+            applyFilters();
+        });
+    });
+    rows.forEach(function(row) {
+        row.addEventListener('click', function() {
+            rows.forEach(function(r) { r.classList.remove('kdx-row--active'); });
+            row.classList.add('kdx-row--active');
+        });
+    });
+})();
+</script>
 {% endblock %}

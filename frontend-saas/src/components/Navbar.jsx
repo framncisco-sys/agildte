@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { useEmpresaStore } from '../stores/useEmpresaStore'
 import { useAuth } from '../context/AuthContext'
 import { ROLE_AGILDTE_ADMIN, ROLE_POSAGIL_ADMIN } from '../constants/roles'
-import { openPosAgilSso } from '../utils/posAgilUrl'
+import { PosAgilOpenButton } from './PosAgilOpenButton'
 
 export function Navbar({ onMenuClick }) {
   const navigate = useNavigate()
@@ -58,19 +58,8 @@ export function Navbar({ onMenuClick }) {
         ) : null}
         </div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
-        {mostrarAbrirPos && (
-          <button
-            type="button"
-            onClick={() => {
-              const t = useAuthStore.getState().token
-              openPosAgilSso(t)
-            }}
-            className="text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            Abrir Pos Agil
-          </button>
-        )}
+      <div className="flex items-center gap-4 shrink-0">
+        {mostrarAbrirPos && <PosAgilOpenButton />}
         <button
           onClick={handleLogout}
           className="text-sm text-agil-text-secondary hover:text-red-600 transition-colors"

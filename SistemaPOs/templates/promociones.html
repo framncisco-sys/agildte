@@ -1,85 +1,553 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
-<div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2 class="fw-bold text-dark"><i class="bi bi-tag text-warning"></i> Promociones</h2>
-            <p class="text-muted small mb-0">Ofertas con vigencia por fechas. Asigne productos y defina cuándo aplican (2x1, descuento %).</p>
-            {% if session.get('empresa_nombre') %}
-            <p class="small text-primary mt-1 mb-0"><i class="bi bi-building"></i> Empresa: <strong>{{ session.empresa_nombre }}</strong></p>
-            {% endif %}
+{% set ns = namespace(total=0, activas=0, inactivas=0) %}
+{% for p in promociones %}
+{% set ns.total = ns.total + 1 %}
+{% if p[6] %}{% set ns.activas = ns.activas + 1 %}{% else %}{% set ns.inactivas = ns.inactivas + 1 %}{% endif %}
+{% endfor %}
+<style>
+    .prom-wrap { --prom-gap: 0.75rem; }
+    .prom-header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: var(--prom-gap);
+        margin-bottom: 1rem;
+    }
+    .prom-header-main { display: flex; align-items: flex-start; gap: 0.65rem; min-width: 0; }
+    .prom-header-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+        color: #fff;
+        background: linear-gradient(145deg, #f59e0b 0%, #d97706 100%);
+        box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+        flex-shrink: 0;
+    }
+    .prom-header h2 {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0 0 0.2rem;
+        line-height: 1.15;
+    }
+    .prom-header p {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #64748b;
+        margin: 0;
+        line-height: 1.35;
+        max-width: 38rem;
+    }
+    .prom-empresa {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-top: 0.45rem;
+        padding: 0.32rem 0.65rem;
+        border-radius: 999px;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: #1d4ed8;
+    }
+    .prom-new-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.58rem 1.1rem;
+        border-radius: 11px;
+        font-size: 1rem;
+        font-weight: 800;
+        text-decoration: none;
+        color: #fff;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.32);
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+        white-space: nowrap;
+    }
+    .prom-new-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(37, 99, 235, 0.4); color: #fff; }
+    .prom-new-btn:active { transform: scale(0.98); }
+    .prom-new-btn-icon {
+        width: 1.85rem;
+        height: 1.85rem;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.2);
+        font-size: 1.05rem;
+    }
+    .prom-tabs-card {
+        border-radius: 12px !important;
+        border: 1px solid #e2e8f0 !important;
+        overflow: hidden;
+        margin-bottom: 0.85rem;
+    }
+    .prom-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        padding: 0.85rem 1rem;
+        background: linear-gradient(180deg, #fffbeb 0%, #fff 100%);
+    }
+    .prom-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.55rem 1rem 0.55rem 0.55rem;
+        border-radius: 14px;
+        border: 2px solid #e2e8f0;
+        background: #fff;
+        font-size: 1.02rem;
+        font-weight: 800;
+        color: #334155;
+        cursor: pointer;
+        transition: transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+    }
+    .prom-tab:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12); }
+    .prom-tab.is-active { box-shadow: 0 4px 18px rgba(245, 158, 11, 0.25); }
+    .prom-tab.is-active.prom-tab--all { border-color: #f59e0b; background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); color: #b45309; }
+    .prom-tab.is-active.prom-tab--ok { border-color: #16a34a; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); color: #047857; }
+    .prom-tab.is-active.prom-tab--off { border-color: #94a3b8; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); color: #475569; }
+    .prom-tab-icon {
+        width: 2.35rem;
+        height: 2.35rem;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+        transition: transform 0.25s ease;
+    }
+    .prom-tab:hover .prom-tab-icon { transform: scale(1.1) rotate(-3deg); }
+    .prom-tab-icon--all { background: linear-gradient(145deg, #fef3c7 0%, #fde68a 100%); color: #b45309; }
+    .prom-tab-icon--ok { background: linear-gradient(145deg, #dcfce7 0%, #bbf7d0 100%); color: #15803d; }
+    .prom-tab-icon--off { background: linear-gradient(145deg, #f1f5f9 0%, #e2e8f0 100%); color: #64748b; }
+    .prom-tab.is-active .prom-tab-icon--all { background: linear-gradient(145deg, #f59e0b 0%, #d97706 100%); color: #fff; animation: promIconPop 0.45s ease; }
+    .prom-tab.is-active .prom-tab-icon--ok { background: linear-gradient(145deg, #22c55e 0%, #16a34a 100%); color: #fff; animation: promIconPop 0.45s ease; }
+    .prom-tab-count {
+        min-width: 1.65rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.08);
+        font-size: 0.88rem;
+        font-weight: 900;
+    }
+    @keyframes promIconPop {
+        0% { transform: scale(0.75); }
+        60% { transform: scale(1.15); }
+        100% { transform: scale(1.05); }
+    }
+    .prom-search-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.65rem 1rem;
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+    }
+    .prom-search-box { flex: 1; position: relative; min-width: 0; }
+    .prom-search-box i {
+        position: absolute;
+        left: 0.85rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #64748b;
+        font-size: 1.05rem;
+        pointer-events: none;
+    }
+    .prom-search-box input {
+        width: 100%;
+        padding: 0.62rem 0.85rem 0.62rem 2.5rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 10px;
+        font-size: 1.05rem;
+        font-weight: 600;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .prom-search-box input:focus {
+        outline: none;
+        border-color: #f59e0b;
+        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.15);
+    }
+    .prom-vis-count { font-size: 0.95rem; font-weight: 800; color: #64748b; white-space: nowrap; }
+    .prom-vis-count strong { color: #d97706; font-size: 1.1rem; }
+    .prom-table-card {
+        border-radius: 12px !important;
+        border: 1px solid #e2e8f0 !important;
+        overflow: hidden;
+    }
+    .prom-table { margin-bottom: 0; width: 100%; }
+    .prom-table thead th {
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+        padding: 0.7rem 0.75rem;
+        white-space: nowrap;
+    }
+    .prom-table thead th:first-child { padding-left: 1rem; }
+    .prom-table thead th:last-child { padding-right: 1rem; }
+    .prom-table tbody tr {
+        transition: background 0.18s ease, box-shadow 0.18s ease;
+        border-bottom: 1px solid #f1f5f9;
+        cursor: default;
+    }
+    .prom-table tbody tr:hover {
+        background: linear-gradient(90deg, #fffbeb 0%, #fff 100%);
+        box-shadow: inset 4px 0 0 #f59e0b;
+    }
+    .prom-table tbody tr.prom-row--hidden { display: none; }
+    .prom-table tbody tr.prom-row--inactive { opacity: 0.78; }
+    .prom-table tbody td {
+        padding: 0.68rem 0.75rem;
+        vertical-align: middle;
+    }
+    .prom-table tbody td:first-child { padding-left: 1rem; }
+    .prom-table tbody td:last-child { padding-right: 1rem; }
+    .prom-nombre {
+        font-size: 1.08rem;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.25;
+    }
+    .prom-tipo {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.32rem 0.65rem;
+        border-radius: 999px;
+        font-size: 0.92rem;
+        font-weight: 800;
+    }
+    .prom-tipo--deal { background: #fef3c7; color: #b45309; }
+    .prom-tipo--pct { background: #dbeafe; color: #1d4ed8; }
+    .prom-tipo--gift { background: #dcfce7; color: #15803d; }
+    .prom-tipo--fixed { background: #ede9fe; color: #6d28d9; }
+    .prom-tipo--other { background: #f1f5f9; color: #475569; }
+    .prom-valor {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #334155;
+        font-variant-numeric: tabular-nums;
+    }
+    .prom-vigencia {
+        font-size: 0.98rem;
+        font-weight: 700;
+        color: #475569;
+        line-height: 1.3;
+    }
+    .prom-vigencia--open { color: #64748b; font-style: italic; }
+    .prom-prod-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2rem;
+        padding: 0.28rem 0.55rem;
+        border-radius: 8px;
+        background: #f1f5f9;
+        font-size: 1rem;
+        font-weight: 900;
+        color: #334155;
+    }
+    .prom-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        padding: 0.32rem 0.68rem;
+        border-radius: 999px;
+        font-size: 0.92rem;
+        font-weight: 800;
+    }
+    .prom-badge--ok { background: #dcfce7; color: #15803d; }
+    .prom-badge--off { background: #f1f5f9; color: #64748b; }
+    .prom-row-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.3rem;
+    }
+    .prom-row-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        padding: 0.42rem 0.68rem;
+        border-radius: 9px;
+        font-size: 0.92rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #334155;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        white-space: nowrap;
+    }
+    .prom-row-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1); color: inherit; }
+    .prom-row-btn--edit {
+        border-color: #bfdbfe;
+        background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+        color: #1d4ed8;
+    }
+    .prom-row-btn--del {
+        border-color: #fecaca;
+        background: linear-gradient(135deg, #fff 0%, #fef2f2 100%);
+        color: #b91c1c;
+    }
+    .prom-empty {
+        text-align: center;
+        padding: 3rem 1.5rem !important;
+    }
+    .prom-empty-icon {
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 1rem;
+        border-radius: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: #d97706;
+        background: linear-gradient(145deg, #fffbeb 0%, #fef3c7 100%);
+        box-shadow: 0 4px 16px rgba(245, 158, 11, 0.2);
+    }
+    .prom-empty h5 {
+        font-size: 1.25rem;
+        font-weight: 800;
+        color: #334155;
+        margin-bottom: 0.35rem;
+    }
+    .prom-empty p {
+        font-size: 1.02rem;
+        font-weight: 600;
+        color: #94a3b8;
+        margin-bottom: 1rem;
+    }
+    .prom-empty-cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.62rem 1.15rem;
+        border-radius: 10px;
+        font-size: 1rem;
+        font-weight: 800;
+        text-decoration: none;
+        color: #fff;
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+        transition: transform 0.15s ease;
+    }
+    .prom-empty-cta:hover { transform: translateY(-2px); color: #fff; }
+</style>
+
+<div class="container-fluid px-4 mt-4 prom-wrap">
+    <div class="prom-header">
+        <div class="prom-header-main">
+            <span class="prom-header-icon" aria-hidden="true"><i class="bi bi-tag-fill"></i></span>
+            <div>
+                <h2>Promociones</h2>
+                <p>Ofertas con vigencia por fechas. Asigne productos y defina cuándo aplican (2x1, descuento %, regalo, etc.).</p>
+                {% if session.get('empresa_nombre') %}
+                <span class="prom-empresa"><i class="bi bi-building-fill"></i> {{ session.empresa_nombre }}</span>
+                {% endif %}
+            </div>
         </div>
-        <a href="{{ url_for('admin.promociones_nueva') }}" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">
-            <i class="bi bi-plus-lg me-2"></i> NUEVA PROMOCIÓN
+        <a href="{{ url_for('admin.promociones_nueva') }}" class="prom-new-btn">
+            <span class="prom-new-btn-icon"><i class="bi bi-plus-lg"></i></span>
+            Nueva promoción
         </a>
     </div>
 
-    <div class="card border-0 shadow-sm rounded-4">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="bg-light">
-                        <tr>
-                            <th class="ps-4 py-3 text-muted small">NOMBRE</th>
-                            <th class="py-3 text-muted small">TIPO</th>
-                            <th class="py-3 text-muted small">VALOR</th>
-                            <th class="py-3 text-muted small">VIGENCIA</th>
-                            <th class="py-3 text-muted small text-center">PRODUCTOS</th>
-                            <th class="py-3 text-muted small text-center">ESTADO</th>
-                            <th class="py-3 text-muted small text-end pe-4">ACCIONES</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for p in promociones %}
-                        <tr>
-                            <td class="ps-4 fw-bold">{{ p[1] }}</td>
-                            <td>
-                                {% if p[2] == '2X1' %}<span class="badge bg-warning text-dark">2x1</span>
-                                {% elif p[2] == '3X2' %}<span class="badge bg-warning text-dark">3x2</span>
-                                {% elif p[2] == 'VOLUMEN' %}<span class="badge bg-warning text-dark">Volumen</span>
-                                {% elif p[2] == 'PORCENTAJE' %}<span class="badge bg-info">−{{ p[3] }}%</span>
-                                {% elif p[2] == 'DESCUENTO_MONTO' %}<span class="badge bg-secondary">$ desc.</span>
-                                {% elif p[2] == 'REGALO' %}<span class="badge bg-success">Regalo</span>
-                                {% elif p[2] == 'PRECIO_FIJO' %}<span class="badge bg-primary">Precio fijo</span>
-                                {% elif p[2] == 'DESCUENTO_CANTIDAD' %}<span class="badge bg-info">Desc. cantidad</span>
-                                {% else %}<span class="badge bg-light text-dark">{{ p[2] }}</span>{% endif %}
-                            </td>
-                            <td>{% if p[2] == 'PORCENTAJE' %}{{ p[3] }}%{% elif p[2] == 'DESCUENTO_MONTO' %}—{% elif p[2] == 'PRECIO_FIJO' %}${% if p[3] %}{{ "%.2f"|format(p[3]|float) }}{% else %}—{% endif %}{% elif p[2] == 'DESCUENTO_CANTIDAD' %}{{ p[3] }}%{% if p[-2] is not none %} (min {{ p[-2] }}){% endif %}{% else %}—{% endif %}</td>
-                            <td class="small">
-                                {% if p[4] or p[5] %}
-                                {{ (p[4]|string)[:10] if p[4] else '—' }} al {{ (p[5]|string)[:10] if p[5] else '—' }}
-                                {% else %}
-                                <span class="text-muted">Sin límite</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">{{ p[-1] if p else 0 }}</td>
-                            <td class="text-center">
-                                {% if p[6] %}
-                                <span class="badge bg-success">Activa</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inactiva</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-end pe-4">
-                                <a href="{{ url_for('admin.promociones_editar', promocion_id=p[0]) }}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil-square"></i> Editar</a>
-                                <form action="{{ url_for('admin.promociones_eliminar', promocion_id=p[0]) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar esta promoción?');">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash3"></i></button>
-                                </form>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="7" class="text-center py-5 text-muted">
-                                <i class="bi bi-tag fs-1 d-block mb-2"></i>
-                                No hay promociones. <a href="{{ url_for('admin.promociones_nueva') }}">Crear una</a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+    <div class="card prom-tabs-card shadow-sm">
+        <div class="prom-tabs" role="tablist">
+            <button type="button" class="prom-tab prom-tab--all is-active" data-prom-filter="all">
+                <span class="prom-tab-icon prom-tab-icon--all"><i class="bi bi-tags-fill"></i></span>
+                <span>Todas</span>
+                <span class="prom-tab-count">{{ ns.total }}</span>
+            </button>
+            <button type="button" class="prom-tab prom-tab--ok" data-prom-filter="activa">
+                <span class="prom-tab-icon prom-tab-icon--ok"><i class="bi bi-check-circle-fill"></i></span>
+                <span>Activas</span>
+                <span class="prom-tab-count">{{ ns.activas }}</span>
+            </button>
+            <button type="button" class="prom-tab prom-tab--off" data-prom-filter="inactiva">
+                <span class="prom-tab-icon prom-tab-icon--off"><i class="bi bi-pause-circle-fill"></i></span>
+                <span>Inactivas</span>
+                <span class="prom-tab-count">{{ ns.inactivas }}</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="card prom-table-card shadow-sm">
+        <div class="prom-search-bar">
+            <div class="prom-search-box">
+                <i class="bi bi-search"></i>
+                <input type="search" id="promBuscar" placeholder="Buscar promoción por nombre o tipo…" autocomplete="off">
             </div>
+            <span class="prom-vis-count">Mostrando <strong id="promVisCount">{{ ns.total }}</strong> de {{ ns.total }}</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table prom-table align-middle">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Tipo</th>
+                        <th>Valor</th>
+                        <th>Vigencia</th>
+                        <th class="text-center">Productos</th>
+                        <th class="text-center">Estado</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="promTableBody">
+                    {% for p in promociones %}
+                    <tr class="prom-data-row {% if not p[6] %}prom-row--inactive{% endif %}"
+                        data-nombre="{{ (p[1] or '')|lower|e }}"
+                        data-tipo="{{ (p[2] or '')|lower|e }}"
+                        data-activa="{{ '1' if p[6] else '0' }}">
+                        <td><span class="prom-nombre">{{ p[1] }}</span></td>
+                        <td>
+                            {% if p[2] in ('2X1', '3X2', 'VOLUMEN') %}
+                            <span class="prom-tipo prom-tipo--deal"><i class="bi bi-percent"></i>
+                                {% if p[2] == '2X1' %}2×1{% elif p[2] == '3X2' %}3×2{% else %}Volumen{% endif %}
+                            </span>
+                            {% elif p[2] == 'PORCENTAJE' %}
+                            <span class="prom-tipo prom-tipo--pct"><i class="bi bi-tag"></i> −{{ p[3] }}%</span>
+                            {% elif p[2] == 'REGALO' %}
+                            <span class="prom-tipo prom-tipo--gift"><i class="bi bi-gift"></i> Regalo</span>
+                            {% elif p[2] == 'PRECIO_FIJO' %}
+                            <span class="prom-tipo prom-tipo--fixed"><i class="bi bi-currency-dollar"></i> Precio fijo</span>
+                            {% elif p[2] == 'DESCUENTO_MONTO' %}
+                            <span class="prom-tipo prom-tipo--other"><i class="bi bi-cash"></i> $ desc.</span>
+                            {% elif p[2] == 'DESCUENTO_CANTIDAD' %}
+                            <span class="prom-tipo prom-tipo--pct"><i class="bi bi-boxes"></i> Desc. cant.</span>
+                            {% else %}
+                            <span class="prom-tipo prom-tipo--other">{{ p[2] }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="prom-valor">
+                                {% if p[2] == 'PORCENTAJE' %}{{ p[3] }}%
+                                {% elif p[2] == 'DESCUENTO_MONTO' %}—
+                                {% elif p[2] == 'PRECIO_FIJO' %}${% if p[3] %}{{ "%.2f"|format(p[3]|float) }}{% else %}—{% endif %}
+                                {% elif p[2] == 'DESCUENTO_CANTIDAD' %}{{ p[3] }}%{% if p[7] is not none %} · min {{ p[7] }}{% endif %}
+                                {% else %}—{% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            {% if p[4] or p[5] %}
+                            <span class="prom-vigencia">
+                                <i class="bi bi-calendar-range text-warning"></i>
+                                {{ (p[4]|string)[:10] if p[4] else '—' }} → {{ (p[5]|string)[:10] if p[5] else '—' }}
+                            </span>
+                            {% else %}
+                            <span class="prom-vigencia prom-vigencia--open"><i class="bi bi-infinity"></i> Sin límite de fechas</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center"><span class="prom-prod-count">{{ p[8] if p|length > 8 else (p[-1] if p else 0) }}</span></td>
+                        <td class="text-center">
+                            {% if p[6] %}
+                            <span class="prom-badge prom-badge--ok"><i class="bi bi-check-circle-fill"></i> Activa</span>
+                            {% else %}
+                            <span class="prom-badge prom-badge--off"><i class="bi bi-pause-circle"></i> Inactiva</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <div class="prom-row-actions">
+                                <a href="{{ url_for('admin.promociones_editar', promocion_id=p[0]) }}" class="prom-row-btn prom-row-btn--edit" title="Editar promoción">
+                                    <i class="bi bi-pencil-square"></i> Editar
+                                </a>
+                                <form action="{{ url_for('admin.promociones_eliminar', promocion_id=p[0]) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar la promoción «{{ p[1]|e }}»?');">
+                                    <button type="submit" class="prom-row-btn prom-row-btn--del" title="Eliminar">
+                                        <i class="bi bi-trash3"></i> Eliminar
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="prom-empty">
+                            <div class="prom-empty-icon"><i class="bi bi-tag"></i></div>
+                            <h5>No hay promociones registradas</h5>
+                            <p>Cree ofertas 2×1, descuentos por porcentaje o regalos y asígnelas a productos del inventario.</p>
+                            <a href="{{ url_for('admin.promociones_nueva') }}" class="prom-empty-cta">
+                                <i class="bi bi-plus-circle-fill"></i> Crear primera promoción
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
+<script>
+(function() {
+    var tbody = document.getElementById('promTableBody');
+    if (!tbody) return;
+    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr.prom-data-row'));
+    if (!rows.length) return;
+
+    var tabFilter = 'all';
+    var searchQ = '';
+
+    function rowVisible(tr) {
+        if (tabFilter === 'activa' && tr.getAttribute('data-activa') !== '1') return false;
+        if (tabFilter === 'inactiva' && tr.getAttribute('data-activa') !== '0') return false;
+        if (searchQ) {
+            var nom = tr.getAttribute('data-nombre') || '';
+            var tipo = tr.getAttribute('data-tipo') || '';
+            if (nom.indexOf(searchQ) === -1 && tipo.indexOf(searchQ) === -1) return false;
+        }
+        return true;
+    }
+
+    function applyFilters() {
+        var vis = 0;
+        rows.forEach(function(tr) {
+            var ok = rowVisible(tr);
+            tr.classList.toggle('prom-row--hidden', !ok);
+            if (ok) vis++;
+        });
+        var el = document.getElementById('promVisCount');
+        if (el) el.textContent = vis;
+    }
+
+    function setTab(filter) {
+        tabFilter = filter;
+        document.querySelectorAll('.prom-tab[data-prom-filter]').forEach(function(btn) {
+            btn.classList.toggle('is-active', btn.getAttribute('data-prom-filter') === filter);
+        });
+        applyFilters();
+    }
+
+    document.querySelectorAll('.prom-tab[data-prom-filter]').forEach(function(btn) {
+        btn.addEventListener('click', function() { setTab(btn.getAttribute('data-prom-filter')); });
+    });
+
+    var inp = document.getElementById('promBuscar');
+    if (inp) {
+        inp.addEventListener('input', function() {
+            searchQ = (inp.value || '').toLowerCase().trim();
+            applyFilters();
+        });
+    }
+
+    applyFilters();
+})();
+</script>
 {% endblock %}

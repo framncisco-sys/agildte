@@ -44,6 +44,7 @@ def listar_kardex_detallado(
             k.sucursal_id,
             k.sucursal_destino_id,
             k.referencia,
+            k.producto_id,
             GREATEST(0, COALESCE(NULLIF(k.costo_unitario, 0), NULLIF(p.costo_unitario, 0), p.precio_unitario, 0)) AS costo_unit,
             p.nombre AS producto_nombre,
             so.nombre AS suc_origen,
@@ -69,6 +70,7 @@ def listar_kardex_detallado(
         m.referencia,
         m.suc_origen,
         m.suc_destino,
+        m.producto_id,
         m.producto_nombre
     FROM movs m
     ORDER BY m.creado_en ASC, m.id ASC
@@ -81,14 +83,14 @@ def listar_kardex_detallado(
     saldo_por_producto: dict[str, float] = {}
     out = []
     for r in rows:
-        prod = r[8] or ""
+        prod = str(r[9] or "")
         tipo = (r[1] or "").upper()
         cant = float(r[2] or 0)
         ent = float(r[3] or 0)
         sal = float(r[4] or 0)
         saldo_actual = saldo_por_producto.get(prod, 0) + ent - sal
         saldo_por_producto[prod] = saldo_actual
-        out.append((*r[:6], round(saldo_actual, 4), *r[6:9]))
+        out.append((*r[:6], round(saldo_actual, 4), r[6], r[7], r[8], r[10]))
     return out
 
 
@@ -150,12 +152,13 @@ def listar_valuacion_inventario(
             COALESCE(p.codigo_barra, ''),
             COALESCE(NULLIF(TRIM(p.unidad_medida), ''), 'UNI'),
             COALESCE(pss.cantidad, 0),
-            GREATEST(0, COALESCE(NULLIF(p.costo_unitario, 0), p.precio_unitario, 0)),
-            COALESCE(pss.cantidad, 0) * GREATEST(0, COALESCE(NULLIF(p.costo_unitario, 0), p.precio_unitario, 0)),
+            GREATEST(0, COALESCE(NULLIF(p.costo_unitario, 0), NULLIF(p.precio_unitario, 0), 0)),
+            COALESCE(pss.cantidad, 0) * GREATEST(0, COALESCE(NULLIF(p.costo_unitario, 0), NULLIF(p.precio_unitario, 0), 0)),
             COALESCE(p.metodo_valuacion, 'PROMEDIO')
         FROM productos p
         LEFT JOIN producto_stock_sucursal pss ON pss.producto_id = p.id AND pss.sucursal_id = %s
         WHERE p.empresa_id = %s
+          AND COALESCE(pss.cantidad, 0) > 0
         ORDER BY p.nombre
         """
         cur.execute(sql, (sucursal_id, empresa_id))
@@ -166,11 +169,12 @@ def listar_valuacion_inventario(
             COALESCE(p.codigo_barra, ''),
             COALESCE(NULLIF(TRIM(p.unidad_medida), ''), 'UNI'),
             COALESCE(p.stock_actual, 0),
-            GREATEST(0, COALESCE(NULLIF(p.costo_unitario, 0), p.precio_unitario, 0)),
-            COALESCE(p.stock_actual, 0) * GREATEST(0, COALESCE(NULLIF(p.costo_unitario, 0), p.precio_unitario, 0)),
+            GREATEST(0, COALESCE(NULLIF(p.costo_unitario, 0), NULLIF(p.precio_unitario, 0), 0)),
+            COALESCE(p.stock_actual, 0) * GREATEST(0, COALESCE(NULLIF(p.costo_unitario, 0), NULLIF(p.precio_unitario, 0), 0)),
             COALESCE(p.metodo_valuacion, 'PROMEDIO')
         FROM productos p
         WHERE p.empresa_id = %s
+          AND COALESCE(p.stock_actual, 0) > 0
         ORDER BY p.nombre
         """
         cur.execute(sql, (empresa_id,))

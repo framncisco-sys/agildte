@@ -82,6 +82,26 @@ def _render_dashboard():
         (hoy, emp_id),
         es_select=True,
     )
+    ventas_hoy_val = round(float(v_hoy[0][0]), 2) if v_hoy and v_hoy[0][0] else 0.00
+    ayer = hoy - timedelta(days=1)
+    v_ayer = db.ejecutar_sql(
+        """SELECT COALESCE(SUM(total_pagar), 0) FROM ventas
+           WHERE fecha_registro::date = %s
+           AND (empresa_id IS NULL OR empresa_id = %s)
+           AND COALESCE(estado, 'ACTIVO') = 'ACTIVO'""",
+        (ayer, emp_id),
+        es_select=True,
+    )
+    ventas_ayer_val = round(float(v_ayer[0][0]), 2) if v_ayer and v_ayer[0][0] else 0.00
+    n_hoy = db.ejecutar_sql(
+        """SELECT COUNT(*) FROM ventas
+           WHERE fecha_registro::date = %s
+           AND (empresa_id IS NULL OR empresa_id = %s)
+           AND COALESCE(estado, 'ACTIVO') = 'ACTIVO'""",
+        (hoy, emp_id),
+        es_select=True,
+    )
+    n_ventas_hoy = int(n_hoy[0][0]) if n_hoy and n_hoy[0][0] else 0
     try:
         p_count = db.ejecutar_sql("SELECT COUNT(*) FROM productos WHERE empresa_id = %s", (emp_id,), es_select=True)
     except Exception:
@@ -94,7 +114,7 @@ def _render_dashboard():
     e_count = db.ejecutar_sql("SELECT COUNT(*) FROM empresas WHERE id = %s", (emp_id,), es_select=True)
     s_count = db.ejecutar_sql("SELECT COUNT(*) FROM sucursales WHERE empresa_id = %s", (emp_id,), es_select=True)
     resumen = {
-        "total_ventas": round(float(v_hoy[0][0]), 2) if v_hoy and v_hoy[0][0] else 0.00,
+        "total_ventas": ventas_hoy_val,
         "total_productos": p_count[0][0] if p_count else 0,
         "total_usuarios": u_count[0][0] if u_count else 0,
         "total_empresas": e_count[0][0] if e_count else 0,
@@ -147,7 +167,8 @@ def _render_dashboard():
         """SELECT COALESCE(UPPER(TRIM(tipo_comprobante)), 'TICKET'),
                   COALESCE(SUM(total_pagar - (total_pagar/1.13)), 0),
                   COALESCE(SUM(retencion_iva), 0),
-                  COUNT(*)
+                  COUNT(*),
+                  COALESCE(SUM(total_pagar), 0)
            FROM ventas
            WHERE fecha_registro::date >= %s AND fecha_registro::date <= %s
              AND (empresa_id IS NULL OR empresa_id = %s)
@@ -159,15 +180,18 @@ def _render_dashboard():
     iva_debito_ccf = iva_debito_cf = iva_debito_ticket = 0.0
     retenciones_ventas = 0.0
     n_ventas_ccf = n_ventas_cf = n_ventas_ticket = 0
+    total_ccf_mes = 0.0
     for row in iva_por_tipo:
         tipo = (row[0] or "TICKET").upper()
         iva_row = float(row[1] or 0)
         ret_row = float(row[2] or 0) if len(row) > 2 else 0.0
         cnt = int(row[3] or 0) if len(row) > 3 else 0
+        total_tipo = float(row[4] or 0) if len(row) > 4 else 0.0
         retenciones_ventas += ret_row
         if tipo == "CREDITO_FISCAL":
             iva_debito_ccf += iva_row
             n_ventas_ccf += cnt
+            total_ccf_mes += total_tipo
         elif tipo == "FACTURA":
             iva_debito_cf += iva_row
             n_ventas_cf += cnt
@@ -177,6 +201,7 @@ def _render_dashboard():
     iva_debito_ccf = round(iva_debito_ccf, 2)
     iva_debito_cf = round(iva_debito_cf, 2)
     iva_debito_ticket = round(iva_debito_ticket, 2)
+    total_ccf_mes = round(total_ccf_mes, 2)
     iva_debito = round(iva_debito_ccf + iva_debito_cf + iva_debito_ticket, 2)
     retenciones_ventas = round(retenciones_ventas, 2)
     iva_compras = db.ejecutar_sql(
@@ -209,15 +234,18 @@ def _render_dashboard():
             pass
         try:
             cur.execute(
-                """SELECT COALESCE(c.nombre_cliente, v.cliente_nombre, 'Cliente'), COALESCE(SUM(v.total_pagar), 0)
+                """SELECT COALESCE(c.nombre_cliente, v.cliente_nombre, 'Cliente'),
+                          COALESCE(SUM(v.total_pagar), 0),
+                          COUNT(*)::int
                    FROM ventas v
                    LEFT JOIN clientes c ON c.id = v.cliente_id
-                   WHERE v.fecha_registro::date >= %s AND (v.empresa_id IS NULL OR v.empresa_id = %s)
+                   WHERE v.fecha_registro::date >= %s AND v.fecha_registro::date <= %s
+                   AND (v.empresa_id IS NULL OR v.empresa_id = %s)
                    AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
                    AND COALESCE(v.tipo_comprobante, '') = 'CREDITO_FISCAL'
                    GROUP BY v.cliente_id, c.nombre_cliente, v.cliente_nombre
-                   ORDER BY 2 DESC LIMIT 3""",
-                (primer_dia_mes, emp_id),
+                   ORDER BY 2 DESC LIMIT 5""",
+                (primer_dia_mes, hoy, emp_id),
             )
             top_clientes_cf = cur.fetchall() or []
         except Exception:
@@ -236,6 +264,33 @@ def _render_dashboard():
         (desde, emp_id),
         es_select=True,
     ) or []
+    _DIAS_CORTO = ("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
+    dia_hoy_nombre = _DIAS_CORTO[hoy.weekday()]
+    ventas_por_dia = {}
+    for row in ventas_7d:
+        fd = row[0]
+        if hasattr(fd, "isoformat"):
+            ventas_por_dia[fd.isoformat()] = float(row[1] or 0)
+        else:
+            ventas_por_dia[str(fd)[:10]] = float(row[1] or 0)
+    labels_ventas = []
+    valores_ventas = []
+    fechas_ventas = []
+    for offset in range(6, -1, -1):
+        dia = hoy - timedelta(days=offset)
+        iso = dia.isoformat()
+        fechas_ventas.append(iso)
+        labels_ventas.append(f"{_DIAS_CORTO[dia.weekday()]} {dia.strftime('%d/%m')}")
+        valores_ventas.append(round(ventas_por_dia.get(iso, 0.0), 2))
+    _MESES_CORTO = ("Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+    _MESES_LARGO = (
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+    )
+    mes_corto = _MESES_CORTO[hoy.month - 1]
+    mes_largo = _MESES_LARGO[hoy.month - 1]
+    pct_avance_mes = min(100, round((dias_transcurridos / dias_en_mes) * 100)) if dias_en_mes else 0
+    prom_diario_mes_val = round(prom_diario_mes, 2)
     try:
         top_productos = db.ejecutar_sql(
             """SELECT p.nombre, COALESCE(SUM(dv.cantidad), 0)::int
@@ -261,8 +316,9 @@ def _render_dashboard():
     return render_template(
         "dashboard.html",
         resumen=resumen,
-        labels_ventas=[str(r[0]) for r in ventas_7d],
-        valores_ventas=[float(r[1]) for r in ventas_7d],
+        labels_ventas=labels_ventas,
+        valores_ventas=valores_ventas,
+        fechas_ventas=fechas_ventas,
         top_productos=top_productos,
         nombres_top=[r[0] for r in top_productos],
         cantidades_top=[r[1] for r in top_productos],
@@ -271,6 +327,18 @@ def _render_dashboard():
         ventas_mes_anterior=ventas_mes_anterior,
         dias_transcurridos=dias_transcurridos,
         dias_en_mes=dias_en_mes,
+        mes_corto=mes_corto,
+        mes_largo=mes_largo,
+        ano_mes=ano_actual,
+        pct_avance_mes=pct_avance_mes,
+        inicio_mes=primer_dia_mes.isoformat(),
+        fin_mes=hoy.isoformat(),
+        prom_diario_mes=prom_diario_mes_val,
+        fecha_hoy=hoy.isoformat(),
+        fecha_hoy_fmt=hoy.strftime("%d/%m/%Y"),
+        dia_hoy_nombre=dia_hoy_nombre,
+        ventas_ayer=ventas_ayer_val,
+        n_ventas_hoy=n_ventas_hoy,
         dte_rechazados=dte_rechazados_cnt,
         iva_debito=iva_debito,
         iva_debito_ccf=iva_debito_ccf,
@@ -286,6 +354,7 @@ def _render_dashboard():
         ventas_sucursal=ventas_sucursal,
         dte_pendientes=dte_pendientes_cnt,
         top_clientes_cf=top_clientes_cf,
+        total_ccf_mes=total_ccf_mes,
     )
 
 

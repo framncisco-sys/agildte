@@ -163,10 +163,45 @@ def _obtener_ventas_periodo(inicio: str, fin: str, empresa_id: int = None):
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte():
     db = ConexionDB()
-    inicio = request.args.get("inicio", hoy_sv_str())
-    fin = request.args.get("fin", hoy_sv_str())
-    ventas_detalle = _obtener_ventas_periodo(inicio, fin)
     emp = _empresa_id()
+    hoy = hoy_sv()
+    inicio_param = request.args.get("inicio")
+    fin_param = request.args.get("fin")
+    primer_dia_mes = hoy.replace(day=1)
+    inicio = (inicio_param or primer_dia_mes.isoformat()).strip()[:10]
+    fin = (fin_param or hoy.isoformat()).strip()[:10]
+    fecha_auto = False
+    ultima_fecha_ventas = None
+    primera_fecha_ventas = None
+    total_ventas_empresa = 0
+
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT MIN(fecha_registro::date), MAX(fecha_registro::date), COUNT(*)
+            FROM ventas
+            WHERE (empresa_id IS NULL OR empresa_id = %s)
+              AND COALESCE(estado, 'ACTIVO') = 'ACTIVO'
+            """,
+            (emp,),
+        )
+        row_rng = cur.fetchone()
+        if row_rng and row_rng[2]:
+            primera_fecha_ventas = row_rng[0].isoformat() if row_rng[0] else None
+            ultima_fecha_ventas = row_rng[1].isoformat() if row_rng[1] else None
+            total_ventas_empresa = int(row_rng[2])
+    finally:
+        cur.close()
+        conn.close()
+
+    ventas_detalle = _obtener_ventas_periodo(inicio, fin, empresa_id=emp)
+    if not ventas_detalle and not inicio_param and not fin_param and ultima_fecha_ventas:
+        inicio = primera_fecha_ventas or ultima_fecha_ventas
+        fin = ultima_fecha_ventas
+        ventas_detalle = _obtener_ventas_periodo(inicio, fin, empresa_id=emp)
+        fecha_auto = True
     sql_evol = """
         SELECT fecha_registro::date, SUM(total_pagar)
         FROM ventas
@@ -251,6 +286,11 @@ def reporte():
         ventas_detalle=ventas_detalle or [],
         inicio=inicio,
         fin=fin,
+        fecha_hoy=hoy.isoformat(),
+        fecha_auto=fecha_auto,
+        ultima_fecha_ventas=ultima_fecha_ventas,
+        primera_fecha_ventas=primera_fecha_ventas,
+        total_ventas_empresa=total_ventas_empresa,
         total_periodo=total_periodo,
         promedio_diario=promedio_diario,
         promedio_mensual=promedio_mensual,
@@ -684,17 +724,36 @@ def reporte_kardex_detallado():
                 flash("Ejecute: python scripts/alter_productos_costo_valuacion.py", "warning")
             else:
                 flash(str(e), "danger")
+        filas_fmt = []
+        total_entrada = 0.0
+        total_salida = 0.0
+        for r in filas or []:
+            fecha_raw = r[0]
+            if hasattr(fecha_raw, "strftime"):
+                fecha_txt = fecha_raw.strftime("%d/%m/%Y %H:%M")
+            else:
+                fecha_txt = str(fecha_raw or "")[:16]
+            ent = float(r[3] or 0)
+            sal = float(r[4] or 0)
+            total_entrada += ent
+            total_salida += sal
+            filas_fmt.append((fecha_txt, *r[1:]))
         productos = _get_productos_para_filtro(cur, emp_id)
         sucursales = sucursales_repo.listar_sucursales_min(cur, empresa_id=emp_id) or []
+        hoy = hoy_sv()
         return render_template(
             "reporte_kardex_detallado.html",
-            filas=filas,
+            filas=filas_fmt,
             productos=productos,
             sucursales=sucursales,
             producto_id=prod_id,
             sucursal_id=suc_id,
             inicio=inicio,
             fin=fin,
+            fecha_hoy=hoy.isoformat(),
+            n_movimientos=len(filas_fmt),
+            total_entrada=total_entrada,
+            total_salida=total_salida,
         )
     finally:
         cur.close()
@@ -718,10 +777,30 @@ def reporte_f983():
                 flash("Ejecute: python scripts/alter_productos_costo_valuacion.py", "warning")
             else:
                 flash(str(e), "danger")
+        total_inv_final = 0.0
+        total_compras = 0.0
+        total_ventas = 0.0
+        valor_inventario = 0.0
+        for r in filas or []:
+            inv_fin = float(r[6] or 0)
+            comp = float(r[4] or 0)
+            vent = float(r[5] or 0)
+            costo = float(r[7] or 0)
+            total_inv_final += inv_fin
+            total_compras += comp
+            total_ventas += vent
+            valor_inventario += inv_fin * costo
+        hoy = hoy_sv()
         return render_template(
             "reporte_f983.html",
             filas=filas,
             ejercicio=ejercicio,
+            ejercicio_actual=hoy.year,
+            n_productos=len(filas or []),
+            total_inv_final=total_inv_final,
+            total_compras=total_compras,
+            total_ventas=total_ventas,
+            valor_inventario=valor_inventario,
         )
     finally:
         cur.close()
@@ -773,13 +852,32 @@ def reporte_valuacion():
             else:
                 flash(str(e), "danger")
         sucursales = sucursales_repo.listar_sucursales_min(cur, empresa_id=emp_id) or []
-        total_valor = sum(float(r[5] or 0) for r in filas)
+        total_valor = 0.0
+        total_cantidad = 0.0
+        n_sin_costo = 0
+        for r in filas or []:
+            qty = float(r[3] or 0)
+            costo = float(r[4] or 0)
+            total_cantidad += qty
+            total_valor += float(r[5] or 0)
+            if qty > 0 and costo <= 0:
+                n_sin_costo += 1
+        sucursal_nombre = "Consolidado (todas)"
+        if suc_id:
+            for s in sucursales:
+                if s[0] == suc_id:
+                    sucursal_nombre = s[1]
+                    break
         return render_template(
             "reporte_valuacion.html",
             filas=filas,
             sucursales=sucursales,
             sucursal_id=suc_id,
+            sucursal_nombre=sucursal_nombre,
             total_valor=total_valor,
+            total_cantidad=total_cantidad,
+            n_productos=len(filas or []),
+            n_sin_costo=n_sin_costo,
         )
     finally:
         cur.close()
@@ -1061,15 +1159,24 @@ def reporte_productos_baja():
     try:
         es_super = _es_superadmin_db(cur)
         emp_id = None if es_super else _empresa_id()
+        if es_super:
+            emp_raw = request.args.get("empresa_id", "").strip()
+            if emp_raw.isdigit():
+                emp_id = int(emp_raw)
         productos_repo.asegurar_columnas_baja(cur)
         filas = productos_repo.listar_productos_baja(cur, empresa_id=emp_id, limit=500)
         empresas = (empresas_repo.listar_empresas(cur) or []) if es_super else []
+        total_stock_baja = sum(float(r[9] or 0) for r in filas if len(r) > 9)
+        roles_unicos = len({str(r[8] or "") for r in filas if r[8]})
         return render_template(
             "reporte_productos_baja.html",
             filas=filas,
             es_superadmin=es_super,
             empresas=empresas,
             empresa_id_filtro=emp_id,
+            n_bajas=len(filas),
+            total_stock_baja=total_stock_baja,
+            n_roles=roles_unicos,
         )
     finally:
         cur.close()
@@ -1236,6 +1343,11 @@ def reporte_movimientos():
         sucursales = sucursales_repo.listar_sucursales_min(cur, empresa_id=emp_id) or []
         empresas = empresas_repo.listar_empresas(cur) or [] if es_super else []
         productos_con_stock = inventario_reports_repo.listar_productos_para_conteo(cur, emp_id, suc_id)
+        n_ajustes = sum(
+            1 for r in filas
+            if str(r[2] or "").upper() in ("AJUSTE_ENTRADA", "AJUSTE_SALIDA")
+        )
+        total_stock_unidades = sum(float(p[3] or 0) for p in (productos_con_stock or []))
         return render_template(
             "reporte_movimientos.html",
             filas=filas,
@@ -1253,7 +1365,11 @@ def reporte_movimientos():
             total_sist=total_sist,
             total_ajus=total_ajus,
             total_diff=total_diff,
-            fecha_hoy=hoy_sv_str(),
+            n_movimientos=len(filas),
+            n_ajustes=n_ajustes,
+            n_productos_stock=len(productos_con_stock or []),
+            total_stock_unidades=total_stock_unidades,
+            fecha_hoy=hoy.strftime("%Y-%m-%d"),
             etiqueta_motivo=kardex_repo.etiqueta_motivo_ajuste,
             umbral_impacto_ajuste_usd=kardex_repo.UMBRAL_IMPACTO_AJUSTE_USD,
             umbral_cantidad_ajuste_umb=kardex_repo.UMBRAL_CANTIDAD_AJUSTE_UMB,
@@ -1396,7 +1512,7 @@ def reporte_kardex_exportar_excel():
         c.font, c.fill, c.alignment, c.border = st["font_header"], st["fill_header"], st["align_center"], st["border_all"]
     for i, row in enumerate(filas):
         rr = hdr + 1 + i
-        vals = [str(row[0]), str(row[1]), float(row[3] or 0), float(row[4] or 0), float(row[5] or 0), float(row[6] or 0), str(row[8] or ""), str(row[9] or ""), str(row[7] or "")]
+        vals = [str(row[0])[:16] if not hasattr(row[0], "strftime") else row[0].strftime("%d/%m/%Y %H:%M"), str(row[1]), float(row[3] or 0), float(row[4] or 0), float(row[5] or 0), float(row[6] or 0), str(row[8] or ""), str(row[9] or ""), str(row[7] or "")]
         for col, val in enumerate(vals, 1):
             cell = ws.cell(rr, col, val)
             cell.border = st["border_all"]
@@ -1445,7 +1561,12 @@ def reporte_kardex_exportar_pdf():
     headers = ["Fecha", "Tipo", "Ent.", "Sal.", "Costo", "Saldo", "Origen/Dest.", "Ref."]
     data_rows = []
     for row in filas:
-        data_rows.append([str(row[0])[:16], str(row[1])[:8], f"{float(row[3] or 0):.1f}", f"{float(row[4] or 0):.1f}", f"${float(row[5] or 0):.2f}", f"{float(row[6] or 0):.1f}", (str(row[8] or "") + " → " + str(row[9] or ""))[:25], (str(row[7] or ""))[:20]])
+        fecha_raw = row[0]
+        if hasattr(fecha_raw, "strftime"):
+            fecha_txt = fecha_raw.strftime("%d/%m/%Y %H:%M")
+        else:
+            fecha_txt = str(fecha_raw or "")[:16]
+        data_rows.append([fecha_txt, str(row[1])[:8], f"{float(row[3] or 0):.1f}", f"{float(row[4] or 0):.1f}", f"${float(row[5] or 0):.2f}", f"{float(row[6] or 0):.1f}", (str(row[8] or "") + " → " + str(row[9] or ""))[:25], (str(row[7] or ""))[:20]])
     buf = _exportar_pdf_inventario("Kardex Detallado", f"Período: {periodo_txt}", headers, data_rows, cab, [0.14, 0.08, 0.07, 0.07, 0.10, 0.08, 0.22, 0.24])
     return send_file(buf, as_attachment=True, download_name=f"kardex_detallado_{inicio}_{fin}.pdf", mimetype="application/pdf")
 
@@ -1863,17 +1984,66 @@ def reporte_f983_exportar_pdf():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_libro_iva():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", hoy_sv().replace(day=1).strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", hoy_sv_str())
+    hoy = hoy_sv()
+    inicio_param = request.args.get("inicio")
+    fin_param = request.args.get("fin")
+    primer_dia_mes = hoy.replace(day=1)
+    inicio = (inicio_param or primer_dia_mes.isoformat()).strip()[:10]
+    fin = (fin_param or hoy.isoformat()).strip()[:10]
+    fecha_auto = False
+    primera_fecha_ccf = None
+    ultima_fecha_ccf = None
+    total_ccf_empresa = 0
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
+        cur.execute(
+            """
+            SELECT MIN(fecha_registro::date), MAX(fecha_registro::date), COUNT(*)
+            FROM ventas
+            WHERE (empresa_id IS NULL OR empresa_id = %s)
+              AND COALESCE(estado, 'ACTIVO') = 'ACTIVO'
+              AND UPPER(COALESCE(tipo_comprobante, '')) = 'CREDITO_FISCAL'
+            """,
+            (emp_id,),
+        )
+        row_rng = cur.fetchone()
+        if row_rng and row_rng[2]:
+            primera_fecha_ccf = row_rng[0].isoformat() if row_rng[0] else None
+            ultima_fecha_ccf = row_rng[1].isoformat() if row_rng[1] else None
+            total_ccf_empresa = int(row_rng[2])
+
         filas = []
         try:
             filas = ventas_reports_repo.listar_libro_iva(cur, emp_id, inicio, fin)
         except Exception:
             pass
+        if not filas and not inicio_param and not fin_param and ultima_fecha_ccf:
+            inicio = primera_fecha_ccf or ultima_fecha_ccf
+            fin = ultima_fecha_ccf
+            try:
+                filas = ventas_reports_repo.listar_libro_iva(cur, emp_id, inicio, fin)
+            except Exception:
+                filas = []
+            fecha_auto = True
+
+        otros_periodo = 0
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM ventas
+            WHERE (empresa_id IS NULL OR empresa_id = %s)
+              AND COALESCE(estado, 'ACTIVO') = 'ACTIVO'
+              AND UPPER(COALESCE(tipo_comprobante, '')) <> 'CREDITO_FISCAL'
+              AND fecha_registro::date BETWEEN %s AND %s
+            """,
+            (emp_id, inicio, fin),
+        )
+        row_otros = cur.fetchone()
+        if row_otros:
+            otros_periodo = int(row_otros[0] or 0)
+
         cab = _datos_cabecera_reporte_ventas(inicio, fin)
         total_gravado = sum(float(r[5] or 0) for r in filas)
         total_iva = sum(float(r[6] or 0) for r in filas)
@@ -1884,6 +2054,12 @@ def reporte_libro_iva():
             filas=filas,
             inicio=inicio,
             fin=fin,
+            fecha_hoy=hoy.isoformat(),
+            fecha_auto=fecha_auto,
+            primera_fecha_ccf=primera_fecha_ccf,
+            ultima_fecha_ccf=ultima_fecha_ccf,
+            total_ccf_empresa=total_ccf_empresa,
+            otros_periodo=otros_periodo,
             cab=cab,
             total_gravado=total_gravado,
             total_iva=total_iva,
@@ -1899,20 +2075,71 @@ def reporte_libro_iva():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_ventas_producto():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", hoy_sv().replace(day=1).strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", hoy_sv_str())
+    hoy = hoy_sv()
+    inicio_param = request.args.get("inicio")
+    fin_param = request.args.get("fin")
+    primer_dia_mes = hoy.replace(day=1)
+    inicio = (inicio_param or primer_dia_mes.isoformat()).strip()[:10]
+    fin = (fin_param or hoy.isoformat()).strip()[:10]
+    fecha_auto = False
+    primera_fecha_ventas = None
+    ultima_fecha_ventas = None
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
+        cur.execute(
+            """
+            SELECT MIN(v.fecha_registro::date), MAX(v.fecha_registro::date)
+            FROM venta_detalles dv
+            JOIN ventas v ON v.id = dv.venta_id
+            WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
+              AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
+            """,
+            (emp_id,),
+        )
+        row_rng = cur.fetchone()
+        if row_rng and row_rng[0]:
+            primera_fecha_ventas = row_rng[0].isoformat()
+            ultima_fecha_ventas = row_rng[1].isoformat() if row_rng[1] else primera_fecha_ventas
+
         filas = []
         try:
             filas = ventas_reports_repo.listar_ventas_por_producto(cur, emp_id, inicio, fin)
         except Exception:
             pass
+        if not filas and not inicio_param and not fin_param and ultima_fecha_ventas:
+            inicio = primera_fecha_ventas or ultima_fecha_ventas
+            fin = ultima_fecha_ventas
+            try:
+                filas = ventas_reports_repo.listar_ventas_por_producto(cur, emp_id, inicio, fin)
+            except Exception:
+                filas = []
+            fecha_auto = True
+
         total_ventas = sum(float(r[3] or 0) for r in filas)
+        total_cantidad = sum(float(r[2] or 0) for r in filas)
+        total_transacciones = sum(int(r[4] or 0) for r in filas)
+        n_productos = len(filas)
         cab = _datos_cabecera_reporte_ventas(inicio, fin)
-        return render_template("reporte_ventas_producto.html", filas=filas, inicio=inicio, fin=fin, cab=cab, total_ventas=total_ventas)
+        return render_template(
+            "reporte_ventas_producto.html",
+            filas=filas,
+            inicio=inicio,
+            fin=fin,
+            fecha_hoy=hoy.isoformat(),
+            fecha_auto=fecha_auto,
+            primera_fecha_ventas=primera_fecha_ventas,
+            ultima_fecha_ventas=ultima_fecha_ventas,
+            cab=cab,
+            total_ventas=total_ventas,
+            total_cantidad=total_cantidad,
+            total_transacciones=total_transacciones,
+            n_productos=n_productos,
+            nombres_chart=[(r[0] or "")[:32] for r in filas],
+            subtotales_chart=[float(r[3] or 0) for r in filas],
+            cantidades_chart=[float(r[2] or 0) for r in filas],
+        )
     finally:
         cur.close()
         conn.close()
@@ -2062,20 +2289,71 @@ def contingencia_sincronizar():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_documentos_anulados():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", "")
-    fin = request.args.get("fin", hoy_sv_str())
+    hoy = hoy_sv()
+    inicio_param = request.args.get("inicio")
+    fin_param = request.args.get("fin")
+    primer_dia_mes = hoy.replace(day=1)
+    inicio = (inicio_param or primer_dia_mes.isoformat()).strip()[:10]
+    fin = (fin_param or hoy.isoformat()).strip()[:10]
+    fecha_auto = False
+    primera_fecha_anul = None
+    ultima_fecha_anul = None
+    total_anulados_empresa = 0
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
+        cur.execute(
+            """
+            SELECT MIN(fecha_registro::date), MAX(fecha_registro::date), COUNT(*)
+            FROM ventas
+            WHERE (empresa_id IS NULL OR empresa_id = %s)
+              AND COALESCE(estado, 'ACTIVO') = 'ANULADO'
+            """,
+            (emp_id,),
+        )
+        row_rng = cur.fetchone()
+        if row_rng and row_rng[2]:
+            primera_fecha_anul = row_rng[0].isoformat() if row_rng[0] else None
+            ultima_fecha_anul = row_rng[1].isoformat() if row_rng[1] else None
+            total_anulados_empresa = int(row_rng[2])
+
         filas = []
         try:
-            filas = ventas_reports_repo.listar_documentos_anulados(cur, emp_id, fecha_inicio=inicio or None, fecha_fin=fin or None)
+            filas = ventas_reports_repo.listar_documentos_anulados(cur, emp_id, fecha_inicio=inicio, fecha_fin=fin)
         except Exception:
             pass
-        cab = _datos_cabecera_reporte_ventas(inicio or "—", fin or "—")
+        if not filas and not inicio_param and not fin_param and ultima_fecha_anul:
+            inicio = primera_fecha_anul or ultima_fecha_anul
+            fin = ultima_fecha_anul
+            try:
+                filas = ventas_reports_repo.listar_documentos_anulados(cur, emp_id, fecha_inicio=inicio, fecha_fin=fin)
+            except Exception:
+                filas = []
+            fecha_auto = True
+
+        cab = _datos_cabecera_reporte_ventas(inicio, fin)
         total = sum(float(r[2] or 0) for r in filas)
-        return render_template("reporte_documentos_anulados.html", filas=filas, inicio=inicio, fin=fin, cab=cab, total=total)
+        n_docs = len(filas)
+        por_tipo: dict[str, int] = {}
+        for r in filas:
+            t = str(r[4] or "TICKET").strip().upper()
+            por_tipo[t] = por_tipo.get(t, 0) + 1
+        return render_template(
+            "reporte_documentos_anulados.html",
+            filas=filas,
+            inicio=inicio,
+            fin=fin,
+            fecha_hoy=hoy.isoformat(),
+            fecha_auto=fecha_auto,
+            primera_fecha_anul=primera_fecha_anul,
+            ultima_fecha_anul=ultima_fecha_anul,
+            total_anulados_empresa=total_anulados_empresa,
+            cab=cab,
+            total=total,
+            n_docs=n_docs,
+            por_tipo=por_tipo,
+        )
     finally:
         cur.close()
         conn.close()
@@ -2129,7 +2407,8 @@ def imprimir_comprobante_invalidacion(venta_id: int):
 def reporte_corte_caja():
     """Corte de Caja (X/Z): ventas por tipo DTE, método de pago e impuestos."""
     emp_id = _empresa_id()
-    fecha = request.args.get("fecha", hoy_sv_str())
+    fecha_explicita = request.args.get("fecha")
+    fecha = (fecha_explicita or hoy_sv_str()).strip()[:10]
     usuario_id = request.args.get("usuario_id", "").strip()
     sucursal_id = request.args.get("sucursal_id", "").strip()
     uid = int(usuario_id) if usuario_id.isdigit() else None
@@ -2139,6 +2418,15 @@ def reporte_corte_caja():
     cur = conn.cursor()
     try:
         datos = cierre_caja_repo.obtener_datos_corte(cur, emp_id, fecha, usuario_id=uid, sucursal_id=sid)
+        fecha_auto = False
+        hoy = hoy_sv_str()
+        ultima_fecha_ventas = cierre_caja_repo.obtener_ultima_fecha_ventas(
+            cur, emp_id, usuario_id=uid, sucursal_id=sid
+        )
+        if not fecha_explicita and datos.get("cantidad_ventas", 0) == 0 and ultima_fecha_ventas:
+            fecha = ultima_fecha_ventas
+            datos = cierre_caja_repo.obtener_datos_corte(cur, emp_id, fecha, usuario_id=uid, sucursal_id=sid)
+            fecha_auto = True
         try:
             usuarios = usuarios_repo.listar_usuarios(cur, empresa_id=emp_id) or []
         except Exception:
@@ -2152,6 +2440,9 @@ def reporte_corte_caja():
         return render_template(
             "reporte_corte_caja.html",
             fecha=fecha,
+            fecha_hoy=hoy,
+            fecha_auto=fecha_auto,
+            ultima_fecha_ventas=ultima_fecha_ventas,
             datos=datos,
             usuarios=usuarios,
             sucursales=sucursales,
@@ -2489,8 +2780,39 @@ def reporte_cuentas_cobrar():
         except Exception:
             pass
         total = sum(float(r[5] or 0) for r in filas)
+        n_pendientes = len(filas)
+        total_ventas_activas = 0
+        n_cobradas = 0
+        n_credito_historico = 0
+        cur.execute(
+            """
+            SELECT COUNT(*),
+                   SUM(CASE WHEN COALESCE(estado_cobro, 'COBRADO') = 'COBRADO' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN UPPER(COALESCE(tipo_pago, '')) IN ('CREDITO', 'CRÉDITO') THEN 1 ELSE 0 END)
+            FROM ventas
+            WHERE (empresa_id IS NULL OR empresa_id = %s)
+              AND COALESCE(estado, 'ACTIVO') = 'ACTIVO'
+            """,
+            (emp_id,),
+        )
+        row_st = cur.fetchone()
+        if row_st:
+            total_ventas_activas = int(row_st[0] or 0)
+            n_cobradas = int(row_st[1] or 0)
+            n_credito_historico = int(row_st[2] or 0)
+        dias_max = max((int(r[6] or 0) for r in filas), default=0)
         cab = _datos_cabecera_inventario("Cartera de clientes — Pendientes de cobro")
-        return render_template("reporte_cuentas_cobrar.html", filas=filas, cab=cab, total=total)
+        return render_template(
+            "reporte_cuentas_cobrar.html",
+            filas=filas,
+            cab=cab,
+            total=total,
+            n_pendientes=n_pendientes,
+            total_ventas_activas=total_ventas_activas,
+            n_cobradas=n_cobradas,
+            n_credito_historico=n_credito_historico,
+            dias_max=dias_max,
+        )
     finally:
         cur.close()
         conn.close()
@@ -2615,17 +2937,48 @@ def reporte_libro_iva_exportar_pdf():
 @rol_requerido("GERENTE", "CONTADOR")
 def reporte_libro_iva_compras():
     emp_id = _empresa_id()
-    inicio = request.args.get("inicio", hoy_sv().replace(day=1).strftime("%Y-%m-%d"))
-    fin = request.args.get("fin", hoy_sv_str())
+    hoy = hoy_sv()
+    inicio_param = request.args.get("inicio")
+    fin_param = request.args.get("fin")
+    primer_dia_mes = hoy.replace(day=1)
+    inicio = (inicio_param or primer_dia_mes.isoformat()).strip()[:10]
+    fin = (fin_param or hoy.isoformat()).strip()[:10]
+    fecha_auto = False
+    primera_fecha_compras = None
+    ultima_fecha_compras = None
+    total_compras_empresa = 0
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
+        cur.execute(
+            """
+            SELECT MIN(fecha::date), MAX(fecha::date), COUNT(*)
+            FROM compras
+            WHERE empresa_id = %s
+            """,
+            (emp_id,),
+        )
+        row_rng = cur.fetchone()
+        if row_rng and row_rng[2]:
+            primera_fecha_compras = row_rng[0].isoformat() if row_rng[0] else None
+            ultima_fecha_compras = row_rng[1].isoformat() if row_rng[1] else None
+            total_compras_empresa = int(row_rng[2])
+
         filas = []
         try:
             filas = compras_reports_repo.listar_libro_iva_compras(cur, emp_id, inicio, fin)
         except Exception:
             pass
+        if not filas and not inicio_param and not fin_param and ultima_fecha_compras:
+            inicio = primera_fecha_compras or ultima_fecha_compras
+            fin = ultima_fecha_compras
+            try:
+                filas = compras_reports_repo.listar_libro_iva_compras(cur, emp_id, inicio, fin)
+            except Exception:
+                filas = []
+            fecha_auto = True
+
         cab = _datos_cabecera_reporte_ventas(inicio, fin)
         total_gravado = sum(float(r[4] or 0) for r in filas)
         total_iva = sum(float(r[5] or 0) for r in filas)
@@ -2638,6 +2991,11 @@ def reporte_libro_iva_compras():
             filas=filas,
             inicio=inicio,
             fin=fin,
+            fecha_hoy=hoy.isoformat(),
+            fecha_auto=fecha_auto,
+            primera_fecha_compras=primera_fecha_compras,
+            ultima_fecha_compras=ultima_fecha_compras,
+            total_compras_empresa=total_compras_empresa,
             cab=cab,
             total_gravado=total_gravado,
             total_iva=total_iva,
@@ -4500,6 +4858,7 @@ def inventario_conteo_fisico():
             s = sucursales_repo.get_sucursal(cur, sucursal_id)
             sucursal_nombre = s[1] if s else None
         empresas = empresas_repo.listar_empresas(cur) or [] if es_super else []
+        total_stock_unidades = sum(float(p[3] or 0) for p in (productos or []))
         return render_template(
             "inventario_conteo_fisico.html",
             productos=productos,
@@ -4510,6 +4869,8 @@ def inventario_conteo_fisico():
             es_superadmin=es_super,
             empresas=empresas,
             empresa_id=emp_id,
+            n_productos=len(productos or []),
+            total_stock_unidades=total_stock_unidades,
             umbral_impacto_ajuste_usd=kardex_repo.UMBRAL_IMPACTO_AJUSTE_USD,
             umbral_cantidad_ajuste_umb=kardex_repo.UMBRAL_CANTIDAD_AJUSTE_UMB,
             min_caracteres_justificacion_ajuste=kardex_repo.MIN_CARACTERES_JUSTIFICACION_AJUSTE,
@@ -5420,6 +5781,11 @@ def usuarios():
             empresas = []
             sucursales_todas = []
             sucursales = sucursales_repo.listar_sucursales_min(cur, empresa_id=emp_id) or []
+        n_activos = sum(1 for u in usuarios_lista if len(u) > 4 and u[4])
+        roles_count = {}
+        for u in usuarios_lista:
+            r = str(u[2] or "").strip().upper()
+            roles_count[r] = roles_count.get(r, 0) + 1
         return render_template(
             "usuarios.html",
             usuarios=usuarios_lista,
@@ -5428,6 +5794,11 @@ def usuarios():
             empresas=empresas,
             usuario=None,
             es_superadmin=es_super,
+            n_usuarios=len(usuarios_lista),
+            n_activos=n_activos,
+            n_inactivos=len(usuarios_lista) - n_activos,
+            roles_count=roles_count,
+            empresa_nombre=session.get("empresa_nombre") or "",
         )
     finally:
         cur.close()
@@ -5465,6 +5836,25 @@ def historial_usuarios():
         registros = historial_usuarios_repo.listar(
             cur, empresa_id=emp_id, usuario_id=usuario_id, evento=evento, limite=limite, offset=offset
         )
+        n_total, eventos_count = historial_usuarios_repo.resumen(
+            cur, empresa_id=emp_id, usuario_id=usuario_id, evento=evento
+        )
+        _, eventos_todos = historial_usuarios_repo.resumen(
+            cur, empresa_id=emp_id, usuario_id=usuario_id, evento=None
+        )
+        n_logins = eventos_count.get("LOGIN", 0)
+        n_logouts = eventos_count.get("LOGOUT", 0)
+        n_ventas = sum(
+            eventos_count.get(k, 0)
+            for k in ("VENTA_CREADA", "VENTA_EDITADA", "VENTA_ANULADA")
+        )
+        n_logins_todos = eventos_todos.get("LOGIN", 0)
+        n_logouts_todos = eventos_todos.get("LOGOUT", 0)
+        n_ventas_todos = sum(
+            eventos_todos.get(k, 0)
+            for k in ("VENTA_CREADA", "VENTA_EDITADA", "VENTA_ANULADA")
+        )
+        n_total_global = sum(eventos_todos.values()) if eventos_todos else n_total
         return render_template(
             "historial_usuarios.html",
             registros=registros,
@@ -5472,6 +5862,18 @@ def historial_usuarios():
             usuario_id_filtro=usuario_id,
             offset=offset,
             limite=limite,
+            n_total=n_total,
+            n_visible=len(registros),
+            eventos_count=eventos_count,
+            n_logins=n_logins,
+            n_logouts=n_logouts,
+            n_ventas=n_ventas,
+            n_logins_todos=n_logins_todos,
+            n_logouts_todos=n_logouts_todos,
+            n_ventas_todos=n_ventas_todos,
+            n_total_global=n_total_global,
+            eventos_todos=eventos_todos,
+            empresa_nombre=session.get("empresa_nombre") or "",
         )
     finally:
         cur.close()
@@ -5509,6 +5911,11 @@ def editar_usuario(id):
         if not es_super and rol_editado in ("ADMIN", "SUPERADMIN"):
             flash("Solo un superusuario puede editar otros superusuarios.", "danger")
             return redirect(url_for("admin.usuarios"))
+        n_activos = sum(1 for u in usuarios_lista if len(u) > 4 and u[4])
+        roles_count = {}
+        for u in usuarios_lista:
+            r = str(u[2] or "").strip().upper()
+            roles_count[r] = roles_count.get(r, 0) + 1
         return render_template(
             "usuarios.html",
             usuarios=usuarios_lista,
@@ -5517,6 +5924,11 @@ def editar_usuario(id):
             empresas=empresas,
             usuario=usuario_edit,
             es_superadmin=_es_superadmin(),
+            n_usuarios=len(usuarios_lista),
+            n_activos=n_activos,
+            n_inactivos=len(usuarios_lista) - n_activos,
+            roles_count=roles_count,
+            empresa_nombre=session.get("empresa_nombre") or "",
         )
     except Exception as e:
         flash(f"Error al cargar usuario: {str(e)}", "danger")
@@ -6356,6 +6768,8 @@ def clientes():
             actividades = cur.fetchall() or []
         except Exception:
             pass
+        n_contrib = sum(1 for c in clientes_lista if len(c) > 5 and c[5])
+        n_gran = sum(1 for c in clientes_lista if len(c) > 6 and c[6])
         return render_template(
             "clientes.html",
             clientes=clientes_lista,
@@ -6366,6 +6780,10 @@ def clientes():
             empresas_map=empresas_map,
             es_superadmin=es_super,
             actividades=actividades,
+            n_clientes=len(clientes_lista),
+            n_contribuyentes=n_contrib,
+            n_gran_contrib=n_gran,
+            empresa_nombre=session.get("empresa_nombre") or "",
             **_cliente_template_ctx(),
         )
     finally:
@@ -6421,6 +6839,8 @@ def editar_cliente(id):
             actividades = cur.fetchall() or []
         except Exception:
             pass
+        n_contrib = sum(1 for c in clientes_lista if len(c) > 5 and c[5])
+        n_gran = sum(1 for c in clientes_lista if len(c) > 6 and c[6])
         return render_template(
             "clientes.html",
             clientes=clientes_lista,
@@ -6431,6 +6851,10 @@ def editar_cliente(id):
             empresas_map=empresas_map,
             es_superadmin=es_super,
             actividades=actividades,
+            n_clientes=len(clientes_lista),
+            n_contribuyentes=n_contrib,
+            n_gran_contrib=n_gran,
+            empresa_nombre=session.get("empresa_nombre") or "",
             **_cliente_template_ctx(),
         )
     finally:
@@ -6664,12 +7088,18 @@ def sucursales():
         else:
             sucursales_lista = sucursales_repo.listar_sucursales(cur, empresa_id=emp_id) or []
             empresas = []
+        n_con_tel = sum(1 for s in sucursales_lista if len(s) > 4 and s[4])
+        n_con_dir = sum(1 for s in sucursales_lista if len(s) > 3 and s[3])
         return render_template(
             "sucursales.html",
             sucursales=sucursales_lista,
             sucursal=None,
             empresas=empresas,
             es_superadmin=es_super,
+            n_sucursales=len(sucursales_lista),
+            n_con_telefono=n_con_tel,
+            n_con_direccion=n_con_dir,
+            empresa_nombre=session.get("empresa_nombre") or "",
         )
     finally:
         cur.close()
@@ -6704,12 +7134,18 @@ def editar_sucursal(id):
         else:
             sucursales_lista = sucursales_repo.listar_sucursales(cur, empresa_id=emp_id) or []
             empresas = []
+        n_con_tel = sum(1 for s in sucursales_lista if len(s) > 4 and s[4])
+        n_con_dir = sum(1 for s in sucursales_lista if len(s) > 3 and s[3])
         return render_template(
             "sucursales.html",
             sucursales=sucursales_lista,
             sucursal=suc,
             empresas=empresas,
             es_superadmin=es_super,
+            n_sucursales=len(sucursales_lista),
+            n_con_telefono=n_con_tel,
+            n_con_direccion=n_con_dir,
+            empresa_nombre=session.get("empresa_nombre") or "",
         )
     finally:
         cur.close()

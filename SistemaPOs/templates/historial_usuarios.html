@@ -1,19 +1,245 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
-<div class="container-fluid px-4 mt-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <div>
-            <a href="{{ url_for('admin.usuarios') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Usuarios</a>
-            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-clock-history text-primary"></i> Historial de Usuarios</h2>
-            <p class="text-muted small mb-0">Accesos, cambios y acciones del sistema</p>
+<style>
+    .his-wrap {
+        --his-blue: #2563eb;
+        --his-blue-soft: #eff6ff;
+        --his-green: #16a34a;
+        --his-green-soft: #dcfce7;
+        --his-purple: #6366f1;
+        --his-purple-soft: #eef2ff;
+        --his-amber: #d97706;
+        --his-amber-soft: #fef3c7;
+        --his-red: #dc2626;
+        --his-red-soft: #fee2e2;
+        --his-gray: #64748b;
+    }
+    .his-header {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start;
+        gap: 0.85rem; margin-bottom: 1rem;
+    }
+    .his-header-icon {
+        width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem; color: #fff; flex-shrink: 0;
+        background: linear-gradient(145deg, #2563eb 0%, #1d4ed8 100%);
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+    }
+    .his-header h2 { font-size: 1.85rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .his-header p { font-size: 1.12rem; font-weight: 600; color: #64748b; margin: 0; line-height: 1.45; }
+    .his-back {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.45rem 0.85rem;
+        border-radius: 999px; background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+        font-size: 0.98rem; font-weight: 700; color: #fff; text-decoration: none; transition: transform 0.15s ease;
+    }
+    .his-back:hover { transform: translateY(-1px); color: #fff; }
+    .his-alert {
+        border-radius: 10px; padding: 0.85rem 1rem; margin-bottom: 1rem;
+        font-size: 1.02rem; font-weight: 600; line-height: 1.45;
+        background: var(--his-blue-soft); border: 1px solid #bfdbfe; color: #1e40af;
+    }
+    .his-kpi-row { --bs-gutter-x: 0.55rem; margin-bottom: 1rem; }
+    .his-kpi {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important; padding: 0.95rem 1rem !important;
+        height: 100%; transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .his-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(15,23,42,0.1) !important; }
+    .his-kpi-label { font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; }
+    .his-kpi-val { font-size: 1.75rem; font-weight: 900; line-height: 1.1; }
+    .his-kpi-sub { font-size: 0.88rem; font-weight: 600; color: #94a3b8; margin-top: 0.15rem; }
+    .his-filter-card {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important;
+        box-shadow: 0 4px 20px rgba(15,23,42,0.06) !important;
+        padding: 1.15rem 1.2rem !important; margin-bottom: 1rem;
+    }
+    .his-wrap .form-label { font-size: 1.05rem; font-weight: 800; color: #334155; margin-bottom: 0.35rem; }
+    .his-wrap .form-control, .his-wrap .form-select {
+        font-size: 1.12rem; font-weight: 600; padding: 0.62rem 0.8rem; border-radius: 9px; border-color: #e2e8f0;
+    }
+    .his-btn-filter {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+        padding: 0.62rem 1.2rem; border-radius: 10px; font-size: 1.08rem; font-weight: 800; border: none; cursor: pointer;
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #fff;
+        box-shadow: 0 4px 14px rgba(37,99,235,0.3); transition: transform 0.15s ease;
+    }
+    .his-btn-filter:hover { transform: translateY(-2px); color: #fff; }
+    .his-btn-clear {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.62rem 1rem;
+        border-radius: 10px; font-size: 1.02rem; font-weight: 700; border: 1px solid #e2e8f0;
+        background: #fff; color: #475569; text-decoration: none; transition: all 0.15s ease;
+    }
+    .his-btn-clear:hover { background: #f8fafc; color: #334155; }
+    .his-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 1rem; }
+    .his-chip {
+        display: inline-flex; align-items: center; gap: 0.28rem; padding: 0.38rem 0.75rem;
+        border-radius: 999px; border: 1px solid #e2e8f0; background: #fff;
+        font-size: 0.95rem; font-weight: 800; color: #475569; text-decoration: none; transition: all 0.15s ease;
+    }
+    .his-chip:hover, .his-chip--active { background: var(--his-purple-soft); border-color: #a5b4fc; color: #4338ca; }
+    .his-chip-count {
+        display: inline-flex; min-width: 1.4rem; justify-content: center; padding: 0.1rem 0.35rem;
+        border-radius: 999px; font-size: 0.78rem; font-weight: 800; background: #e2e8f0; color: #475569;
+    }
+    .his-chip--active .his-chip-count { background: #c7d2fe; color: #3730a3; }
+    .his-table-card {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important;
+        box-shadow: 0 4px 20px rgba(15,23,42,0.06) !important; overflow: hidden;
+    }
+    .his-table-head {
+        padding: 0.75rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;
+    }
+    .his-table-head h6 { margin: 0; font-size: 1.15rem; font-weight: 800; color: #1e293b; }
+    .his-search-wrap { position: relative; flex: 1; min-width: 200px; max-width: 340px; }
+    .his-search-wrap i { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+    .his-search {
+        width: 100%; padding: 0.55rem 0.75rem 0.55rem 2.25rem; border-radius: 9px;
+        border: 1px solid #e2e8f0; font-size: 1.05rem; font-weight: 600;
+    }
+    .his-search:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    .his-count-badge {
+        display: inline-flex; padding: 0.28rem 0.65rem; border-radius: 999px;
+        font-size: 0.92rem; font-weight: 800; background: var(--his-purple-soft); color: #4338ca;
+    }
+    .his-table { margin-bottom: 0; width: 100%; }
+    .his-table thead th {
+        background: #f8fafc; font-size: 0.98rem; font-weight: 800; letter-spacing: 0.04em;
+        text-transform: uppercase; color: #64748b; padding: 0.85rem 0.75rem; border-bottom: 1px solid #e2e8f0;
+        white-space: nowrap;
+    }
+    .his-table tbody tr.his-row {
+        cursor: pointer; transition: background 0.18s ease, box-shadow 0.18s ease; border-bottom: 1px solid #f1f5f9;
+    }
+    .his-table tbody tr.his-row:hover, .his-table tbody tr.his-row--active {
+        background: linear-gradient(90deg, #eff6ff 0%, #fff 100%);
+        box-shadow: inset 4px 0 0 #2563eb;
+    }
+    .his-table tbody tr.his-row--hidden { display: none; }
+    .his-table tbody tr.his-row--expanded { background: #f8fafc; }
+    .his-table tbody td { padding: 0.9rem 0.8rem; font-size: 1.12rem; font-weight: 700; color: #334155; vertical-align: middle; }
+    .his-fecha { font-weight: 800; color: #0f172a; font-size: 1.05rem; white-space: nowrap; }
+    .his-user-link {
+        font-weight: 800; color: #2563eb; text-decoration: none; font-size: 1.1rem;
+    }
+    .his-user-link:hover { color: #1d4ed8; text-decoration: underline; }
+    .his-user-id { font-size: 0.92rem; font-weight: 700; color: #94a3b8; margin-left: 0.25rem; }
+    .his-badge {
+        display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.32rem 0.65rem;
+        border-radius: 999px; font-size: 0.92rem; font-weight: 800; white-space: nowrap;
+    }
+    .his-badge--login { background: var(--his-green-soft); color: #15803d; border: 1px solid #bbf7d0; }
+    .his-badge--logout { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .his-badge--fail { background: var(--his-red-soft); color: #b91c1c; border: 1px solid #fecaca; }
+    .his-badge--venta { background: var(--his-blue-soft); color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .his-badge--inventario { background: var(--his-amber-soft); color: #92400e; border: 1px solid #fde68a; }
+    .his-badge--catalogo { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+    .his-badge--admin { background: #1e293b; color: #fff; border: 1px solid #334155; }
+    .his-badge--default { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
+    .his-detalle { font-size: 1.05rem; font-weight: 600; color: #475569; max-width: 28rem; line-height: 1.4; }
+    .his-detalle--empty { color: #cbd5e1; font-style: italic; }
+    .his-ip { font-size: 1rem; font-weight: 700; color: #94a3b8; font-family: ui-monospace, monospace; }
+    .his-empty { text-align: center; padding: 2.5rem 1rem; font-size: 1.12rem; font-weight: 600; color: #94a3b8; }
+    .his-footer {
+        padding: 0.85rem 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0;
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;
+    }
+    .his-btn-more {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.5rem 1rem;
+        border-radius: 999px; font-size: 1rem; font-weight: 800; border: 1px solid #93c5fd;
+        background: #fff; color: #2563eb; text-decoration: none; transition: all 0.15s ease;
+    }
+    .his-btn-more:hover { background: var(--his-blue-soft); color: #1d4ed8; }
+    .his-detail-row td { padding: 0 0.8rem 0.9rem !important; border-top: none !important; }
+    .his-detail-box {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.75rem 1rem;
+        font-size: 1.05rem; font-weight: 600; color: #334155; line-height: 1.5;
+    }
+</style>
+
+<div class="container-fluid px-3 px-md-4 mt-3 his-wrap">
+    <div class="his-header">
+        <div class="d-flex align-items-start gap-3">
+            <div class="his-header-icon"><i class="bi bi-clock-history"></i></div>
+            <div>
+                <h2>Historial de Usuarios</h2>
+                <p>Accesos, cambios y acciones del sistema{% if empresa_nombre %} · {{ empresa_nombre }}{% endif %}</p>
+            </div>
+        </div>
+        <a href="{{ url_for('admin.usuarios') }}" class="his-back"><i class="bi bi-arrow-left"></i> Usuarios</a>
+    </div>
+
+    <div class="his-alert">
+        <strong>Auditoría en tiempo real.</strong>
+        {% if evento_actual or usuario_id_filtro %}
+        Mostrando <strong>{{ n_visible }}</strong> de <strong>{{ n_total }}</strong> registros con filtros activos.
+        {% else %}
+        <strong>{{ n_total|default(n_visible) }}</strong> eventos registrados en la base de datos.
+        {% endif %}
+        Las fechas corresponden al servidor (zona El Salvador).
+    </div>
+
+    <div class="row his-kpi-row g-2">
+        <div class="col-6 col-md-3">
+            <div class="card his-kpi shadow-sm">
+                <div class="his-kpi-label">Total</div>
+                <div class="his-kpi-val" style="color:var(--his-purple)">{{ n_total|default(0) }}</div>
+                <div class="his-kpi-sub">{{ n_visible }} visibles</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card his-kpi shadow-sm">
+                <div class="his-kpi-label">Logins</div>
+                <div class="his-kpi-val" style="color:var(--his-green)">{{ n_logins|default(0) }}</div>
+                <div class="his-kpi-sub">{{ n_logouts|default(0) }} cierres</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card his-kpi shadow-sm">
+                <div class="his-kpi-label">Ventas</div>
+                <div class="his-kpi-val" style="color:var(--his-blue)">{{ n_ventas|default(0) }}</div>
+                <div class="his-kpi-sub">creadas / editadas / anuladas</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card his-kpi shadow-sm">
+                <div class="his-kpi-label">Tipos evento</div>
+                <div class="his-kpi-val" style="color:#0f766e;font-size:1.35rem">{{ (eventos_todos or eventos_count or {})|length }}</div>
+                <div class="his-kpi-sub">distintos en BD</div>
+            </div>
         </div>
     </div>
 
-    <div class="card p-3 mb-4 border-0 shadow-sm" style="border-radius: 15px;">
+    <div class="his-chips">
+        <a href="{{ url_for('admin.historial_usuarios', limite=limite) }}"
+           class="his-chip {{ 'his-chip--active' if not evento_actual else '' }}">
+            Todos <span class="his-chip-count">{{ n_total_global|default(n_total) }}</span>
+        </a>
+        <a href="{{ url_for('admin.historial_usuarios', evento='LOGIN', limite=limite) }}"
+           class="his-chip {{ 'his-chip--active' if evento_actual == 'LOGIN' else '' }}">
+            <i class="bi bi-box-arrow-in-right"></i> Login
+            <span class="his-chip-count">{{ n_logins_todos|default(0) }}</span>
+        </a>
+        <a href="{{ url_for('admin.historial_usuarios', evento='LOGOUT', limite=limite) }}"
+           class="his-chip {{ 'his-chip--active' if evento_actual == 'LOGOUT' else '' }}">
+            <i class="bi bi-box-arrow-right"></i> Logout
+            <span class="his-chip-count">{{ n_logouts_todos|default(0) }}</span>
+        </a>
+        <a href="{{ url_for('admin.historial_usuarios', evento='VENTA_CREADA', limite=limite) }}"
+           class="his-chip {{ 'his-chip--active' if evento_actual == 'VENTA_CREADA' else '' }}">
+            <i class="bi bi-cart-check"></i> Ventas
+            <span class="his-chip-count">{{ n_ventas_todos|default(0) }}</span>
+        </a>
+        <a href="{{ url_for('admin.historial_usuarios', evento='CLIENTE_EDITADO', limite=limite) }}"
+           class="his-chip {{ 'his-chip--active' if evento_actual == 'CLIENTE_EDITADO' else '' }}">
+            <i class="bi bi-people"></i> Clientes
+            <span class="his-chip-count">{{ (eventos_todos.get('CLIENTE_CREADO', 0) + eventos_todos.get('CLIENTE_EDITADO', 0) + eventos_todos.get('CLIENTE_ELIMINADO', 0)) if eventos_todos else 0 }}</span>
+        </a>
+    </div>
+
+    <div class="card his-filter-card border-0">
         <form method="GET" action="{{ url_for('admin.historial_usuarios') }}" class="row g-3 align-items-end">
-            <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Evento</label>
+            <div class="col-md-4">
+                <label class="form-label">Evento</label>
                 <select name="evento" class="form-select">
                     <option value="">— Todos —</option>
                     <optgroup label="Sesión">
@@ -57,11 +283,11 @@
                 </select>
             </div>
             <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">ID Usuario</label>
+                <label class="form-label">ID Usuario</label>
                 <input type="number" name="usuario_id" class="form-control" value="{{ usuario_id_filtro or '' }}" placeholder="Opcional" min="1">
             </div>
             <div class="col-md-2">
-                <label class="form-label small fw-bold text-muted">Límite</label>
+                <label class="form-label">Límite</label>
                 <select name="limite" class="form-select">
                     <option value="50" {{ 'selected' if limite == 50 else '' }}>50</option>
                     <option value="100" {{ 'selected' if limite == 100 else '' }}>100</option>
@@ -69,68 +295,84 @@
                     <option value="500" {{ 'selected' if limite == 500 else '' }}>500</option>
                 </select>
             </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-filter"></i> Filtrar</button>
+            <div class="col-md-4 d-flex flex-wrap gap-2 align-items-end">
+                <button type="submit" class="his-btn-filter"><i class="bi bi-funnel-fill"></i> Filtrar</button>
+                {% if evento_actual or usuario_id_filtro %}
+                <a href="{{ url_for('admin.historial_usuarios', limite=limite) }}" class="his-btn-clear"><i class="bi bi-x-circle"></i> Limpiar</a>
+                {% endif %}
             </div>
         </form>
     </div>
 
-    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
-        <div class="card-header bg-white py-3 border-bottom">
-            <h6 class="m-0 fw-bold text-primary"><i class="bi bi-list-ul me-1"></i> Registros recientes</h6>
+    <div class="card his-table-card border-0">
+        <div class="his-table-head">
+            <h6><i class="bi bi-list-ul me-1"></i> Registros recientes</h6>
+            <div class="his-search-wrap">
+                <i class="bi bi-search"></i>
+                <input type="search" id="hisSearch" class="his-search" placeholder="Buscar usuario, evento, detalle, IP…" autocomplete="off">
+            </div>
+            <span class="his-count-badge" id="hisCountBadge">{{ n_visible }} visibles</span>
         </div>
         <div class="table-responsive">
-            <table class="table align-middle m-0 table-hover table-sm">
-                <thead class="table-light">
+            <table class="table his-table align-middle m-0">
+                <thead>
                     <tr>
-                        <th class="ps-4">Fecha / Hora</th>
+                        <th class="ps-3">Fecha / Hora</th>
                         <th>Usuario</th>
                         <th>Evento</th>
                         <th>Detalle</th>
                         <th>IP</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="hisTableBody">
                     {% for r in registros %}
-                    <tr>
-                        <td class="ps-4">{{ r[6] if r|length > 6 else '—' }}</td>
+                    {% set ev = r[3] or '' %}
+                    {% set det = r[4] or '' %}
+                    <tr class="his-row" data-search="{{ (r[6] if r|length > 6 else '') ~ ' ' ~ (r[2] or '') ~ ' ' ~ ev ~ ' ' ~ det ~ ' ' ~ (r[5] or '') }}" data-detalle="{{ det }}">
+                        <td class="ps-3 his-fecha">{{ r[6] if r|length > 6 else '—' }}</td>
                         <td>
                             {% if r[1] %}
-                            <a href="{{ url_for('admin.historial_usuarios', usuario_id=r[1]) }}" class="text-decoration-none">{{ r[2] or '—' }}</a>
-                            <small class="text-muted">#{{ r[1] }}</small>
+                            <a href="{{ url_for('admin.historial_usuarios', usuario_id=r[1], limite=limite) }}" class="his-user-link">{{ r[2] or '—' }}</a>
+                            <span class="his-user-id">#{{ r[1] }}</span>
                             {% else %}
                             <span class="text-muted">{{ r[2] or '—' }}</span>
                             {% endif %}
                         </td>
                         <td>
-                            {% if r[3] == 'LOGIN' %}
-                            <span class="badge bg-success">Login</span>
-                            {% elif r[3] == 'LOGIN_FALLO' %}
-                            <span class="badge bg-danger">Login fallido</span>
-                            {% elif r[3] == 'LOGOUT' %}
-                            <span class="badge bg-secondary">Logout</span>
-                            {% elif r[3] == 'CAMBIO_PASSWORD' %}
-                            <span class="badge bg-info">Cambio clave</span>
-                            {% elif r[3] in ('VENTA_CREADA', 'VENTA_EDITADA', 'VENTA_ANULADA') %}
-                            <span class="badge bg-primary">{{ r[3]|replace('_',' ')|title }}</span>
-                            {% elif r[3] in ('PRODUCTO_CREADO', 'PRODUCTO_EDITADO', 'PRODUCTO_ELIMINADO', 'AJUSTE_INVENTARIO', 'CONTEO_FISICO') %}
-                            <span class="badge bg-warning text-dark">{{ r[3]|replace('_',' ')|title }}</span>
-                            {% elif r[3] in ('CLIENTE_CREADO', 'CLIENTE_EDITADO', 'CLIENTE_ELIMINADO', 'COMPRA_REGISTRADA', 'PROVEEDOR_GUARDADO', 'PROVEEDOR_ELIMINADO') %}
-                            <span class="badge bg-info">{{ r[3]|replace('_',' ')|title }}</span>
-                            {% elif r[3] in ('USUARIO_CREADO', 'USUARIO_EDITADO', 'USUARIO_ELIMINADO', 'PROMOCION_CREADA', 'PROMOCION_EDITADA', 'PROMOCION_ELIMINADA', 'SUCURSAL_CREADA', 'SUCURSAL_EDITADA', 'SUCURSAL_ELIMINADA', 'CONFIG_EMPRESA') %}
-                            <span class="badge bg-dark">{{ r[3]|replace('_',' ')|title }}</span>
+                            {% if ev == 'LOGIN' %}
+                            <span class="his-badge his-badge--login"><i class="bi bi-box-arrow-in-right"></i> Login</span>
+                            {% elif ev == 'LOGIN_FALLO' %}
+                            <span class="his-badge his-badge--fail"><i class="bi bi-shield-x"></i> Fallido</span>
+                            {% elif ev == 'LOGOUT' %}
+                            <span class="his-badge his-badge--logout"><i class="bi bi-box-arrow-right"></i> Logout</span>
+                            {% elif ev == 'CAMBIO_PASSWORD' %}
+                            <span class="his-badge his-badge--catalogo"><i class="bi bi-key"></i> Cambio clave</span>
+                            {% elif ev in ('VENTA_CREADA', 'VENTA_EDITADA', 'VENTA_ANULADA') %}
+                            <span class="his-badge his-badge--venta"><i class="bi bi-cart-check"></i> {{ ev|replace('_',' ')|title }}</span>
+                            {% elif ev in ('PRODUCTO_CREADO', 'PRODUCTO_EDITADO', 'PRODUCTO_ELIMINADO', 'AJUSTE_INVENTARIO', 'CONTEO_FISICO') %}
+                            <span class="his-badge his-badge--inventario"><i class="bi bi-box-seam"></i> {{ ev|replace('_',' ')|title }}</span>
+                            {% elif ev in ('CLIENTE_CREADO', 'CLIENTE_EDITADO', 'CLIENTE_ELIMINADO', 'COMPRA_REGISTRADA', 'COMPRA_EDITADA', 'COMPRA_ELIMINADA', 'PROVEEDOR_GUARDADO', 'PROVEEDOR_ELIMINADO') %}
+                            <span class="his-badge his-badge--catalogo"><i class="bi bi-folder2-open"></i> {{ ev|replace('_',' ')|title }}</span>
+                            {% elif ev in ('USUARIO_CREADO', 'USUARIO_EDITADO', 'USUARIO_ELIMINADO', 'PROMOCION_CREADA', 'PROMOCION_EDITADA', 'PROMOCION_ELIMINADA', 'SUCURSAL_CREADA', 'SUCURSAL_EDITADA', 'SUCURSAL_ELIMINADA', 'CONFIG_EMPRESA') %}
+                            <span class="his-badge his-badge--admin"><i class="bi bi-gear"></i> {{ ev|replace('_',' ')|title }}</span>
                             {% else %}
-                            <span class="badge bg-light text-dark">{{ r[3] or '—' }}</span>
+                            <span class="his-badge his-badge--default">{{ ev or '—' }}</span>
                             {% endif %}
                         </td>
-                        <td class="small">{{ (r[4] or '—')[:60] }}{% if r[4] and r[4]|length > 60 %}...{% endif %}</td>
-                        <td class="small text-muted">{{ r[5] or '—' }}</td>
+                        <td>
+                            {% if det %}
+                            <span class="his-detalle" title="{{ det }}">{{ det[:80] }}{% if det|length > 80 %}…{% endif %}</span>
+                            {% else %}
+                            <span class="his-detalle his-detalle--empty">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="his-ip">{{ r[5] or '—' }}</td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" class="text-center py-5 text-muted">
+                        <td colspan="5" class="his-empty">
                             <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                            No hay registros de historial.
+                            No hay registros de historial con los filtros actuales.
                         </td>
                     </tr>
                     {% endfor %}
@@ -138,12 +380,61 @@
             </table>
         </div>
         {% if registros and registros|length >= limite %}
-        <div class="card-footer bg-white py-2 border-top">
-            <a href="{{ url_for('admin.historial_usuarios', evento=evento_actual or '', usuario_id=usuario_id_filtro or '', limite=limite, offset=offset + limite) }}" class="btn btn-sm btn-outline-primary">
+        <div class="his-footer">
+            <span style="font-size:1rem;font-weight:700;color:#64748b">Mostrando {{ offset + 1 }}–{{ offset + registros|length }} de {{ n_total }}</span>
+            <a href="{{ url_for('admin.historial_usuarios', evento=evento_actual or '', usuario_id=usuario_id_filtro or '', limite=limite, offset=offset + limite) }}" class="his-btn-more">
                 <i class="bi bi-arrow-down-circle"></i> Ver más
             </a>
+        </div>
+        {% elif registros %}
+        <div class="his-footer">
+            <span style="font-size:1rem;font-weight:700;color:#64748b">{{ n_total }} registro{{ 's' if n_total != 1 else '' }} en total</span>
         </div>
         {% endif %}
     </div>
 </div>
+
+<script>
+(function() {
+    var search = document.getElementById('hisSearch');
+    var badge = document.getElementById('hisCountBadge');
+    var rows = document.querySelectorAll('#hisTableBody tr.his-row');
+    if (!search || !rows.length) return;
+
+    function filterRows() {
+        var q = (search.value || '').toLowerCase().trim();
+        var visible = 0;
+        rows.forEach(function(row) {
+            var text = (row.getAttribute('data-search') || '').toLowerCase();
+            var show = !q || text.indexOf(q) !== -1;
+            row.classList.toggle('his-row--hidden', !show);
+            if (show) visible++;
+        });
+        if (badge) badge.textContent = visible + ' visibles';
+    }
+    search.addEventListener('input', filterRows);
+
+    rows.forEach(function(row) {
+        row.addEventListener('click', function(e) {
+            if (e.target.closest('a')) return;
+            var det = row.getAttribute('data-detalle') || '';
+            var next = row.nextElementSibling;
+            if (next && next.classList.contains('his-detail-row')) {
+                next.remove();
+                row.classList.remove('his-row--expanded', 'his-row--active');
+                return;
+            }
+            document.querySelectorAll('.his-detail-row').forEach(function(el) { el.remove(); });
+            rows.forEach(function(r) { r.classList.remove('his-row--expanded', 'his-row--active'); });
+            row.classList.add('his-row--expanded', 'his-row--active');
+            if (det) {
+                var tr = document.createElement('tr');
+                tr.className = 'his-detail-row';
+                tr.innerHTML = '<td colspan="5"><div class="his-detail-box"><strong>Detalle completo:</strong> ' + det.replace(/</g, '&lt;') + '</div></td>';
+                row.after(tr);
+            }
+        });
+    });
+})();
+</script>
 {% endblock %}

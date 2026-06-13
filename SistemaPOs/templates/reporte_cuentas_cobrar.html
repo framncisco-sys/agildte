@@ -1,29 +1,224 @@
 <!-- Programador: Oscar Amaya Romero -->
 {% extends "layout.html" %}
 {% block content %}
-<div class="container-fluid px-4 mt-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+{% set n_filas = filas|length %}
+<style>
+    .cxc-wrap {
+        --cxc-gold: #ca8a04;
+        --cxc-gold-soft: #fef9c3;
+        --cxc-green: #16a34a;
+        --cxc-green-soft: #dcfce7;
+        --cxc-red: #dc2626;
+        --cxc-red-soft: #fee2e2;
+        --cxc-blue: #2563eb;
+        --cxc-blue-soft: #eff6ff;
+        --cxc-slate: #475569;
+    }
+    .cxc-header {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start;
+        gap: 0.85rem; margin-bottom: 1rem;
+    }
+    .cxc-back {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.75rem;
+        border-radius: 999px; border: 1px solid #cbd5e1; background: #fff;
+        font-size: 0.92rem; font-weight: 700; color: #475569; text-decoration: none;
+        margin-bottom: 0.55rem; transition: all 0.15s ease;
+    }
+    .cxc-back:hover { background: #f8fafc; color: #1e293b; transform: translateX(-2px); }
+    .cxc-header-icon {
+        width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem; color: #fff; flex-shrink: 0;
+        background: linear-gradient(145deg, #eab308 0%, #ca8a04 100%);
+        box-shadow: 0 4px 14px rgba(202, 138, 4, 0.35);
+    }
+    .cxc-header h2 { font-size: 1.55rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .cxc-header p { font-size: 1.02rem; font-weight: 600; color: #64748b; margin: 0; max-width: 42rem; line-height: 1.4; }
+    .cxc-tool-row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+    .cxc-tool-btn {
+        display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.55rem 0.9rem;
+        border-radius: 9px; font-size: 0.95rem; font-weight: 800; text-decoration: none; color: #fff;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+    }
+    .cxc-tool-btn:hover { transform: translateY(-2px); color: #fff; }
+    .cxc-tool-btn--excel { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 3px 10px rgba(34,197,94,0.28); }
+    .cxc-tool-btn--pdf { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); box-shadow: 0 3px 10px rgba(220,38,38,0.28); }
+    .cxc-kpi-row { --bs-gutter-x: 0.65rem; --bs-gutter-y: 0.65rem; margin-bottom: 0.85rem; }
+    .cxc-kpi {
+        border-radius: 12px !important; border: 1px solid #e2e8f0 !important; padding: 1rem 1.05rem !important;
+        height: 100%; transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .cxc-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(15,23,42,0.1) !important; }
+    .cxc-kpi-icon {
+        width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.15rem; margin-bottom: 0.55rem;
+    }
+    .cxc-kpi-icon--gold { background: linear-gradient(145deg, #fef9c3 0%, #fde68a 100%); color: var(--cxc-gold); }
+    .cxc-kpi-icon--green { background: linear-gradient(145deg, #dcfce7 0%, #bbf7d0 100%); color: var(--cxc-green); }
+    .cxc-kpi-icon--blue { background: linear-gradient(145deg, #dbeafe 0%, #bfdbfe 100%); color: var(--cxc-blue); }
+    .cxc-kpi-icon--slate { background: linear-gradient(145deg, #f1f5f9 0%, #e2e8f0 100%); color: var(--cxc-slate); }
+    .cxc-kpi-label { font-size: 0.82rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; margin-bottom: 0.25rem; }
+    .cxc-kpi-val { font-size: 1.75rem; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .cxc-kpi-val--gold { color: var(--cxc-gold); }
+    .cxc-kpi-val--green { color: var(--cxc-green); }
+    .cxc-kpi-val--blue { color: var(--cxc-blue); }
+    .cxc-kpi-sub { font-size: 0.88rem; font-weight: 600; color: #94a3b8; margin-top: 0.2rem; }
+    .cxc-alert {
+        border-radius: 10px; padding: 0.85rem 1rem; margin-bottom: 0.85rem;
+        font-size: 1rem; font-weight: 600; line-height: 1.45; display: flex; align-items: flex-start; gap: 0.5rem;
+    }
+    .cxc-alert--info { background: var(--cxc-blue-soft); border: 1px solid #bfdbfe; color: #1e40af; }
+    .cxc-alert--ok { background: var(--cxc-green-soft); border: 1px solid #bbf7d0; color: #047857; }
+    .cxc-alert a { color: inherit; font-weight: 800; text-decoration: underline; }
+    .cxc-filter-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+    .cxc-filter-chip {
+        display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.75rem;
+        border-radius: 999px; border: 1px solid #e2e8f0; background: #fff;
+        font-size: 0.92rem; font-weight: 800; color: #475569; cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .cxc-filter-chip:hover, .cxc-filter-chip--active {
+        background: var(--cxc-gold-soft); border-color: #fde047; color: #854d0e;
+    }
+    .cxc-search-wrap { position: relative; margin-bottom: 0.75rem; }
+    .cxc-search-wrap i { position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1.1rem; }
+    .cxc-search {
+        width: 100%; padding: 0.62rem 0.85rem 0.62rem 2.5rem; border-radius: 10px;
+        border: 1px solid #e2e8f0; font-size: 1.05rem; font-weight: 600; color: #334155;
+    }
+    .cxc-search:focus { outline: none; border-color: #fde047; box-shadow: 0 0 0 3px rgba(234,179,8,0.15); }
+    .cxc-table-card { border-radius: 12px !important; border: 1px solid #e2e8f0 !important; overflow: hidden; }
+    .cxc-table-head {
+        padding: 0.7rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem;
+    }
+    .cxc-table-head h6 { margin: 0; font-size: 1.08rem; font-weight: 800; color: #1e293b; }
+    .cxc-count-badge {
+        display: inline-flex; padding: 0.25rem 0.6rem; border-radius: 999px;
+        font-size: 0.88rem; font-weight: 800; background: var(--cxc-gold-soft); color: #854d0e;
+    }
+    .cxc-table { margin-bottom: 0; width: 100%; }
+    .cxc-table thead th {
+        background: #f8fafc; font-size: 0.85rem; font-weight: 800; letter-spacing: 0.05em;
+        text-transform: uppercase; color: #64748b; padding: 0.75rem 0.85rem; border-bottom: 1px solid #e2e8f0;
+        white-space: nowrap;
+    }
+    .cxc-table tbody tr.cxc-row {
+        cursor: pointer; transition: background 0.18s ease, box-shadow 0.18s ease; border-bottom: 1px solid #f1f5f9;
+    }
+    .cxc-table tbody tr.cxc-row:hover, .cxc-table tbody tr.cxc-row--active {
+        background: linear-gradient(90deg, var(--cxc-gold-soft) 0%, #fff 100%);
+        box-shadow: inset 4px 0 0 var(--cxc-gold);
+    }
+    .cxc-table tbody tr.cxc-row--hidden { display: none; }
+    .cxc-table tbody td { padding: 0.75rem 0.85rem; font-size: 1.05rem; font-weight: 700; color: #334155; vertical-align: middle; }
+    .cxc-table tbody td:first-child, .cxc-table thead th:first-child { padding-left: 1rem; }
+    .cxc-table tfoot td {
+        background: #f8fafc; font-size: 1.05rem; font-weight: 900; color: #854d0e;
+        padding: 0.8rem 0.85rem; border-top: 2px solid #e2e8f0;
+    }
+    .cxc-id { font-size: 0.92rem; font-weight: 800; color: var(--cxc-gold); background: var(--cxc-gold-soft); padding: 0.2rem 0.5rem; border-radius: 6px; }
+    .cxc-money { font-variant-numeric: tabular-nums; font-weight: 900; color: #854d0e; font-size: 1.08rem; }
+    .cxc-dias {
+        display: inline-flex; align-items: center; justify-content: center; min-width: 2.5rem;
+        padding: 0.25rem 0.55rem; border-radius: 999px; font-size: 0.92rem; font-weight: 800;
+    }
+    .cxc-dias--ok { background: var(--cxc-green-soft); color: var(--cxc-green); }
+    .cxc-dias--warn { background: var(--cxc-gold-soft); color: #854d0e; }
+    .cxc-dias--crit { background: var(--cxc-red-soft); color: var(--cxc-red); }
+    .cxc-badge {
+        display: inline-flex; padding: 0.28rem 0.62rem; border-radius: 999px;
+        font-size: 0.88rem; font-weight: 800; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
+    }
+    .cxc-empty { text-align: center; padding: 2.5rem 1rem !important; font-size: 1.05rem; font-weight: 600; color: #94a3b8; }
+    .cxc-empty i { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; color: #cbd5e1; }
+</style>
+
+<div class="container-fluid px-4 mt-4 cxc-wrap">
+    <div class="cxc-header">
         <div>
-            <a href="{{ url_for('admin.reporte') }}" class="btn btn-outline-secondary btn-sm rounded-pill mb-2"><i class="bi bi-arrow-left"></i> Reportes</a>
-            <h2 class="fw-bold text-dark mb-0"><i class="bi bi-wallet2 text-warning"></i> Cuentas por Cobrar</h2>
-            <p class="text-muted small mb-0">Cartera de clientes — Facturas pendientes de cobro</p>
+            <a href="{{ url_for('admin.reporte') }}" class="cxc-back"><i class="bi bi-arrow-left"></i> Reportes</a>
+            <div class="d-flex align-items-start gap-3">
+                <span class="cxc-header-icon"><i class="bi bi-wallet2"></i></span>
+                <div>
+                    <h2>Cuentas por Cobrar</h2>
+                    <p>Cartera de clientes — facturas con estado de cobro <strong>PENDIENTE</strong> (ventas a crédito)</p>
+                </div>
+            </div>
         </div>
-        <div class="d-flex gap-2 align-items-center">
-            <span class="fw-bold text-warning">Total pendiente: $ {{ "{:,.2f}".format(total|float) }}</span>
-            <a href="{{ url_for('admin.reporte_cuentas_cobrar_exportar_excel') }}" class="btn btn-success fw-bold text-white"><i class="bi bi-file-earmark-excel"></i> Excel</a>
-            <a href="{{ url_for('admin.reporte_cuentas_cobrar_exportar_pdf') }}" class="btn btn-danger fw-bold text-white"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+        <div class="cxc-tool-row">
+            <a href="{{ url_for('admin.reporte_cuentas_cobrar_exportar_excel') }}" class="cxc-tool-btn cxc-tool-btn--excel"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+            <a href="{{ url_for('admin.reporte_cuentas_cobrar_exportar_pdf') }}" class="cxc-tool-btn cxc-tool-btn--pdf"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
         </div>
     </div>
 
-    <div class="card shadow-sm border-0 overflow-hidden" style="border-radius: 15px;">
-        <div class="card-header bg-white py-3 border-bottom">
-            <h6 class="m-0 fw-bold text-primary">Detalle de cartera</h6>
+    <div class="row cxc-kpi-row">
+        <div class="col-6 col-md-3">
+            <div class="card cxc-kpi shadow-sm">
+                <div class="cxc-kpi-icon cxc-kpi-icon--gold"><i class="bi bi-cash-stack"></i></div>
+                <div class="cxc-kpi-label">Total pendiente</div>
+                <div class="cxc-kpi-val cxc-kpi-val--gold">$ {{ "{:,.2f}".format(total|float) }}</div>
+                <div class="cxc-kpi-sub">{{ n_pendientes|default(0) }} documento{{ 's' if n_pendientes|default(0) != 1 else '' }}</div>
+            </div>
         </div>
+        <div class="col-6 col-md-3">
+            <div class="card cxc-kpi shadow-sm">
+                <div class="cxc-kpi-icon cxc-kpi-icon--green"><i class="bi bi-check-circle"></i></div>
+                <div class="cxc-kpi-label">Ya cobradas</div>
+                <div class="cxc-kpi-val cxc-kpi-val--green">{{ n_cobradas|default(0) }}</div>
+                <div class="cxc-kpi-sub">De {{ total_ventas_activas|default(0) }} ventas activas</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card cxc-kpi shadow-sm">
+                <div class="cxc-kpi-icon cxc-kpi-icon--blue"><i class="bi bi-credit-card"></i></div>
+                <div class="cxc-kpi-label">Ventas a crédito</div>
+                <div class="cxc-kpi-val cxc-kpi-val--blue">{{ n_credito_historico|default(0) }}</div>
+                <div class="cxc-kpi-sub">Histórico en POS</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card cxc-kpi shadow-sm">
+                <div class="cxc-kpi-icon cxc-kpi-icon--slate"><i class="bi bi-hourglass-split"></i></div>
+                <div class="cxc-kpi-label">Antigüedad máx.</div>
+                <div class="cxc-kpi-val" style="color:#334155">{{ dias_max|default(0) }}</div>
+                <div class="cxc-kpi-sub">Días en cartera</div>
+            </div>
+        </div>
+    </div>
+
+    {% if n_filas == 0 %}
+    <div class="cxc-alert cxc-alert--ok"><i class="bi bi-check-circle-fill"></i>
+        <span>Cartera al día: no hay facturas pendientes. Las <strong>{{ total_ventas_activas|default(0) }}</strong> ventas activas están marcadas como <strong>COBRADO</strong> (efectivo u otro pago inmediato).</span>
+    </div>
+    <div class="cxc-alert cxc-alert--info"><i class="bi bi-info-circle-fill"></i>
+        <span>Para ver documentos aquí, registre ventas con método de pago <strong>Crédito</strong> o marque una venta como <strong>PENDIENTE</strong> en gestión de ventas.</span>
+    </div>
+    {% endif %}
+
+    <div class="card cxc-table-card shadow-sm">
+        <div class="cxc-table-head">
+            <h6><i class="bi bi-list-ul"></i> Detalle de cartera</h6>
+            <span class="cxc-count-badge" id="cxcVisibleCount">{{ n_filas }} visible{{ 's' if n_filas != 1 else '' }}</span>
+        </div>
+        {% if n_filas > 0 %}
+        <div class="px-3 pt-3">
+            <div class="cxc-filter-chips" id="cxcDiasChips">
+                <button type="button" class="cxc-filter-chip cxc-filter-chip--active" data-dias="all"><i class="bi bi-grid"></i> Todos</button>
+                <button type="button" class="cxc-filter-chip" data-dias="0-30"><i class="bi bi-calendar-check"></i> 0–30 días</button>
+                <button type="button" class="cxc-filter-chip" data-dias="31-60"><i class="bi bi-calendar"></i> 31–60 días</button>
+                <button type="button" class="cxc-filter-chip" data-dias="61+"><i class="bi bi-exclamation-triangle"></i> +60 días</button>
+            </div>
+            <div class="cxc-search-wrap">
+                <i class="bi bi-search"></i>
+                <input type="search" class="cxc-search" id="cxcSearch" placeholder="Buscar cliente, documento, N° o tipo…" autocomplete="off">
+            </div>
+        </div>
+        {% endif %}
         <div class="table-responsive">
-            <table class="table align-middle m-0 table-hover table-sm">
-                <thead class="table-light">
+            <table class="table cxc-table align-middle" id="cxcTable">
+                <thead>
                     <tr>
-                        <th class="ps-4">N°</th>
+                        <th>N°</th>
                         <th>Fecha</th>
                         <th>Cliente</th>
                         <th>Documento</th>
@@ -34,26 +229,85 @@
                 </thead>
                 <tbody>
                     {% for r in filas %}
-                    <tr>
-                        <td class="ps-4">#{{ r[0] }}</td>
+                    {% set dias = (r[6]|default(0)|int) %}
+                    <tr class="cxc-row" data-dias="{{ dias }}" data-search="{{ ((r[2] or '') ~ ' ' ~ (r[3] or '') ~ ' ' ~ (r[4] or '') ~ ' ' ~ r[0]|string ~ ' ' ~ (r[1] or ''))|lower }}">
+                        <td><span class="cxc-id">#{{ r[0] }}</span></td>
                         <td>{{ r[1] }}</td>
-                        <td>{{ (r[2] or '—')[:40] }}</td>
-                        <td>{{ r[3] or '—' }}</td>
+                        <td title="{{ r[2] or '' }}">{{ (r[2] or '—')[:42] }}</td>
+                        <td><span class="cxc-badge">{{ r[3] or '—' }}</span></td>
                         <td>{{ r[4] or 'TICKET' }}</td>
-                        <td class="text-end fw-bold">$ {{ "{:,.2f}".format(r[5]|float) }}</td>
-                        <td class="text-end">{{ r[6] }}</td>
+                        <td class="text-end"><span class="cxc-money">$ {{ "{:,.2f}".format(r[5]|float) }}</span></td>
+                        <td class="text-end">
+                            <span class="cxc-dias {% if dias > 60 %}cxc-dias--crit{% elif dias > 30 %}cxc-dias--warn{% else %}cxc-dias--ok{% endif %}">{{ dias }}</span>
+                        </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
-                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                        <td colspan="7" class="cxc-empty">
+                            <i class="bi bi-shield-check"></i>
                             No hay facturas pendientes de cobro.
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
+                {% if n_filas > 0 %}
+                <tfoot>
+                    <tr>
+                        <td colspan="5" class="text-end">Total cartera</td>
+                        <td class="text-end">$ {{ "{:,.2f}".format(total|float) }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+                {% endif %}
             </table>
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    var rows = document.querySelectorAll('.cxc-row');
+    var search = document.getElementById('cxcSearch');
+    var countEl = document.getElementById('cxcVisibleCount');
+    var diasFilter = 'all';
+    var chips = document.querySelectorAll('.cxc-filter-chip');
+
+    function matchDias(d) {
+        if (diasFilter === 'all') return true;
+        if (diasFilter === '0-30') return d >= 0 && d <= 30;
+        if (diasFilter === '31-60') return d >= 31 && d <= 60;
+        if (diasFilter === '61+') return d > 60;
+        return true;
+    }
+
+    function applyFilters() {
+        var q = search ? (search.value || '').trim().toLowerCase() : '';
+        var visible = 0;
+        rows.forEach(function(row) {
+            var dias = parseInt(row.getAttribute('data-dias') || '0', 10);
+            var matchSearch = !q || (row.getAttribute('data-search') || '').indexOf(q) >= 0;
+            var show = matchSearch && matchDias(dias);
+            row.classList.toggle('cxc-row--hidden', !show);
+            if (show) visible++;
+        });
+        if (countEl) countEl.textContent = visible + ' visible' + (visible !== 1 ? 's' : '');
+    }
+
+    if (search) search.addEventListener('input', applyFilters);
+    chips.forEach(function(chip) {
+        chip.addEventListener('click', function() {
+            chips.forEach(function(c) { c.classList.remove('cxc-filter-chip--active'); });
+            chip.classList.add('cxc-filter-chip--active');
+            diasFilter = chip.getAttribute('data-dias') || 'all';
+            applyFilters();
+        });
+    });
+    rows.forEach(function(row) {
+        row.addEventListener('click', function() {
+            rows.forEach(function(r) { r.classList.remove('cxc-row--active'); });
+            row.classList.add('cxc-row--active');
+        });
+    });
+})();
+</script>
 {% endblock %}

@@ -96,6 +96,62 @@ def registrar(
     _try_insert(False)
 
 
+def _condiciones_historial(
+    empresa_id: int | None = None,
+    usuario_id: int | None = None,
+    evento: str | None = None,
+) -> tuple[list[str], list]:
+    condiciones = []
+    params: list = []
+    if usuario_id is not None:
+        condiciones.append("h.usuario_id = %s")
+        params.append(usuario_id)
+    if evento:
+        condiciones.append("h.evento = %s")
+        params.append(evento)
+    if empresa_id is not None:
+        condiciones.append(
+            "(h.usuario_id IS NULL OR h.usuario_id IN (SELECT id FROM usuarios WHERE empresa_id = %s))"
+        )
+        params.append(empresa_id)
+    where = " AND ".join(condiciones) if condiciones else "1=1"
+    return condiciones, params, where
+
+
+def resumen(
+    cur,
+    empresa_id: int | None = None,
+    usuario_id: int | None = None,
+    evento: str | None = None,
+) -> tuple[int, dict[str, int]]:
+    """Total de registros y conteo por evento con los mismos filtros que listar."""
+    _, params, where = _condiciones_historial(empresa_id, usuario_id, evento)
+    try:
+        cur.execute(
+            f"""
+            SELECT COUNT(*) FROM historial_usuarios h
+            LEFT JOIN usuarios u ON u.id = h.usuario_id
+            WHERE {where}
+            """,
+            params,
+        )
+        total = int((cur.fetchone() or (0,))[0])
+        cur.execute(
+            f"""
+            SELECT h.evento, COUNT(*) FROM historial_usuarios h
+            LEFT JOIN usuarios u ON u.id = h.usuario_id
+            WHERE {where}
+            GROUP BY h.evento ORDER BY COUNT(*) DESC
+            """,
+            params,
+        )
+        eventos_count = {str(r[0] or ""): int(r[1]) for r in (cur.fetchall() or [])}
+        return total, eventos_count
+    except Exception:
+        cur.connection.rollback()
+        return 0, {}
+
+
 def listar(
     cur,
     empresa_id: int | None = None,
@@ -109,20 +165,7 @@ def listar(
     Retorna: [(id, usuario_id, username, evento, detalle, ip_address, created_at), ...]
     Si empresa_id: solo usuarios de esa empresa + registros sin usuario (logins fallidos).
     """
-    condiciones = []
-    params = []
-    if usuario_id is not None:
-        condiciones.append("h.usuario_id = %s")
-        params.append(usuario_id)
-    if evento:
-        condiciones.append("h.evento = %s")
-        params.append(evento)
-    if empresa_id is not None:
-        condiciones.append(
-            "(h.usuario_id IS NULL OR h.usuario_id IN (SELECT id FROM usuarios WHERE empresa_id = %s))"
-        )
-        params.append(empresa_id)
-    where = " AND ".join(condiciones) if condiciones else "1=1"
+    _, params, where = _condiciones_historial(empresa_id, usuario_id, evento)
     params.extend([limite, offset])
     try:
         cur.execute(
