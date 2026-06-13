@@ -214,12 +214,14 @@ def _render_dashboard():
     ret_compras = round(float(iva_compras[0][1]), 2) if iva_compras and len(iva_compras[0]) > 1 and iva_compras[0][1] else 0
     iva_estimado = round(iva_debito - iva_credito - retenciones_ventas + ret_compras, 2)
     stock_bajo = []
+    n_stock_bajo_total = 0
     ventas_sucursal = []
     top_clientes_cf = []
     try:
         conn = psycopg2.connect(**db.config)
         cur = conn.cursor()
         stock_bajo = productos_repo.productos_stock_bajo(cur, umbral=5, empresa_id=emp_id) or []
+        n_stock_bajo_total = productos_repo.contar_productos_stock_bajo(cur, umbral=5, empresa_id=emp_id)
         try:
             cur.execute(
                 """SELECT COALESCE(s.nombre, 'Sin sucursal'), COALESCE(SUM(v.total_pagar), 0)
@@ -254,6 +256,7 @@ def _render_dashboard():
         conn.close()
     except Exception:
         stock_bajo = []
+        n_stock_bajo_total = 0
         ventas_sucursal = []
         top_clientes_cf = []
     desde = (hoy - timedelta(days=6)).strftime("%Y-%m-%d")
@@ -351,6 +354,7 @@ def _render_dashboard():
         iva_estimado=iva_estimado,
         retenciones_acumuladas=retenciones_ventas,
         stock_bajo=stock_bajo,
+        n_stock_bajo_total=n_stock_bajo_total,
         ventas_sucursal=ventas_sucursal,
         dte_pendientes=dte_pendientes_cnt,
         top_clientes_cf=top_clientes_cf,

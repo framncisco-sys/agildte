@@ -52,6 +52,7 @@
         font-variant-numeric: tabular-nums;
     }
     .stock-bajo-footer { font-size: 0.75rem; color: #64748b; }
+    /* stock-bajo fiscal section overrides below in .stock-card block */
     .kpi-card-mes {
         cursor: pointer;
         transition: transform 0.22s ease, box-shadow 0.22s ease;
@@ -844,46 +845,153 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 0.55rem 0.5rem;
-        margin: 0 -0.5rem;
-        border-radius: 8px;
+        gap: 0.75rem;
+        padding: 0.72rem 0.65rem;
+        margin: 0 -0.35rem;
+        border-radius: 10px;
         text-decoration: none;
         color: inherit;
-        transition: background 0.18s ease;
+        font-size: 1.08rem;
+        font-weight: 700;
+        transition: background 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease;
         border-bottom: 1px solid #f1f5f9;
     }
     .iva-row-link:last-child { border-bottom: none; }
-    .iva-row-link:hover { background: #f8fafc; color: inherit; }
-    .iva-row-link .iva-amt { font-weight: 700; font-variant-numeric: tabular-nums; }
-    .iva-total-box {
-        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-        border-radius: 12px;
-        padding: 0.75rem 1rem;
-        margin-top: 0.5rem;
+    .iva-row-link:hover { background: #eff6ff; color: inherit; transform: translateX(2px); box-shadow: inset 3px 0 0 #2563eb; }
+    .iva-row-link .iva-amt { font-weight: 800; font-size: 1.12rem; font-variant-numeric: tabular-nums; }
+    .iva-row-sub {
+        display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+        padding: 0.45rem 0.65rem 0.45rem 1.25rem; margin: 0 -0.35rem;
+        font-size: 0.98rem; font-weight: 600; color: #64748b;
     }
+    .iva-row-sub span:last-child { font-weight: 800; font-variant-numeric: tabular-nums; color: #475569; }
+    .iva-total-box {
+        border-radius: 14px;
+        padding: 1rem 1.1rem;
+        margin-top: 0.65rem;
+        border: 2px solid transparent;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .iva-total-box:hover { transform: translateY(-1px); }
+    .iva-total-box--pagar {
+        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        border-color: #fecaca;
+    }
+    .iva-total-box--favor {
+        background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+        border-color: #a7f3d0;
+    }
+    .iva-total-box--cero {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border-color: #e2e8f0;
+    }
+    .iva-total-label { font-size: 1.05rem; font-weight: 800; color: #334155; }
+    .iva-total-val { font-size: 1.65rem; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .iva-total-hint { font-size: 0.92rem; font-weight: 600; color: #64748b; margin-top: 0.35rem; }
+    .fisc-card-title {
+        font-size: 1.28rem; font-weight: 800; color: #0f172a; margin-bottom: 0.85rem;
+        display: flex; align-items: center; gap: 0.4rem;
+    }
+    .fisc-card-foot { font-size: 0.98rem; font-weight: 700; color: #64748b; }
+    .fisc-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+        padding: 0.62rem 1rem; border-radius: 10px; font-size: 1.02rem; font-weight: 800;
+        text-decoration: none; transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .fisc-btn:hover { transform: translateY(-2px); }
+    .fisc-btn--primary { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; border: none; box-shadow: 0 4px 12px rgba(37,99,235,0.25); }
+    .fisc-btn--primary:hover { color: #fff; }
+    .fisc-btn--secondary { background: #fff; color: #475569; border: 1px solid #e2e8f0; }
+    .fisc-btn--secondary:hover { background: #f8fafc; color: #334155; }
+    .fisc-btn--warning { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; border: none; box-shadow: 0 4px 12px rgba(245,158,11,0.28); }
+    .fisc-btn--warning:hover { color: #fff; }
+    .fisc-btn--stock { background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; border: none; box-shadow: 0 4px 12px rgba(239,68,68,0.28); }
+    .fisc-btn--stock:hover { color: #fff; transform: translateY(-2px); }
 
     .kpi-ret-card {
         transition: transform 0.22s ease, box-shadow 0.22s ease;
         height: 100%;
+        border: 1px solid #fde68a !important;
+        background: linear-gradient(180deg, #fffbeb 0%, #fff 35%) !important;
     }
     .kpi-ret-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 12px 28px rgba(217, 119, 6, 0.12) !important;
+        transform: translateY(-4px);
+        box-shadow: 0 14px 32px rgba(217, 119, 6, 0.15) !important;
     }
     .kpi-ret-icon {
-        width: 48px;
-        height: 48px;
-        border-radius: 12px;
+        width: 54px;
+        height: 54px;
+        border-radius: 14px;
         background: linear-gradient(145deg, #f59e0b 0%, #d97706 100%);
         color: #fff;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.25rem;
-        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+        font-size: 1.45rem;
+        box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
         transition: transform 0.25s ease;
     }
-    .kpi-ret-card:hover .kpi-ret-icon { transform: rotate(-8deg) scale(1.06); }
+    .kpi-ret-card:hover .kpi-ret-icon { transform: rotate(-8deg) scale(1.08); }
+    .kpi-ret-label { font-size: 0.92rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #92400e; }
+    .kpi-ret-sub { font-size: 1rem; font-weight: 600; color: #78716c; }
+    .kpi-ret-val { font-size: 2rem; font-weight: 900; color: #d97706; font-variant-numeric: tabular-nums; line-height: 1.1; margin: 0.35rem 0; }
+    .kpi-ret-desc { font-size: 1.05rem; font-weight: 600; color: #64748b; line-height: 1.45; }
+
+    .stock-card {
+        border: 1px solid #fecaca !important;
+        background: linear-gradient(180deg, #fef2f2 0%, #fff 28%) !important;
+        transition: transform 0.22s ease, box-shadow 0.22s ease;
+    }
+    .stock-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(220, 38, 38, 0.12) !important; }
+    .stock-card .fisc-card-title i { color: #dc2626 !important; }
+    .stock-bajo-list { max-height: 200px; overflow-y: auto; padding-right: 0.25rem; }
+    .stock-bajo-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.65rem;
+        padding: 0.65rem 0.7rem;
+        margin-bottom: 0.35rem;
+        border-radius: 10px;
+        border-left: 4px solid transparent;
+        cursor: pointer;
+        background: #fff;
+        border: 1px solid #f1f5f9;
+        transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+        text-decoration: none;
+        color: inherit;
+    }
+    .stock-bajo-item:hover {
+        background: #fef2f2;
+        transform: translateX(4px);
+        box-shadow: 0 4px 14px rgba(220, 38, 38, 0.1);
+    }
+    .stock-bajo-item:active { transform: translateX(2px); }
+    .stock-bajo-name {
+        flex: 1;
+        min-width: 0;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #1e293b;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .stock-bajo-qty {
+        flex-shrink: 0;
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: #fff;
+        padding: 0.28rem 0.55rem;
+        border-radius: 999px;
+        min-width: 2rem;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+    }
+    .stock-count-badge {
+        display: inline-flex; padding: 0.25rem 0.65rem; border-radius: 999px;
+        font-size: 0.92rem; font-weight: 800; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca;
+    }
 
     .dash-links-grid {
         display: grid;
@@ -1468,22 +1576,23 @@
         </div>
         <div class="row g-3 g-lg-4">
         <div class="col-xl-5 col-lg-6">
+            {% set iva_est = iva_estimado|default(0)|float %}
             <div class="card border-0 rounded-4 shadow-sm p-4 dash-card h-100">
-                <h6 class="fw-bold mb-3" style="color: #334155;"><i class="bi bi-percent text-primary me-1"></i> Posición IVA</h6>
-                <div class="small dash-card-body">
-                    <a href="/reporte/facturacion/libro_iva?inicio={{ inicio_mes|default('') }}&fin={{ fin_mes|default('') }}" class="iva-row-link" title="Libro de ventas a contribuyentes">
+                <h6 class="fisc-card-title"><i class="bi bi-percent text-primary"></i> Posición IVA</h6>
+                <div class="dash-card-body">
+                    <a href="/reporte/facturacion/libro_iva?inicio={{ inicio_mes|default('') }}&fin={{ fin_mes|default('') }}" class="iva-row-link" title="Libro de ventas a contribuyentes (CCF)">
                         <span>Débito CCF (contribuyentes)</span>
                         <span class="iva-amt text-success">${{ "{:,.2f}".format(iva_debito_ccf|default(0)|float) }}</span>
                     </a>
-                    <div class="d-flex justify-content-between py-1 ps-2 text-muted iva-row-link" style="font-size:0.8rem;cursor:default;">
+                    <div class="iva-row-sub">
                         <span>↳ Factura CF (DTE-01)</span>
                         <span>${{ "{:,.2f}".format(iva_debito_cf|default(0)|float) }} · {{ n_ventas_cf|default(0) }} doc.</span>
                     </div>
-                    <div class="d-flex justify-content-between py-1 ps-2 text-muted border-bottom" style="font-size:0.8rem">
+                    <div class="iva-row-sub border-bottom pb-2 mb-1">
                         <span>↳ Tickets / otros</span>
                         <span>${{ "{:,.2f}".format(iva_debito_ticket|default(0)|float) }} · {{ n_ventas_ticket|default(0) }} doc.</span>
                     </div>
-                    <div class="iva-row-link fw-semibold" style="cursor:default;">
+                    <div class="iva-row-link" style="cursor:default;border-bottom:none;">
                         <span>Total IVA débito ventas</span>
                         <span class="iva-amt text-success">${{ "{:,.2f}".format(iva_debito|default(0)|float) }}</span>
                     </div>
@@ -1491,59 +1600,86 @@
                         <span>(−) IVA Crédito (Compras)</span>
                         <span class="iva-amt text-info">${{ "{:,.2f}".format(iva_credito|default(0)|float) }}</span>
                     </a>
-                    <div class="iva-total-box">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="fw-bold">Estimado a pagar</span>
-                            <strong class="fs-5 {% if (iva_estimado|default(0)|float) > 0 %}text-danger{% else %}text-secondary{% endif %}">${{ "{:,.2f}".format(iva_estimado|default(0)|float) }}</strong>
+                    <div class="iva-total-box {% if iva_est > 0 %}iva-total-box--pagar{% elif iva_est < 0 %}iva-total-box--favor{% else %}iva-total-box--cero{% endif %}">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <span class="iva-total-label">
+                                {% if iva_est > 0 %}Estimado a pagar{% elif iva_est < 0 %}Saldo a favor{% else %}Posición neutra{% endif %}
+                            </span>
+                            <strong class="iva-total-val {% if iva_est > 0 %}text-danger{% elif iva_est < 0 %}text-success{% else %}text-secondary{% endif %}">
+                                {% if iva_est < 0 %}+${{ "{:,.2f}".format((iva_est * -1)|float) }}{% else %}${{ "{:,.2f}".format(iva_est) }}{% endif %}
+                            </strong>
                         </div>
+                        <p class="iva-total-hint mb-0">
+                            {% if iva_est < 0 %}
+                            El crédito de compras supera el IVA de ventas del mes ({{ mes_largo|default('mes') }}).
+                            {% elif iva_est > 0 %}
+                            Débito ${{ "{:,.2f}".format(iva_debito|default(0)|float) }} − crédito ${{ "{:,.2f}".format(iva_credito|default(0)|float) }}.
+                            {% else %}
+                            Débito y crédito del mes están equilibrados.
+                            {% endif %}
+                        </p>
                     </div>
                 </div>
-                <p class="small text-muted mt-2 mb-0">Libro CCF: {{ n_ventas_ccf|default(0) }} doc. este mes.</p>
+                <p class="fisc-card-foot mt-2 mb-0">Libro CCF: {{ n_ventas_ccf|default(0) }} doc. · Periodo {{ inicio_mes|default('')|replace('-','/') }} al {{ fin_mes|default('')|replace('-','/') }}</p>
                 <div class="d-flex gap-2 dash-card-foot">
-                    <a href="/reporte/facturacion/libro_iva?inicio={{ inicio_mes|default('') }}&fin={{ fin_mes|default('') }}" class="btn btn-sm btn-outline-primary flex-grow-1 fw-semibold">Libro CCF</a>
-                    <a href="/reporte/facturacion/libro_iva_compras" class="btn btn-sm btn-outline-secondary flex-grow-1 fw-semibold">Libro compras</a>
+                    <a href="/reporte/facturacion/libro_iva?inicio={{ inicio_mes|default('') }}&fin={{ fin_mes|default('') }}" class="fisc-btn fisc-btn--primary flex-grow-1"><i class="bi bi-journal-text"></i> Libro CCF</a>
+                    <a href="/reporte/facturacion/libro_iva_compras" class="fisc-btn fisc-btn--secondary flex-grow-1"><i class="bi bi-basket"></i> Libro compras</a>
                 </div>
             </div>
         </div>
         <div class="col-xl-3 col-lg-6">
             <div class="card border-0 rounded-4 shadow-sm p-4 kpi-ret-card dash-card h-100">
-                <div class="d-flex align-items-start gap-3 mb-3">
+                <div class="d-flex align-items-start gap-3 mb-2">
                     <div class="kpi-ret-icon"><i class="bi bi-wallet2"></i></div>
                     <div>
-                        <span class="text-uppercase text-muted small fw-bold d-block">Retenciones 1%</span>
-                        <span class="small text-muted">Crédito fiscal · mes</span>
+                        <span class="kpi-ret-label d-block">Retenciones 1%</span>
+                        <span class="kpi-ret-sub">Crédito fiscal · {{ mes_largo|default('mes') }}</span>
                     </div>
                 </div>
-                <h3 class="fw-bold mb-1" style="color: #d97706;">${{ "{:,.2f}".format(retenciones_acumuladas|default(0)|float) }}</h3>
-                <p class="text-muted small mb-0 dash-card-body">Acumulado del periodo. Aplica como crédito en la declaración de IVA.</p>
-                <a href="/reporte/facturacion/libro_iva?inicio={{ inicio_mes|default('') }}&fin={{ fin_mes|default('') }}" class="btn btn-sm btn-outline-warning w-100 fw-semibold dash-card-foot">Ver en libro CCF</a>
+                <div class="kpi-ret-val">${{ "{:,.2f}".format(retenciones_acumuladas|default(0)|float) }}</div>
+                <p class="kpi-ret-desc mb-0 dash-card-body">
+                    {% if (retenciones_acumuladas|default(0)|float) > 0 %}
+                    Acumulado del periodo en ventas CCF. Se resta en la declaración de IVA.
+                    {% else %}
+                    Sin retenciones registradas este mes. Aplica en ventas a contribuyentes con retención 1%.
+                    {% endif %}
+                </p>
+                <a href="/reporte/facturacion/libro_iva?inicio={{ inicio_mes|default('') }}&fin={{ fin_mes|default('') }}" class="fisc-btn fisc-btn--warning w-100 dash-card-foot"><i class="bi bi-journal-check"></i> Ver en libro CCF</a>
             </div>
         </div>
         <div class="col-xl-4 col-lg-12">
-            <div class="card border-0 rounded-4 shadow-sm p-4 dash-card h-100">
-                <h6 class="fw-bold mb-3" style="color: #334155;"><i class="bi bi-exclamation-triangle text-warning me-1"></i> Stock bajo (&lt;5 und)</h6>
+            <div class="card border-0 rounded-4 shadow-sm p-4 dash-card stock-card h-100">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                    <h6 class="fisc-card-title mb-0"><i class="bi bi-exclamation-triangle"></i> Stock bajo (&lt;5 und)</h6>
+                    {% if n_stock_bajo_total|default(0) > 0 %}
+                    <span class="stock-count-badge">{{ n_stock_bajo_total }} producto{{ 's' if n_stock_bajo_total != 1 else '' }}</span>
+                    {% endif %}
+                </div>
                 <div class="dash-card-body">
                 {% if stock_bajo and stock_bajo|length > 0 %}
-                {% set stock_colors = ['#dc2626', '#ea580c', '#2563eb', '#16a34a', '#7c3aed', '#0891b2', '#db2777', '#ca8a04'] %}
+                {% set stock_colors = ['#dc2626', '#ea580c', '#2563eb', '#16a34a', '#7c3aed', '#0891b2'] %}
                 <div class="stock-bajo-list" id="stockBajoList">
                     {% for p in stock_bajo[:6] %}
                     {% set stk = (p[2] if p|length > 2 else 0)|float %}
                     {% set col = stock_colors[loop.index0 % stock_colors|length] %}
-                    <a href="/reporte/inventario/lista_compras" class="stock-bajo-item" style="border-left-color: {{ col }};" title="{{ p[1] if p|length > 1 else '' }} — Stock: {{ '%g'|format(stk) }}">
+                    <a href="/inventario?buscar={{ (p[1] if p|length > 1 else '')|urlencode }}" class="stock-bajo-item" style="border-left-color: {{ col }};" title="{{ p[1] if p|length > 1 else '' }} — Stock: {{ '%g'|format(stk) }} und.">
                         <span class="stock-bajo-name">{{ p[1] if p|length > 1 else 'Producto' }}</span>
                         <span class="stock-bajo-qty" style="background: {{ col }};">{{ '%g'|format(stk) }}</span>
                     </a>
                     {% endfor %}
                 </div>
+                {% if n_stock_bajo_total|default(0) > 6 %}
+                <p class="fisc-card-foot mb-0 mt-2">+ {{ n_stock_bajo_total - 6 }} más en lista de compras.</p>
+                {% endif %}
                 {% else %}
-                <div class="text-center py-3">
-                    <i class="bi bi-check-circle-fill text-success fs-2 d-block mb-2"></i>
-                    <p class="text-muted small mb-0">Inventario sin alertas críticas.</p>
+                <div class="text-center py-4">
+                    <i class="bi bi-check-circle-fill text-success d-block mb-2" style="font-size:2.5rem;"></i>
+                    <p class="mb-0" style="font-size:1.08rem;font-weight:700;color:#64748b;">Inventario sin alertas críticas.</p>
                 </div>
                 {% endif %}
                 </div>
                 {% if stock_bajo and stock_bajo|length > 0 %}
-                <a href="/reporte/inventario/lista_compras" class="btn btn-sm btn-warning w-100 fw-semibold dash-card-foot">Ver lista de compras</a>
+                <a href="/reporte/inventario/lista_compras" class="fisc-btn fisc-btn--stock w-100 dash-card-foot"><i class="bi bi-cart-plus"></i> Ver lista de compras</a>
                 {% endif %}
             </div>
         </div>
