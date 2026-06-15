@@ -7,8 +7,9 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
-        .card { border: none; border-radius: 12px; box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.08); }
+        body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f1f5f9 !important; }
+        .card { border: none; border-radius: 14px; box-shadow: 0 4px 20px rgba(15,23,42,0.08); }
+        .alert { font-size: 1rem; font-weight: 600; border-radius: 10px; }
     </style>
 </head>
 <body class="bg-light p-2 p-md-3">
@@ -20,6 +21,7 @@
     {% endif %}
 {% endwith %}
 <div class="card p-3 p-md-4" id="formCliente">
+    <script src="https://cdn.jsdelivr.net/npm/imask@7.6.1/dist/imask.min.js"></script>
     {% include '_cliente_form_card.html' %}
 </div>
 <p class="small text-muted text-center mt-2 mb-0">
@@ -28,45 +30,8 @@
 {% include '_modal_buscador_actividad.html' %}
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 {% include '_modal_buscador_actividad_script.html' %}
-<script src="https://cdn.jsdelivr.net/npm/imask"></script>
 <script>
 (function () {
-    var selTipo = document.querySelector('select[name="tipo_documento"]');
-    var inpDoc = document.getElementById('numero_documento');
-    var maskDoc = null;
-    function aplicarMascaraDoc() {
-        if (maskDoc) { try { maskDoc.destroy(); } catch (e) {} maskDoc = null; }
-        var tipo = (selTipo && selTipo.value || '').toUpperCase();
-        if (!inpDoc) return;
-        if (tipo === 'NIT') {
-            maskDoc = IMask(inpDoc, { mask: '0000-000000-000-0', lazy: false });
-        } else if (tipo === 'DUI') {
-            maskDoc = IMask(inpDoc, { mask: '00000000-0', lazy: false });
-        } else if (tipo === 'NRC') {
-            maskDoc = IMask(inpDoc, { mask: '000000-0', lazy: false });
-        } else {
-            inpDoc.placeholder = 'Según tipo (Pasaporte, Carné: texto libre)';
-        }
-    }
-    if (selTipo && inpDoc) {
-        selTipo.addEventListener('change', aplicarMascaraDoc);
-        aplicarMascaraDoc();
-    }
-    var selEmp = document.getElementById('sel_empresa');
-    var selSuc = document.getElementById('sel_sucursal');
-    if (selEmp && selSuc) {
-        function filtrarSucursales() {
-            var empId = String(selEmp.value || '');
-            selSuc.querySelectorAll('option').forEach(function (o) {
-                var emp = o.dataset.emp || '';
-                var mostrar = !emp || emp === empId;
-                o.style.display = mostrar ? '' : 'none';
-                if (o.value && emp && emp !== empId) o.selected = false;
-            });
-        }
-        selEmp.addEventListener('change', filtrarSucursales);
-        filtrarSucursales();
-    }
     document.getElementById('btnClienteEmbedVolver')?.addEventListener('click', function () {
         if (window.parent !== window) {
             window.parent.postMessage({ type: 'posagil_cliente_embed_cerrar' }, '*');

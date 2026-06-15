@@ -441,7 +441,7 @@ def index():
         empresas = empresas_repo.listar_empresas_detalle(cur) or []
         cur.close()
         conn.close()
-        hoy = date.today()
+        hoy = hoy_sv()
         total = len(empresas)
         vigentes = sum(
             1 for e in empresas if empresas_repo.es_suscripcion_vigente(bool(e[4]), e[5], hoy)

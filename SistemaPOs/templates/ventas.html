@@ -1582,7 +1582,8 @@
                     style="min-height: 60vh; height: 75vh; background: #f8f9fa;"
                     src="about:blank" loading="lazy"></iframe>
             </div>
-            <div class="modal-footer py-2">
+            <div class="modal-footer py-2 gap-2">
+                <button type="button" class="btn btn-primary fw-bold" id="btnModalClienteGuardar"><i class="bi bi-check2-circle"></i> Guardar cliente</button>
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cerrar</button>
             </div>
         </div>
@@ -2565,6 +2566,22 @@
             var cid = inputClienteId && inputClienteId.value ? String(inputClienteId.value).trim() : '';
             if (!/^[0-9]+$/.test(cid)) return;
             abrirModalCliente(cid);
+        });
+        var btnGuardarModal = document.getElementById('btnModalClienteGuardar');
+        if (btnGuardarModal) btnGuardarModal.addEventListener('click', function () {
+            try {
+                var iwin = iframe && iframe.contentWindow;
+                if (iwin && typeof iwin.cliFormSubmit === 'function') {
+                    iwin.cliFormSubmit();
+                    return;
+                }
+                var doc = iframe && (iframe.contentDocument || iwin.document);
+                var f = doc && doc.getElementById('formClientePrincipal');
+                if (f) {
+                    if (f.requestSubmit) f.requestSubmit();
+                    else f.submit();
+                }
+            } catch (err) { /* cross-origin o iframe vacío */ }
         });
         window.addEventListener('message', function (ev) {
             var d = ev.data;

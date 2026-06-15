@@ -1,140 +1,285 @@
 {# Tarjeta de formulario cliente: misma lógica que /clientes (admin.guardar_cliente). #}
-<h5 class="fw-bold mb-3">{{ 'Editar Cliente' if cliente else 'Nuevo Cliente' }}</h5>
+<style>
+    .cli-form { --cli-f-blue: #2563eb; --cli-f-blue-soft: #eff6ff; }
+    .cli-form-title { font-size: 1.28rem; font-weight: 800; color: #0f172a; margin-bottom: 0.5rem; }
+    .cli-form-empresa {
+        display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem;
+        border-radius: 999px; background: var(--cli-f-blue-soft); color: #1e40af;
+        font-size: 0.95rem; font-weight: 700; margin-bottom: 0.85rem;
+    }
+    .cli-form-section {
+        border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem 1.05rem;
+        margin-bottom: 1rem; background: #fff; transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .cli-form-section:hover { border-color: #cbd5e1; }
+    .cli-form-section--active { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .cli-form-section-title {
+        font-size: 0.92rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+        color: #64748b; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.35rem;
+    }
+    .cli-form .form-label { font-size: 1rem; font-weight: 800; color: #334155; margin-bottom: 0.35rem; }
+    .cli-form .form-control, .cli-form .form-select {
+        font-size: 1.05rem; font-weight: 600; padding: 0.6rem 0.78rem; border-radius: 9px;
+        border-color: #e2e8f0; transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+    }
+    .cli-form .form-control:hover, .cli-form .form-select:hover { border-color: #cbd5e1; }
+    .cli-form .form-control:focus, .cli-form .form-select:focus {
+        border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); background: #fafbff;
+    }
+    .cli-form .form-control.is-invalid { border-color: #f87171; box-shadow: 0 0 0 3px rgba(248,113,113,0.15); }
+    .cli-form .form-control.is-valid { border-color: #4ade80; }
+    .cli-form-hint { font-size: 0.9rem; font-weight: 600; color: #64748b; margin-top: 0.3rem; display: block; }
+    .cli-form-hint--doc { color: #2563eb; }
+    .cli-form-switch-box {
+        padding: 0.65rem 0.75rem; border-radius: 10px; border: 1px solid #e2e8f0;
+        background: #f8fafc; margin-bottom: 0.65rem; transition: background 0.18s ease, border-color 0.18s ease;
+    }
+    .cli-form-switch-box:has(input:checked) { background: var(--cli-f-blue-soft); border-color: #bfdbfe; }
+    .cli-form-switch-box .form-check-label { font-size: 1rem; font-weight: 700; color: #334155; }
+    .cli-form-actions { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
+    .cli-btn-save {
+        display: flex; align-items: center; justify-content: center; gap: 0.4rem; width: 100%;
+        padding: 0.72rem 1rem; border-radius: 10px; font-size: 1.05rem; font-weight: 800; border: none; cursor: pointer;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #fff;
+        box-shadow: 0 4px 14px rgba(37,99,235,0.3); transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+    .cli-btn-save:hover:not(:disabled) { transform: translateY(-2px); color: #fff; }
+    .cli-btn-save:disabled { opacity: 0.65; cursor: wait; }
+    .cli-btn-cancel {
+        display: flex; align-items: center; justify-content: center; gap: 0.35rem; width: 100%;
+        padding: 0.62rem 1rem; border-radius: 10px; font-size: 1rem; font-weight: 700;
+        border: 1px solid #e2e8f0; background: #fff; color: #475569; text-decoration: none;
+        transition: all 0.15s ease; cursor: pointer;
+    }
+    .cli-btn-cancel:hover { background: #f8fafc; color: #334155; }
+    .cli-embed-sticky {
+        position: sticky; bottom: 0; z-index: 20;
+        margin: 1rem -0.25rem -0.25rem; padding: 0.85rem 0.25rem 0.25rem;
+        background: linear-gradient(180deg, rgba(248,250,252,0) 0%, #f8fafc 35%, #f8fafc 100%);
+        border-top: 1px solid #e2e8f0;
+    }
+    .cli-field-feedback { font-size: 0.88rem; font-weight: 700; color: #dc2626; margin-top: 0.25rem; display: none; }
+    .cli-field-feedback.is-visible { display: block; }
+    .cli-form-progress {
+        height: 4px; border-radius: 999px; background: #e2e8f0; margin-bottom: 1rem; overflow: hidden;
+    }
+    .cli-form-progress-bar {
+        height: 100%; border-radius: 999px; background: linear-gradient(90deg, #3b82f6, #60a5fa);
+        width: 0%; transition: width 0.3s ease;
+    }
+</style>
+
+<div class="cli-form" id="cliFormWrap">
+<h5 class="cli-form-title">{{ 'Editar Cliente' if cliente else 'Nuevo Cliente' }}</h5>
 {% if session.get('empresa_nombre') and not es_superadmin %}
-<p class="small text-muted mb-2"><i class="bi bi-building"></i> Empresa: <strong>{{ session.empresa_nombre }}</strong></p>
+<p class="cli-form-empresa"><i class="bi bi-building"></i> {{ session.empresa_nombre }}</p>
 {% endif %}
-<form action="{{ url_for('admin.guardar_cliente') }}" method="POST">
+
+<div class="cli-form-progress" aria-hidden="true"><div class="cli-form-progress-bar" id="cliFormProgress"></div></div>
+
+<form action="{{ url_for('admin.guardar_cliente') }}" method="POST" id="formClientePrincipal" novalidate>
     {% if embed_mode|default(false) %}
     <input type="hidden" name="embed" value="1">
     {% endif %}
     <input type="hidden" name="cliente_id" value="{{ cliente_dict.id if cliente_dict else '' }}">
-    <div class="mb-3">
-        <label class="form-label fw-bold">Razón Social / Nombre <span class="text-danger">*</span></label>
-        <input type="text" name="nombre_cliente" class="form-control" value="{{ cliente_dict.nombre if cliente_dict else '' }}" required placeholder="Nombre o razón social del cliente">
-    </div>
-    {% set es_super = (es_superadmin or (rol_actual or session.get('rol')) in ('ADMIN', 'SUPERADMIN')) %}
-    {% if es_super %}
-    <div class="mb-3">
-        <label class="form-label small fw-bold">Empresa <span class="text-danger">*</span></label>
-        <select name="empresa_id" id="sel_empresa" class="form-select" {{ 'required' if empresas else '' }}>
-            {% if not empresas %}<option value="">— No hay empresas —</option>{% endif %}
-            {% for e in (empresas or []) %}
-            <option value="{{ e[0] }}" data-emp="{{ e[0] }}" {{ 'selected' if (cliente_dict and cliente_dict.empresa_id == e[0]) or (not cliente_dict and session.get('empresa_id') == e[0]) else '' }}>{{ e[1] }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="mb-3">
-        <label class="form-label small fw-bold">Sucursal</label>
-        <select name="sucursal_id" id="sel_sucursal" class="form-select">
-            <option value="" data-emp="">— Sin sucursal —</option>
-            {% for s in (sucursales_todas or []) %}
-            <option value="{{ s[0] }}" data-emp="{{ s[2] }}" {{ 'selected' if cliente_dict and cliente_dict.sucursal_id == s[0] else '' }}>{{ s[1] }}{% if (empresas_map or {}) and s[2] %} ({{ (empresas_map or {}).get(s[2], '') }}){% endif %}</option>
-            {% endfor %}
-        </select>
-    </div>
-    {% endif %}
-    <div class="mb-3">
-        <label class="form-label small fw-bold">Tipo de Documento</label>
-        <select name="tipo_documento" class="form-select">
-            <option value="">— Sin documento —</option>
-            <option value="NIT" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'NIT' else '' }}>NIT</option>
-            <option value="NRC" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'NRC' else '' }}>NRC</option>
-            <option value="DUI" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'DUI' else '' }}>DUI</option>
-            <option value="Pasaporte" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'Pasaporte' else '' }}>Pasaporte</option>
-            <option value="Carné Residencia" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'Carné Residencia' else '' }}>Carné Residencia</option>
-        </select>
-    </div>
-    <div class="mb-3">
-        <label class="form-label small fw-bold">Número de Documento</label>
-        <input type="text" id="numero_documento" name="numero_documento" class="form-control" value="{{ cliente_dict.numero_documento if cliente_dict else '' }}" placeholder="Según tipo: NIT 0614-161386-001-4, DUI 00000000-0">
-    </div>
-    <div class="mb-3">
-        <label class="form-label small fw-bold">NRC</label>
-        <input type="text" id="nrc_cliente" name="nrc" class="form-control" value="{{ cliente_dict.nrc if cliente_dict else '' }}" placeholder="123456-7" maxlength="8" inputmode="numeric" title="6-7 dígitos (registro de contribuyente)">
-        <small class="text-muted">Registro de contribuyente (distinto del tipo de documento NRC).</small>
-    </div>
-    {% set _cod_act = (cliente_dict.get('codigo_actividad_economica') or '') if cliente_dict else '' %}
-    {% with field_name='codigo_actividad_economica', label='Actividad Económica (código)', codigo_value=_cod_act, descripcion_value='', hint='Obligatorio si el cliente es contribuyente (crédito fiscal). Catálogo AgilDTE.' %}
-    {% include '_campo_actividad_economica.html' %}
-    {% endwith %}
-    <div class="mb-3">
-        <label class="form-label small fw-bold">Correo Electrónico</label>
-        <input type="email" name="correo" class="form-control" value="{{ cliente_dict.correo if cliente_dict else '' }}">
-    </div>
-    <div class="row g-2 mb-3">
-        <div class="col-md-6">
-            <label class="form-label small fw-bold">Departamento</label>
-            <select name="departamento" id="sel_departamento_cliente" class="form-select">
-                {% for cod, nom in (departamentos or []) %}
-                <option value="{{ cod }}" {{ 'selected' if cliente_dict and cliente_dict.departamento == cod else ('selected' if not cliente_dict and cod == '06' else '') }}>{{ nom }}</option>
+
+    <div class="cli-form-section" data-cli-section>
+        <div class="cli-form-section-title"><i class="bi bi-person-vcard"></i> Datos básicos</div>
+        <div class="mb-3">
+            <label class="form-label">Razón Social / Nombre <span class="text-danger">*</span></label>
+            <input type="text" name="nombre_cliente" id="cliNombre" class="form-control" value="{{ cliente_dict.nombre if cliente_dict else '' }}" required placeholder="Nombre o razón social del cliente" autocomplete="organization">
+            <span class="cli-field-feedback" id="cliNombreErr">Ingrese el nombre del cliente.</span>
+        </div>
+        {% set es_super = (es_superadmin or (rol_actual or session.get('rol')) in ('ADMIN', 'SUPERADMIN')) %}
+        {% if es_super %}
+        <div class="mb-3">
+            <label class="form-label">Empresa <span class="text-danger">*</span></label>
+            <select name="empresa_id" id="sel_empresa" class="form-select" {{ 'required' if empresas else '' }}>
+                {% if not empresas %}<option value="">— No hay empresas —</option>{% endif %}
+                {% for e in (empresas or []) %}
+                <option value="{{ e[0] }}" data-emp="{{ e[0] }}" {{ 'selected' if (cliente_dict and cliente_dict.empresa_id == e[0]) or (not cliente_dict and session.get('empresa_id') == e[0]) else '' }}>{{ e[1] }}</option>
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-6">
-            <label class="form-label small fw-bold">Municipio</label>
-            <select name="municipio" id="sel_municipio_cliente" class="form-select" data-inicial="{{ cliente_dict.municipio if cliente_dict else '14' }}">
-                {% if departamentos is defined and municipios_por_departamento is defined %}
-                {% set depto_ini = cliente_dict.departamento if cliente_dict else '06' %}
-                {% for cod_m, nom_m in municipios_por_departamento.get(depto_ini, []) %}
-                <option value="{{ cod_m }}" {{ 'selected' if cliente_dict and cliente_dict.municipio == cod_m else ('selected' if not cliente_dict and cod_m == '14' else '') }}>{{ nom_m }}</option>
+        <div class="mb-0">
+            <label class="form-label">Sucursal</label>
+            <select name="sucursal_id" id="sel_sucursal" class="form-select">
+                <option value="" data-emp="">— Sin sucursal —</option>
+                {% for s in (sucursales_todas or []) %}
+                <option value="{{ s[0] }}" data-emp="{{ s[2] }}" {{ 'selected' if cliente_dict and cliente_dict.sucursal_id == s[0] else '' }}>{{ s[1] }}{% if (empresas_map or {}) and s[2] %} ({{ (empresas_map or {}).get(s[2], '') }}){% endif %}</option>
                 {% endfor %}
-                {% endif %}
             </select>
+            <small class="cli-form-hint">Opcional. Filtra según la empresa seleccionada.</small>
         </div>
-    </div>
-    <div class="mb-3">
-        <label class="form-label small fw-bold">Dirección (complemento)</label>
-        <textarea name="direccion" class="form-control" rows="2" placeholder="Calle, colonia, número…">{{ cliente_dict.direccion if cliente_dict else '' }}</textarea>
-    </div>
-    <div class="mb-3">
-        <label class="form-label small fw-bold">Teléfono</label>
-        <input type="text" name="telefono" class="form-control" value="{{ cliente_dict.telefono if cliente_dict else '' }}" placeholder="2222-2222">
-    </div>
-    <div class="mb-3">
-        <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" name="es_contribuyente" {% if cliente_dict and cliente_dict.es_contribuyente %}checked{% endif %}>
-            <label class="form-check-label small">Es contribuyente</label>
-        </div>
-    </div>
-    <div class="mb-3">
-        <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" name="es_gran_contribuyente" {% if cliente_dict and cliente_dict.get('es_gran_contribuyente') %}checked{% endif %}>
-            <label class="form-check-label small">Gran Contribuyente</label>
-        </div>
-        <small class="text-muted">Retención IVA 1% aplica si cliente y empresa difieren en Gran Contribuyente y venta gravada &gt; $100.</small>
-    </div>
-    <button type="submit" class="btn btn-primary w-100 fw-bold cli-btn-save">{{ 'Actualizar Cliente' if cliente else 'Registrar Cliente' }}</button>
-    {% if cliente %}
-        {% if embed_mode|default(false) %}
-        <button type="button" class="btn btn-outline-secondary w-100 mt-2" id="btnClienteEmbedVolver">Cerrar</button>
-        {% else %}
-        <a href="{{ url_for('admin.clientes') }}" class="btn btn-outline-secondary w-100 mt-2">Cancelar</a>
         {% endif %}
-    {% endif %}
+    </div>
+
+    <div class="cli-form-section" data-cli-section>
+        <div class="cli-form-section-title"><i class="bi bi-file-earmark-text"></i> Documento</div>
+        <div class="mb-3">
+            <label class="form-label">Tipo de Documento</label>
+            <select name="tipo_documento" id="cliTipoDoc" class="form-select">
+                <option value="">— Sin documento —</option>
+                <option value="NIT" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'NIT' else '' }}>NIT</option>
+                <option value="NRC" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'NRC' else '' }}>NRC (como tipo doc.)</option>
+                <option value="DUI" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'DUI' else '' }}>DUI</option>
+                <option value="Pasaporte" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'Pasaporte' else '' }}>Pasaporte</option>
+                <option value="Carné Residencia" {{ 'selected' if cliente_dict and cliente_dict.tipo_documento == 'Carné Residencia' else '' }}>Carné Residencia</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Número de Documento</label>
+            <input type="text" id="numero_documento" name="numero_documento" class="form-control" value="{{ cliente_dict.numero_documento if cliente_dict else '' }}" placeholder="Según tipo seleccionado">
+            <small class="cli-form-hint cli-form-hint--doc" id="cliDocHint">Seleccione un tipo de documento para ver el formato.</small>
+        </div>
+        <div class="mb-0">
+            <label class="form-label">NRC <span class="text-muted fw-semibold">(registro contribuyente)</span></label>
+            <input type="text" id="nrc_cliente" name="nrc" class="form-control" value="{{ cliente_dict.nrc if cliente_dict else '' }}" placeholder="123456-7" maxlength="8" inputmode="numeric" title="6-7 dígitos">
+            <small class="cli-form-hint">Distinto del tipo de documento. Formato: 6 dígitos + guion + verificador.</small>
+        </div>
+    </div>
+
+    <div class="cli-form-section" data-cli-section data-cli-fiscal-extra>
+        <div class="cli-form-section-title"><i class="bi bi-briefcase"></i> Datos fiscales</div>
+        {% set _cod_act = (cliente_dict.get('codigo_actividad_economica') or '') if cliente_dict else '' %}
+        <div data-cli-actividad-wrap style="{% if not (cliente_dict and cliente_dict.es_contribuyente) %}display:none{% endif %}">
+        {% with field_name='codigo_actividad_economica', label='Actividad Económica (código)', codigo_value=_cod_act, descripcion_value='', hint='Obligatorio si el cliente es contribuyente (crédito fiscal). Catálogo AgilDTE.' %}
+        {% include '_campo_actividad_economica.html' %}
+        {% endwith %}
+        </div>
+        <div class="cli-form-switch-box">
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" name="es_contribuyente" id="cliEsContribuyente" {% if cliente_dict and cliente_dict.es_contribuyente %}checked{% endif %}>
+                <label class="form-check-label" for="cliEsContribuyente">Es contribuyente (crédito fiscal)</label>
+            </div>
+        </div>
+        <div class="cli-form-switch-box mb-0">
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" name="es_gran_contribuyente" id="cliEsGranContrib" {% if cliente_dict and cliente_dict.get('es_gran_contribuyente') %}checked{% endif %}>
+                <label class="form-check-label" for="cliEsGranContrib">Gran contribuyente</label>
+            </div>
+            <small class="cli-form-hint mt-2 mb-0">Retención IVA 1% si difiere con la empresa y venta gravada &gt; $100.</small>
+        </div>
+    </div>
+
+    <div class="cli-form-section" data-cli-section>
+        <div class="cli-form-section-title"><i class="bi bi-geo-alt"></i> Contacto y ubicación</div>
+        <div class="mb-3">
+            <label class="form-label">Correo Electrónico</label>
+            <input type="email" name="correo" id="cliCorreo" class="form-control" value="{{ cliente_dict.correo if cliente_dict else '' }}" placeholder="cliente@empresa.com" autocomplete="email">
+        </div>
+        <div class="row g-2 mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Departamento</label>
+                <select name="departamento" id="sel_departamento_cliente" class="form-select">
+                    {% for cod, nom in (departamentos or []) %}
+                    <option value="{{ cod }}" {{ 'selected' if cliente_dict and cliente_dict.departamento == cod else ('selected' if not cliente_dict and cod == '06' else '') }}>{{ nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Municipio</label>
+                <select name="municipio" id="sel_municipio_cliente" class="form-select" data-inicial="{{ cliente_dict.municipio if cliente_dict else '14' }}">
+                    {% if departamentos is defined and municipios_por_departamento is defined %}
+                    {% set depto_ini = cliente_dict.departamento if cliente_dict else '06' %}
+                    {% for cod_m, nom_m in municipios_por_departamento.get(depto_ini, []) %}
+                    <option value="{{ cod_m }}" {{ 'selected' if cliente_dict and cliente_dict.municipio == cod_m else ('selected' if not cliente_dict and cod_m == '14' else '') }}>{{ nom_m }}</option>
+                    {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Dirección (complemento)</label>
+            <textarea name="direccion" class="form-control" rows="2" placeholder="Calle, colonia, número…">{{ cliente_dict.direccion if cliente_dict else '' }}</textarea>
+        </div>
+        <div class="mb-0">
+            <label class="form-label">Teléfono</label>
+            <input type="tel" name="telefono" id="cliTelefono" class="form-control" value="{{ cliente_dict.telefono if cliente_dict else '' }}" placeholder="2222-2222 o 7777-7777" inputmode="tel">
+        </div>
+    </div>
+
+    <div class="{{ 'cli-embed-sticky' if embed_mode|default(false) else 'cli-form-actions' }}">
+        <button type="submit" class="cli-btn-save" id="cliBtnGuardar">
+            <i class="bi bi-check2-circle"></i> {{ 'Actualizar Cliente' if cliente else 'Registrar Cliente' }}
+        </button>
+        {% if cliente %}
+            {% if embed_mode|default(false) %}
+            <button type="button" class="cli-btn-cancel" id="btnClienteEmbedVolver"><i class="bi bi-x-lg"></i> Cerrar sin guardar</button>
+            {% else %}
+            <a href="{{ url_for('admin.clientes') }}" class="cli-btn-cancel"><i class="bi bi-x-lg"></i> Cancelar</a>
+            {% endif %}
+        {% elif embed_mode|default(false) %}
+        <button type="button" class="cli-btn-cancel" id="btnClienteEmbedVolver"><i class="bi bi-x-lg"></i> Cerrar</button>
+        {% endif %}
+    </div>
 </form>
-{% if municipios_por_departamento is defined %}
+
+{% if embed_mode|default(false) and cliente_dict and cliente_dict.id %}
+<form action="{{ url_for('admin.eliminar_cliente', cliente_id=cliente_dict.id) }}" method="POST" class="mt-2" id="formClienteEliminar" onsubmit="return confirm('¿Eliminar este cliente?');">
+    <input type="hidden" name="embed" value="1">
+    <button type="submit" class="cli-btn-cancel" style="color:#b91c1c;border-color:#fecaca;background:#fef2f2;">
+        <i class="bi bi-trash"></i> Eliminar cliente
+    </button>
+</form>
+{% endif %}
+</div>
+
 <script>
 (function() {
-    var MUNIS = {{ municipios_por_departamento | tojson }};
-    var selDepto = document.getElementById('sel_departamento_cliente');
-    var selMuni = document.getElementById('sel_municipio_cliente');
-    if (!selDepto || !selMuni) return;
-    function llenarMunicipios(depto, seleccionado) {
-        var lista = MUNIS[depto] || [];
-        selMuni.innerHTML = '';
-        lista.forEach(function(par) {
-            var opt = document.createElement('option');
-            opt.value = par[0];
-            opt.textContent = par[1];
-            if (seleccionado && par[0] === seleccionado) opt.selected = true;
-            selMuni.appendChild(opt);
-        });
-        if (!selMuni.value && lista.length) selMuni.value = lista[0][0];
+    var form = document.getElementById('formClientePrincipal');
+    if (!form) return;
+
+    var DOC_HINTS = {
+        '': 'Opcional. Sin documento para consumidor final.',
+        'NIT': 'Formato: 0614-161386-001-4 (14 caracteres con guiones).',
+        'DUI': 'Formato: 00000000-0 (9 dígitos con guion).',
+        'NRC': 'Formato documento: 123456-7 (campo NRC de abajo es el registro fiscal).',
+        'PASAPORTE': 'Texto libre según el pasaporte.',
+        'CARNÉ RESIDENCIA': 'Texto libre según el carné.'
+    };
+
+    function qs(id) { return document.getElementById(id); }
+
+    var selTipo = qs('cliTipoDoc') || form.querySelector('select[name="tipo_documento"]');
+    var inpDoc = qs('numero_documento');
+    var hintDoc = qs('cliDocHint');
+    var maskDoc = null;
+
+    function actualizarHintDoc() {
+        if (!hintDoc || !selTipo) return;
+        var k = (selTipo.value || '').toUpperCase();
+        hintDoc.textContent = DOC_HINTS[k] || DOC_HINTS[''];
     }
-    selDepto.addEventListener('change', function() {
-        llenarMunicipios(selDepto.value, null);
-    });
-    var nrc = document.getElementById('nrc_cliente');
+
+    function aplicarMascaraDoc() {
+        if (typeof IMask === 'undefined' || !inpDoc) return;
+        if (maskDoc) { try { maskDoc.destroy(); } catch (e) {} maskDoc = null; }
+        var tipo = (selTipo && selTipo.value || '').toUpperCase();
+        if (tipo === 'NIT') {
+            maskDoc = IMask(inpDoc, { mask: '0000-000000-000-0', lazy: false });
+        } else if (tipo === 'DUI') {
+            maskDoc = IMask(inpDoc, { mask: '00000000-0', lazy: false });
+        } else if (tipo === 'NRC') {
+            maskDoc = IMask(inpDoc, { mask: '000000-0', lazy: false });
+        }
+        actualizarHintDoc();
+    }
+
+    if (selTipo) {
+        selTipo.addEventListener('change', aplicarMascaraDoc);
+        function initMaskWhenReady() {
+            if (typeof IMask === 'undefined') { setTimeout(initMaskWhenReady, 40); return; }
+            aplicarMascaraDoc();
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initMaskWhenReady);
+        } else {
+            initMaskWhenReady();
+        }
+    }
+
+    var nrc = qs('nrc_cliente');
     if (nrc) {
         function fmtNrc() {
             var v = nrc.value.replace(/\D/g, '').slice(0, 7);
@@ -147,12 +292,131 @@
             nrc.value = txt.length > 6 ? txt.slice(0, 6) + '-' + txt.slice(6) : txt;
         });
     }
+
+    var tel = qs('cliTelefono');
+    if (tel) {
+        tel.addEventListener('input', function() {
+            var d = tel.value.replace(/\D/g, '').slice(0, 8);
+            tel.value = d.length > 4 ? d.slice(0, 4) + '-' + d.slice(4) : d;
+        });
+    }
+
+    var chkContrib = qs('cliEsContribuyente');
+    var wrapActividad = document.querySelector('[data-cli-actividad-wrap]');
+    function toggleActividad() {
+        if (!wrapActividad) return;
+        wrapActividad.style.display = (chkContrib && chkContrib.checked) ? '' : 'none';
+    }
+    if (chkContrib) {
+        chkContrib.addEventListener('change', toggleActividad);
+        toggleActividad();
+    }
+
+    var selEmp = qs('sel_empresa');
+    var selSuc = qs('sel_sucursal');
+    if (selEmp && selSuc) {
+        function filtrarSucursales() {
+            var empId = String(selEmp.value || '');
+            var selActual = selSuc.value;
+            var hayVisible = false;
+            selSuc.querySelectorAll('option').forEach(function(o) {
+                var emp = o.dataset.emp || '';
+                var ok = !emp || emp === empId;
+                o.hidden = !ok;
+                o.disabled = !ok && !!o.value;
+                if (ok && o.value === selActual) hayVisible = true;
+            });
+            if (!hayVisible && selSuc.querySelector('option[value=""]')) selSuc.value = '';
+        }
+        selEmp.addEventListener('change', filtrarSucursales);
+        filtrarSucursales();
+    }
+
+    {% if municipios_por_departamento is defined %}
+    var MUNIS = {{ municipios_por_departamento | tojson }};
+    var selDepto = qs('sel_departamento_cliente');
+    var selMuni = qs('sel_municipio_cliente');
+    if (selDepto && selMuni) {
+        function llenarMunicipios(depto, seleccionado) {
+            var lista = MUNIS[depto] || [];
+            selMuni.innerHTML = '';
+            lista.forEach(function(par) {
+                var opt = document.createElement('option');
+                opt.value = par[0];
+                opt.textContent = par[1];
+                if (seleccionado && par[0] === seleccionado) opt.selected = true;
+                selMuni.appendChild(opt);
+            });
+            if (!selMuni.value && lista.length) selMuni.value = lista[0][0];
+        }
+        selDepto.addEventListener('change', function() { llenarMunicipios(selDepto.value, null); });
+    }
+    {% endif %}
+
+    document.querySelectorAll('[data-cli-section]').forEach(function(sec) {
+        sec.querySelectorAll('input, select, textarea').forEach(function(el) {
+            el.addEventListener('focus', function() {
+                document.querySelectorAll('[data-cli-section]').forEach(function(s) { s.classList.remove('cli-form-section--active'); });
+                sec.classList.add('cli-form-section--active');
+            });
+        });
+    });
+
+    function actualizarProgreso() {
+        var bar = qs('cliFormProgress');
+        if (!bar) return;
+        var campos = ['cliNombre', 'numero_documento', 'cliCorreo', 'cliTelefono'];
+        var llenos = 0;
+        campos.forEach(function(id) {
+            var el = qs(id);
+            if (el && String(el.value || '').trim()) llenos++;
+        });
+        if (selTipo && selTipo.value) llenos++;
+        bar.style.width = Math.min(100, Math.round((llenos / 6) * 100)) + '%';
+    }
+    form.querySelectorAll('input, select, textarea').forEach(function(el) {
+        el.addEventListener('input', actualizarProgreso);
+        el.addEventListener('change', actualizarProgreso);
+    });
+    actualizarProgreso();
+
+    var nombre = qs('cliNombre');
+    var nombreErr = qs('cliNombreErr');
+    form.addEventListener('submit', function(e) {
+        var nom = (nombre && nombre.value || '').trim();
+        if (!nom) {
+            e.preventDefault();
+            if (nombre) nombre.classList.add('is-invalid');
+            if (nombreErr) nombreErr.classList.add('is-visible');
+            nombre && nombre.focus();
+            return;
+        }
+        if (nombre) nombre.classList.remove('is-invalid');
+        if (nombreErr) nombreErr.classList.remove('is-visible');
+        var btn = qs('cliBtnGuardar');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Guardando…';
+        }
+    });
+    if (nombre) {
+        nombre.addEventListener('input', function() {
+            if ((nombre.value || '').trim()) {
+                nombre.classList.remove('is-invalid');
+                if (nombreErr) nombreErr.classList.remove('is-visible');
+            }
+        });
+    }
+
+    qs('btnClienteEmbedVolver') && qs('btnClienteEmbedVolver').addEventListener('click', function() {
+        if (window.parent !== window) {
+            window.parent.postMessage({ type: 'posagil_cliente_embed_cerrar' }, '*');
+        }
+    });
+
+    window.cliFormSubmit = function() {
+        if (form.requestSubmit) form.requestSubmit();
+        else form.submit();
+    };
 })();
 </script>
-{% endif %}
-{% if embed_mode|default(false) and cliente_dict and cliente_dict.id %}
-<form action="{{ url_for('admin.eliminar_cliente', cliente_id=cliente_dict.id) }}" method="POST" class="mt-2" onsubmit="return confirm('¿Eliminar este cliente?');">
-    <input type="hidden" name="embed" value="1">
-    <button type="submit" class="btn btn-outline-danger w-100"><i class="bi bi-trash"></i> Eliminar cliente</button>
-</form>
-{% endif %}

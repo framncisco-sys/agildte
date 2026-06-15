@@ -6882,11 +6882,12 @@ def guardar_cliente():
     municipio = (form.get("municipio") or "").strip()
 
     if not nombre_cliente:
+        flash("El nombre o razón social es obligatorio.", "danger")
         if embed:
             if cliente_id and str(cliente_id).isdigit():
                 return redirect(url_for("pos.ventas_pos_clientes_embed", cid=int(cliente_id)))
             return redirect(url_for("pos.ventas_pos_clientes_embed"))
-            return redirect(url_for("admin.clientes"))
+        return redirect(url_for("admin.clientes"))
 
     if nrc:
         from azdigital.utils.validar_documentos import validar_nrc

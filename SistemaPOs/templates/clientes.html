@@ -233,41 +233,7 @@
 {% block scripts %}
 <script>
 (function() {
-    const selTipo = document.querySelector('select[name="tipo_documento"]');
-    const inpDoc = document.getElementById('numero_documento');
-    let maskDoc = null;
-    function aplicarMascaraDoc() {
-        if (maskDoc) { try { maskDoc.destroy(); } catch(e){} maskDoc = null; }
-        const tipo = (selTipo?.value || '').toUpperCase();
-        if (tipo === 'NIT') {
-            maskDoc = IMask(inpDoc, { mask: '0000-000000-000-0', lazy: false });
-        } else if (tipo === 'DUI') {
-            maskDoc = IMask(inpDoc, { mask: '00000000-0', lazy: false });
-        } else if (tipo === 'NRC') {
-            maskDoc = IMask(inpDoc, { mask: '000000-0', lazy: false });
-        } else if (inpDoc) {
-            inpDoc.placeholder = 'Según tipo (Pasaporte, Carné: texto libre)';
-        }
-    }
-    if (selTipo && inpDoc) {
-        selTipo.addEventListener('change', aplicarMascaraDoc);
-        aplicarMascaraDoc();
-    }
-    const selEmp = document.getElementById('sel_empresa');
-    const selSuc = document.getElementById('sel_sucursal');
-    if (selEmp && selSuc) {
-        function filtrarSucursales() {
-            const empId = String(selEmp.value || '');
-            selSuc.querySelectorAll('option').forEach(function(o) {
-                const emp = o.dataset.emp || '';
-                const mostrar = !emp || emp === empId;
-                o.style.display = mostrar ? '' : 'none';
-                if (o.value && emp && emp !== empId) o.selected = false;
-            });
-        }
-        selEmp.addEventListener('change', filtrarSucursales);
-        filtrarSucursales();
-    }
+    /* Máscaras y filtros: lógica central en _cliente_form_card.html; aquí solo tabla y búsqueda. */
     {% if cliente %}
     document.getElementById('formCliente')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     {% endif %}
