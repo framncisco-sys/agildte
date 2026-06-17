@@ -6106,7 +6106,7 @@ def proveedores_editar(id):
 @bp.route("/guardar_proveedor", methods=["POST"])
 @rol_requerido("GERENTE")
 def guardar_proveedor():
-    from azdigital.utils.validar_documentos import validar_nit_dui, validar_nrc
+    from azdigital.utils.validar_documentos import validar_nit_dui, validar_nrc_proveedor
 
     form = request.form
     emp_id = _empresa_id()
@@ -6134,7 +6134,7 @@ def guardar_proveedor():
                 flash(msg, "danger")
                 return redirect(url_for("admin.proveedores") + (f"?empresa_id={emp_id}" if es_super and emp_id else ""))
         if nrc:
-            ok, msg = validar_nrc(nrc)
+            ok, msg = validar_nrc_proveedor(nrc)
             if not ok:
                 flash(msg, "danger")
                 return redirect(url_for("admin.proveedores") + (f"?empresa_id={emp_id}" if es_super and emp_id else ""))

@@ -494,7 +494,7 @@
                                 </div>
                                 <div class="col-12 col-sm-4">
                                     <label class="form-label">NRC</label>
-                                    <input type="text" name="nrc" id="nrc" class="form-control" placeholder="123456-7" value="{{ proveedor.nrc if proveedor else '' }}" maxlength="8" inputmode="numeric" title="6-7 dígitos">
+                                    <input type="text" name="nrc" id="nrc" class="form-control" placeholder="27 o 123456-7" value="{{ proveedor.nrc if proveedor else '' }}" maxlength="9" inputmode="numeric" title="1 a 8 dígitos según DTE del proveedor">
                                 </div>
                             </div>
                         </div>
@@ -682,13 +682,13 @@
     var nrc = document.getElementById('nrc');
     if (!nrc) return;
     function formatearNRC() {
-        var v = nrc.value.replace(/\D/g, '').slice(0, 7);
+        var v = nrc.value.replace(/\D/g, '').slice(0, 8);
         nrc.value = v.length > 6 ? v.slice(0, 6) + '-' + v.slice(6) : v;
     }
     nrc.addEventListener('input', formatearNRC);
     nrc.addEventListener('paste', function(e) {
         e.preventDefault();
-        var txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 7);
+        var txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 8);
         nrc.value = txt.length > 6 ? txt.slice(0, 6) + '-' + txt.slice(6) : txt;
     });
     formatearNRC();
