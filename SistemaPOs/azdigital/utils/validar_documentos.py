@@ -24,23 +24,8 @@ def validar_nit(nit: str) -> tuple[bool, str]:
 
 def validar_nrc(nrc: str) -> tuple[bool, str]:
     """
-    NRC El Salvador (clientes / CCF): 6-7 dígitos. Formato típico 123456-7.
-    Retorna (es_valido, mensaje).
-    """
-    if not nrc or not str(nrc).strip():
-        return True, ""
-    digitos = extraer_digitos(nrc)
-    if len(digitos) not in (6, 7):
-        return False, "NRC debe tener 6 o 7 dígitos (ej: 123456-7)."
-    if not digitos.isdigit():
-        return False, "NRC debe contener solo números."
-    return True, ""
-
-
-def validar_nrc_proveedor(nrc: str) -> tuple[bool, str]:
-    """
-    NRC de proveedor según DTE MH: puede ser corto (ej. 27 en Vidri) o largo (2984414).
-    Acepta 1-8 dígitos; vacío permitido.
+    NRC según DTE MH: puede ser corto (ej. 27 Vidri) o largo (2984414).
+    Aplica a clientes y proveedores. Acepta 1-8 dígitos; vacío permitido.
     """
     if not nrc or not str(nrc).strip():
         return True, ""
@@ -48,8 +33,13 @@ def validar_nrc_proveedor(nrc: str) -> tuple[bool, str]:
     if not digitos or not digitos.isdigit():
         return False, "NRC debe contener solo números."
     if len(digitos) < 1 or len(digitos) > 8:
-        return False, "NRC del proveedor debe tener entre 1 y 8 dígitos (según DTE de Hacienda)."
+        return False, "NRC debe tener entre 1 y 8 dígitos (según registro en Hacienda)."
     return True, ""
+
+
+def validar_nrc_proveedor(nrc: str) -> tuple[bool, str]:
+    """Alias de validar_nrc (misma regla MH para emisor/receptor)."""
+    return validar_nrc(nrc)
 
 
 def validar_dui(dui: str) -> tuple[bool, str]:

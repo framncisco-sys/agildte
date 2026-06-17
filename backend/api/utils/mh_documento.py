@@ -16,7 +16,7 @@ def solo_digitos(texto: str | None) -> str:
 
 def normalizar_nrc_mh(valor: str | None) -> str | None:
     """
-    NRC para JSON MH (fe-ccf-v3 receptor.nrc): solo dígitos, 4–8 caracteres.
+    NRC para JSON MH (fe-ccf-v3 receptor.nrc): solo dígitos, 1–8 caracteres.
     """
     from api.dte_generator import formatear_nrc_emisor
 

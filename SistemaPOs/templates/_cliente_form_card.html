@@ -134,7 +134,7 @@
         </div>
         <div class="mb-0">
             <label class="form-label">NRC <span class="text-muted fw-semibold">(registro contribuyente)</span></label>
-            <input type="text" id="nrc_cliente" name="nrc" class="form-control" value="{{ cliente_dict.nrc if cliente_dict else '' }}" placeholder="123456-7" maxlength="8" inputmode="numeric" title="6-7 dígitos">
+            <input type="text" id="nrc_cliente" name="nrc" class="form-control" value="{{ cliente_dict.nrc if cliente_dict else '' }}" placeholder="27 o 123456-7" maxlength="9" inputmode="numeric" title="1 a 8 dígitos según NRC en Hacienda">
             <small class="cli-form-hint">Distinto del tipo de documento. Formato: 6 dígitos + guion + verificador.</small>
         </div>
     </div>
@@ -234,7 +234,7 @@
         '': 'Opcional. Sin documento para consumidor final.',
         'NIT': 'Formato: 0614-161386-001-4 (14 caracteres con guiones).',
         'DUI': 'Formato: 00000000-0 (9 dígitos con guion).',
-        'NRC': 'Formato documento: 123456-7 (campo NRC de abajo es el registro fiscal).',
+        'NRC': 'Formato documento: 27 o 123456-7 (campo NRC de abajo es el registro fiscal).',
         'PASAPORTE': 'Texto libre según el pasaporte.',
         'CARNÉ RESIDENCIA': 'Texto libre según el carné.'
     };
@@ -261,7 +261,8 @@
         } else if (tipo === 'DUI') {
             maskDoc = IMask(inpDoc, { mask: '00000000-0', lazy: false });
         } else if (tipo === 'NRC') {
-            maskDoc = IMask(inpDoc, { mask: '000000-0', lazy: false });
+            actualizarHintDoc();
+            return;
         }
         actualizarHintDoc();
     }
@@ -282,13 +283,13 @@
     var nrc = qs('nrc_cliente');
     if (nrc) {
         function fmtNrc() {
-            var v = nrc.value.replace(/\D/g, '').slice(0, 7);
+            var v = nrc.value.replace(/\D/g, '').slice(0, 8);
             nrc.value = v.length > 6 ? v.slice(0, 6) + '-' + v.slice(6) : v;
         }
         nrc.addEventListener('input', fmtNrc);
         nrc.addEventListener('paste', function(e) {
             e.preventDefault();
-            var txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 7);
+            var txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 8);
             nrc.value = txt.length > 6 ? txt.slice(0, 6) + '-' + txt.slice(6) : txt;
         });
     }

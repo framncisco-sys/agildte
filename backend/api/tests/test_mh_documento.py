@@ -42,6 +42,9 @@ class MhDocumentoTests(SimpleTestCase):
     def test_normalizar_nrc_con_guion(self):
         self.assertEqual(normalizar_nrc_mh("298441-4"), "2984414")
 
+    def test_normalizar_nrc_corto_vidri(self):
+        self.assertEqual(normalizar_nrc_mh("27"), "27")
+
     def test_nrc_placeholder(self):
         self.assertTrue(es_nrc_placeholder_mh("0000000"))
 

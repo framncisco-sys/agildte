@@ -46,14 +46,14 @@ def obtener_codigo_departamento_municipio(departamento_nombre=None, municipio_no
 
 def formatear_nrc_emisor(valor):
     """
-    Formatea el NRC del emisor según esquema MH.
-    Solo dígitos, 4-8 caracteres. MH acepta NRC cortos (ej: 1171) y largos (ej: 2984414).
+    Formatea el NRC según esquema MH (emisor o receptor CCF).
+    Solo dígitos, 1-8 caracteres. Ej.: 27 (Vidri), 1171, 2984414.
     """
     if valor is None:
         return None
     s = str(valor).strip().replace('-', '').replace(' ', '').replace('.', '')
     solo_digitos = ''.join(c for c in s if c.isdigit())
-    if not solo_digitos or len(solo_digitos) < 4:
+    if not solo_digitos or len(solo_digitos) < 1:
         return None
     return solo_digitos[:8]
 

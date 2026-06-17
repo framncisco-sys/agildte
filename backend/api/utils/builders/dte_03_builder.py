@@ -39,7 +39,7 @@ class DTE03Builder(BaseDTEBuilder):
         if not nrc_final:
             raise ValueError(
                 f"Cliente '{cliente.nombre}' no tiene NRC válido. "
-                "Crédito Fiscal exige el NRC oficial del contribuyente (6–7 dígitos, sin guiones)."
+                "Crédito Fiscal exige el NRC oficial del contribuyente (1–8 dígitos, sin guiones)."
             )
         if es_nrc_placeholder_mh(nrc_final):
             raise ValueError(
