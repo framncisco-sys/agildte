@@ -1216,7 +1216,12 @@ class VentaViewSet(viewsets.ModelViewSet):
                 "correo_guardado": correo_guardado or None,
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        if '@' not in destino.split('@')[-1] or '.' not in destino.split('@')[-1]:
+        from django.core.exceptions import ValidationError
+        from django.core.validators import validate_email
+
+        try:
+            validate_email(destino)
+        except ValidationError:
             return Response({
                 "error": "Correo inválido",
                 "mensaje": "El correo indicado no tiene un formato válido.",
