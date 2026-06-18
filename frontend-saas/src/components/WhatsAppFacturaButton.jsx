@@ -16,6 +16,7 @@ export function WhatsAppFacturaButton({
   className = '',
   title,
   showLabel = false,
+  compact = false,
 }) {
   const [loading, setLoading] = useState(false)
   const locked = !premiumEnabled
@@ -40,8 +41,10 @@ export function WhatsAppFacturaButton({
     }
   }
 
-  const base =
-    'p-2 rounded-lg transition-colors inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed'
+  const base = compact
+    ? 'p-1 rounded-md transition-colors inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed shrink-0'
+    : 'p-2 rounded-lg transition-colors inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed'
+  const iconCls = compact ? 'w-3.5 h-3.5' : 'w-4 h-4'
   const active = 'text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800'
   const lockedCls = 'text-gray-400 bg-gray-50 cursor-not-allowed'
 
@@ -65,13 +68,13 @@ export function WhatsAppFacturaButton({
       aria-label={hint}
     >
       {loading ? (
-        <Loader2 className="w-4 h-4 animate-spin" />
+        <Loader2 className={`${iconCls} animate-spin`} />
       ) : locked ? (
-        <Lock className="w-4 h-4" />
+        <Lock className={iconCls} />
       ) : (
-        <MessageCircle className="w-4 h-4" />
+        <MessageCircle className={iconCls} />
       )}
-      {showLabel && <span className="ml-1 text-xs font-medium">WhatsApp</span>}
+      {showLabel && !compact && <span className="ml-1 text-xs font-medium">WhatsApp</span>}
     </button>
   )
 }

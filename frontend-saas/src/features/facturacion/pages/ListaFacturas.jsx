@@ -40,6 +40,11 @@ function formatMoneda(val) {
 
 const PAGE_SIZE = 20
 
+/** Botones compactos en columna Acciones (una sola línea). */
+const btnAccion =
+  'p-1 rounded-md text-gray-600 hover:bg-gray-100 transition-colors shrink-0 inline-flex items-center justify-center'
+const iconAccion = 'w-3.5 h-3.5'
+
 function Paginacion({ page, totalPages, totalCount, pageSize, onPageChange, cargando }) {
   if (totalPages <= 1 && totalCount === 0) return null
 
@@ -495,27 +500,27 @@ export function ListaFacturas() {
                         Reenviar
                       </button>
                     )}
-                    <div className="flex gap-2 pt-2 flex-wrap items-center">
+                    <div className="flex gap-1 pt-2 flex-nowrap items-center">
                       <WhatsAppFacturaButton
                         ventaId={v.id}
                         telefono={v.cliente_telefono}
                         premiumEnabled={!!v.whatsapp_premium_enabled || whatsappPremiumEmpresa}
                         facturaProcesada={esProcesado}
-                        showLabel
+                        compact
                         className="border border-gray-200"
                       />
                       {esProcesado && (
                         <>
                           <button
                             onClick={() => setModalReenviarCorreo(v)}
-                            className="p-2 rounded-lg text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                            title="Reenviar correo con PDF y JSON"
+                            className={`${btnAccion} hover:bg-blue-50 hover:text-blue-600`}
+                            title="Reenviar correo"
                           >
-                            <Mail className="w-4 h-4" />
+                            <Mail className={iconAccion} />
                           </button>
-                          <button onClick={() => handleDownloadPDF(v)} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100" title="PDF"><FileText className="w-4 h-4" /></button>
-                          <button onClick={() => handleDownloadJSON(v)} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100" title="JSON"><Braces className="w-4 h-4" /></button>
-                          <button onClick={() => setModalInvalidacion(v)} className="p-2 rounded-lg text-red-600 hover:bg-red-50" title="Anular"><CircleX className="w-4 h-4" /></button>
+                          <button onClick={() => handleDownloadPDF(v)} className={btnAccion} title="PDF"><FileText className={iconAccion} /></button>
+                          <button onClick={() => handleDownloadJSON(v)} className={btnAccion} title="JSON"><Braces className={iconAccion} /></button>
+                          <button onClick={() => setModalInvalidacion(v)} className={`${btnAccion} text-red-600 hover:bg-red-50`} title="Anular"><CircleX className={iconAccion} /></button>
                         </>
                       )}
                       {esRechazado && (
@@ -536,7 +541,7 @@ export function ListaFacturas() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Cliente</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase">Total a pagar</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Estado</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase">Acciones</th>
+                  <th className="px-2 py-3 text-center text-xs font-medium text-gray-600 uppercase whitespace-nowrap" style={{ minWidth: '11rem' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -581,45 +586,45 @@ export function ListaFacturas() {
                           </button>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-2 flex-wrap">
+                      <td className="px-2 py-2 whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-0.5 flex-nowrap">
                           <WhatsAppFacturaButton
                             ventaId={v.id}
                             telefono={v.cliente_telefono}
                             premiumEnabled={!!v.whatsapp_premium_enabled || whatsappPremiumEmpresa}
                             facturaProcesada={esProcesado}
-                            showLabel
+                            compact
                             className="border border-gray-200"
                           />
                           {esProcesado && (
                             <>
                               <button
                                 onClick={() => setModalReenviarCorreo(v)}
-                                className="p-2 rounded-lg text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                className={`${btnAccion} hover:bg-blue-50 hover:text-blue-600`}
                                 title="Reenviar correo con PDF y JSON"
                               >
-                                <Mail className="w-4 h-4" />
+                                <Mail className={iconAccion} />
                               </button>
                               <button
                                 onClick={() => handleDownloadPDF(v)}
-                                className="p-2 rounded-lg text-gray-600 hover:bg-gray-200 hover:text-blue-600 transition-colors"
+                                className={`${btnAccion} hover:text-blue-600`}
                                 title="Descargar PDF"
                               >
-                                <FileText className="w-4 h-4" />
+                                <FileText className={iconAccion} />
                               </button>
                               <button
                                 onClick={() => handleDownloadJSON(v)}
-                                className="p-2 rounded-lg text-gray-600 hover:bg-gray-200 hover:text-blue-600 transition-colors"
+                                className={`${btnAccion} hover:text-blue-600`}
                                 title="Descargar JSON"
                               >
-                                <Braces className="w-4 h-4" />
+                                <Braces className={iconAccion} />
                               </button>
                               <button
                                 onClick={() => setModalInvalidacion(v)}
-                                className="p-2 rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                                className={`${btnAccion} text-red-600 hover:bg-red-50 hover:text-red-700`}
                                 title="Invalidar (Anular) documento"
                               >
-                                <CircleX className="w-4 h-4" />
+                                <CircleX className={iconAccion} />
                               </button>
                             </>
                           )}
