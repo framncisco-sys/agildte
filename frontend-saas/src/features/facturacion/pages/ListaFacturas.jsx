@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, FileText, Braces, Eye, Loader2, CircleX, FileDown, FolderDown, Send, BarChart3 } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, FileText, Braces, Eye, Loader2, CircleX, FileDown, FolderDown, Send, BarChart3, Mail } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getVentas, downloadPDF, downloadJSON, downloadFacturasFiltradasZip, reenviarVenta, getInformeCfDiario } from '../../../api/facturas'
 import { getEmpresa } from '../../../api/empresa'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 import { DetalleRechazoModal } from '../components/DetalleRechazoModal'
 import { InvalidacionModal } from '../components/InvalidacionModal'
+import { ReenviarCorreoModal } from '../components/ReenviarCorreoModal'
 import { WhatsAppFacturaButton } from '../../../components/WhatsAppFacturaButton'
 
 const ESTADO_BADGES = {
@@ -142,6 +143,7 @@ export function ListaFacturas() {
   const [cargando, setCargando] = useState(false)
   const [modalRechazo, setModalRechazo] = useState(null)
   const [modalInvalidacion, setModalInvalidacion] = useState(null)
+  const [modalReenviarCorreo, setModalReenviarCorreo] = useState(null)
   const [descargandoLote, setDescargandoLote] = useState(null)
   const [reenviandoId, setReenviandoId] = useState(null)
   const [modalInformeCf, setModalInformeCf] = useState(false)
@@ -242,6 +244,12 @@ export function ListaFacturas() {
     )
   }
 
+  const handleReenvioCorreoExito = (ventaActualizada) => {
+    setVentas((prev) =>
+      prev.map((v) => (v.id === ventaActualizada.id ? { ...v, ...ventaActualizada } : v))
+    )
+  }
+
   const handleReenviar = async (v) => {
     setReenviandoId(v.id)
     try {
@@ -318,8 +326,7 @@ export function ListaFacturas() {
     <div className="max-w-6xl mx-auto px-2 sm:px-0">
       <h1 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">Historial de Documentos</h1>
       <p className="text-sm text-gray-500 mb-4">
-        El envío por WhatsApp está en la columna <strong>Acciones</strong> (ícono de mensaje), solo en facturas{' '}
-        <strong>PROCESADAS</strong>.
+        En <strong>Acciones</strong>: reenviar correo (facturas procesadas), WhatsApp premium, PDF, JSON o anular.
       </p>
       {whatsappPremiumEmpresa && (
         <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
@@ -499,6 +506,13 @@ export function ListaFacturas() {
                       />
                       {esProcesado && (
                         <>
+                          <button
+                            onClick={() => setModalReenviarCorreo(v)}
+                            className="p-2 rounded-lg text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                            title="Reenviar correo con PDF y JSON"
+                          >
+                            <Mail className="w-4 h-4" />
+                          </button>
                           <button onClick={() => handleDownloadPDF(v)} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100" title="PDF"><FileText className="w-4 h-4" /></button>
                           <button onClick={() => handleDownloadJSON(v)} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100" title="JSON"><Braces className="w-4 h-4" /></button>
                           <button onClick={() => setModalInvalidacion(v)} className="p-2 rounded-lg text-red-600 hover:bg-red-50" title="Anular"><CircleX className="w-4 h-4" /></button>
@@ -580,6 +594,13 @@ export function ListaFacturas() {
                           {esProcesado && (
                             <>
                               <button
+                                onClick={() => setModalReenviarCorreo(v)}
+                                className="p-2 rounded-lg text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                title="Reenviar correo con PDF y JSON"
+                              >
+                                <Mail className="w-4 h-4" />
+                              </button>
+                              <button
                                 onClick={() => handleDownloadPDF(v)}
                                 className="p-2 rounded-lg text-gray-600 hover:bg-gray-200 hover:text-blue-600 transition-colors"
                                 title="Descargar PDF"
@@ -643,6 +664,13 @@ export function ListaFacturas() {
         onClose={() => setModalInvalidacion(null)}
         venta={modalInvalidacion || {}}
         onExito={handleInvalidacionExito}
+      />
+
+      <ReenviarCorreoModal
+        open={!!modalReenviarCorreo}
+        onClose={() => setModalReenviarCorreo(null)}
+        venta={modalReenviarCorreo || {}}
+        onExito={handleReenvioCorreoExito}
       />
 
       {modalInformeCf && (

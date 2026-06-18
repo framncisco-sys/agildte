@@ -116,13 +116,21 @@ def _aplicar_template(template: str, venta) -> str:
     )
 
 
-def enviar_factura_email(venta) -> bool:
+def enviar_factura_email(
+    venta,
+    destinatario_override: str | None = None,
+    *,
+    persistir_correo_en_venta: bool = False,
+) -> bool:
     """
     Envía el correo con la factura (PDF + JSON) al cliente.
     Solo se envía si el DTE fue aceptado por MH (estado_dte == 'AceptadoMH').
     Usa la configuración SMTP de la empresa o las variables de entorno EMAIL_* como fallback.
     Los errores de red se registran en el log pero NO bloquean el flujo principal.
     Retorna True si se envió correctamente, False en cualquier otro caso.
+
+    destinatario_override: correo alternativo (reenvío manual desde historial).
+    persistir_correo_en_venta: guarda el correo en venta.correo_receptor si cambió.
     """
     if not venta.empresa:
         logger.warning("Venta sin empresa, no se puede enviar correo")
@@ -149,10 +157,19 @@ def enviar_factura_email(venta) -> bool:
         )
         return False
 
-    destinatario = _obtener_destinatario(venta)
+    if destinatario_override and str(destinatario_override).strip():
+        destinatario = str(destinatario_override).strip()
+    else:
+        destinatario = _obtener_destinatario(venta)
     if not destinatario or "@" not in destinatario:
         logger.info(f"Venta {venta.id} sin correo de destinatario, omitiendo envío")
         return False
+
+    if persistir_correo_en_venta:
+        actual = (getattr(venta, 'correo_receptor', None) or '').strip()
+        if actual != destinatario:
+            venta.correo_receptor = destinatario
+            venta.save(update_fields=['correo_receptor'])
 
     # Generar PDF
     try:

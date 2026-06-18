@@ -284,6 +284,19 @@ export async function reenviarVenta(id) {
 }
 
 /**
+ * Reenvía PDF + JSON DTE por correo (factura ya procesada por MH).
+ * @param {number} id - ID venta
+ * @param {{ correo?: string }} opts - correo alternativo; si se omite usa el guardado en la venta
+ */
+export async function reenviarCorreoVenta(id, opts = {}) {
+  const body = {}
+  const correo = (opts.correo || '').trim()
+  if (correo) body.correo = correo
+  const { data } = await apiClient.post(`ventas/${id}/reenviar-correo/`, body, { timeout: 90000 })
+  return data
+}
+
+/**
  * Invalida (anula) un DTE ya procesado por MH.
  * @param {number} id - ID de la venta
  * @param {Object} datos - { motivoInvalidacion, tipoInvalidacion, nombreResponsable, tipoDocResponsable, numeroDocResponsable, nombreSolicitante, tipoDocSolicitante, numeroDocSolicitante }

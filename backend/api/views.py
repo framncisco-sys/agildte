@@ -1168,6 +1168,84 @@ class VentaViewSet(viewsets.ModelViewSet):
                 "mensaje": str(e),
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['post'], url_path='reenviar-correo')
+    def reenviar_correo(self, request, pk=None):
+        """
+        Reenvía el PDF + JSON DTE al correo del cliente (factura ya aceptada por MH).
+        Body opcional: { "correo": "otro@ejemplo.com" } — si se omite, usa el guardado en la venta.
+        """
+        from .services.email_service import _obtener_destinatario, enviar_factura_email
+
+        try:
+            venta = self.get_object()
+        except Venta.DoesNotExist:
+            return Response({
+                "error": "Venta no encontrada",
+                "mensaje": f"No existe una venta con el ID {pk}",
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        r = require_object_empresa_allowed(request, venta)
+        if r is not None:
+            return r
+
+        if venta.estado_dte not in ('AceptadoMH', 'Enviado', 'Anulado') and not venta.sello_recepcion:
+            return Response({
+                "error": "No se puede reenviar correo",
+                "mensaje": "Solo se puede reenviar el correo de facturas ya procesadas por Hacienda.",
+                "estado_dte": venta.estado_dte,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if venta.estado_dte == 'Anulado':
+            return Response({
+                "error": "Documento anulado",
+                "mensaje": "No se puede reenviar correo de un documento invalidado.",
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        correo_guardado = _obtener_destinatario(venta)
+        correo_body = (request.data.get('correo') or '').strip()
+        usar_otro = bool(correo_body)
+        destino = correo_body if usar_otro else correo_guardado
+
+        if not destino or '@' not in destino:
+            return Response({
+                "error": "Sin correo",
+                "mensaje": (
+                    "Esta factura no tiene correo registrado. "
+                    "Indique un correo en el formulario de reenvío."
+                ),
+                "correo_guardado": correo_guardado or None,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if '@' not in destino.split('@')[-1] or '.' not in destino.split('@')[-1]:
+            return Response({
+                "error": "Correo inválido",
+                "mensaje": "El correo indicado no tiene un formato válido.",
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        ok = enviar_factura_email(
+            venta,
+            destinatario_override=destino,
+            persistir_correo_en_venta=usar_otro and destino != (correo_guardado or ''),
+        )
+        if not ok:
+            return Response({
+                "error": "No se pudo enviar",
+                "mensaje": (
+                    "No se pudo enviar el correo. Verifique SMTP/SES en la empresa "
+                    "y que el destinatario sea válido."
+                ),
+                "correo_intentado": destino,
+            }, status=status.HTTP_502_BAD_GATEWAY)
+
+        venta.refresh_from_db()
+        return Response({
+            "ok": True,
+            "mensaje": f"Correo reenviado a {destino}",
+            "correo_enviado": destino,
+            "correo_anterior": correo_guardado or None,
+            "correo_receptor": venta.correo_receptor,
+        })
+
 # --- CLIENTES ---
 # --- CLIENTES (UNIFICADO) ---
 from .permissions import IsVendedorUser, IsContadorUser
