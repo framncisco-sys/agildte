@@ -1,7 +1,7 @@
 """
-Generador de PDF - Versión Legible según Modelo MH El Salvador.
-Usa ReportLab Platypus (Paragraph + Table) para que el texto respete márgenes y no se desborde.
-QR generado con qrcode y dibujado vía ImageReader.
+Generador de PDF comercial - Versión legible DTE (MH El Salvador).
+Diseño con cabecera de color, 3 temas por empresa (ocean/emerald/amber),
+datos obligatorios MH y pie «factura por AgilDTE.com».
 """
 import io
 import xml.sax.saxutils as saxutils
@@ -16,6 +16,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
     Image,
+    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -28,34 +29,144 @@ try:
 except ImportError:
     num2words = None
 
-# QR: importar qrcode (con PIL) para generar PNG en memoria
 try:
     import qrcode
 except ImportError:
     qrcode = None
 
 
-MARGIN = 1.5 * cm
+MARGIN = 1.2 * cm
 PAGE_W, PAGE_H = letter
-LEFT = MARGIN
-RIGHT = PAGE_W - MARGIN
-TOP = PAGE_H - MARGIN
-BOTTOM = MARGIN
+CONTENT_W = PAGE_W - 2 * MARGIN
 
-# Ancho útil para párrafos (evitar desborde)
-ANCHO_PARRAFO_EMISOR = 7 * cm
-ANCHO_PARRAFO_RECEPTOR = 7 * cm
+DEPARTAMENTOS = {
+    '01': 'Ahuachapán', '02': 'Santa Ana', '03': 'Sonsonate', '04': 'Chalatenango',
+    '05': 'La Libertad', '06': 'San Salvador', '07': 'Cuscatlán', '08': 'La Paz',
+    '09': 'Cabañas', '10': 'San Vicente', '11': 'Usulután', '12': 'Morazán',
+    '13': 'San Miguel', '14': 'La Unión',
+}
+
+TIPOS_ESTABLECIMIENTO = {
+    '01': 'Sucursal / Agencia',
+    '02': 'Casa Matriz',
+    '04': 'Bodega',
+    '07': 'Patio',
+}
+
+CONDICION_OPERACION = {
+    1: 'Contado',
+    2: 'Crédito',
+    3: 'Otro',
+}
+
+# Paletas comerciales (primario oscuro, acento, zebra, texto sobre color)
+PDF_TEMAS = {
+    'ocean': {
+        'primary': colors.HexColor('#0B3A5C'),
+        'accent': colors.HexColor('#0D9488'),
+        'soft': colors.HexColor('#E6F7F5'),
+        'zebra': colors.HexColor('#F0FDFA'),
+        'muted': colors.HexColor('#64748B'),
+        'border': colors.HexColor('#CBD5E1'),
+        'white': colors.white,
+        'text': colors.HexColor('#0F172A'),
+    },
+    'emerald': {
+        'primary': colors.HexColor('#064E3B'),
+        'accent': colors.HexColor('#059669'),
+        'soft': colors.HexColor('#ECFDF5'),
+        'zebra': colors.HexColor('#F0FDF4'),
+        'muted': colors.HexColor('#64748B'),
+        'border': colors.HexColor('#CBD5E1'),
+        'white': colors.white,
+        'text': colors.HexColor('#0F172A'),
+    },
+    'amber': {
+        'primary': colors.HexColor('#78350F'),
+        'accent': colors.HexColor('#D97706'),
+        'soft': colors.HexColor('#FFFBEB'),
+        'zebra': colors.HexColor('#FEF3C7'),
+        'muted': colors.HexColor('#64748B'),
+        'border': colors.HexColor('#CBD5E1'),
+        'white': colors.white,
+        'text': colors.HexColor('#0F172A'),
+    },
+}
+
+
+def _palette(empresa):
+    key = (getattr(empresa, 'pdf_tema_color', None) or 'ocean').strip().lower()
+    return PDF_TEMAS.get(key, PDF_TEMAS['ocean'])
 
 
 def _escape_html(text):
-    """Escapa caracteres para usar dentro de un Paragraph (evitar romper HTML)."""
     if not text:
         return ""
     return saxutils.escape(str(text).strip())
 
 
+def _solo_digitos(valor):
+    if valor is None:
+        return ''
+    return ''.join(c for c in str(valor) if c.isdigit())
+
+
+def _formatear_nit_display(valor):
+    digitos = _solo_digitos(valor)
+    if len(digitos) == 14:
+        return f"{digitos[:4]}-{digitos[4:10]}-{digitos[10:13]}-{digitos[13]}"
+    if len(digitos) == 9:
+        return f"{digitos[:8]}-{digitos[8]}"
+    return (str(valor).strip() if valor else '') or 'N/A'
+
+
+def _formatear_nrc_display(valor):
+    digitos = _solo_digitos(valor)
+    if len(digitos) >= 2:
+        return f"{digitos[:-1]}-{digitos[-1]}"
+    return digitos or 'N/A'
+
+
+def _nombre_departamento(codigo):
+    cod = str(codigo or '').strip().zfill(2)
+    nombre = DEPARTAMENTOS.get(cod, '')
+    return (
+        nombre.upper()
+        .replace('Á', 'A').replace('É', 'E').replace('Í', 'I')
+        .replace('Ó', 'O').replace('Ú', 'U')
+    )
+
+
+def _armar_direccion(complemento, departamento_codigo, municipio_nombre=''):
+    partes = []
+    comp = (complemento or '').strip()
+    if comp:
+        partes.append(comp.rstrip(','))
+    mun = (municipio_nombre or '').strip()
+    if mun:
+        partes.append(mun)
+    depto = _nombre_departamento(departamento_codigo)
+    if depto:
+        partes.append(depto)
+    return ', '.join(partes) if partes else 'N/A'
+
+
+def _condicion_operacion_label(venta):
+    try:
+        codigo = int(getattr(venta, 'condicion_operacion', 1) or 1)
+    except (TypeError, ValueError):
+        codigo = 1
+    return CONDICION_OPERACION.get(codigo, 'Contado')
+
+
+def _modelo_transmision(venta):
+    estado = (getattr(venta, 'estado_dte', None) or '').strip().upper()
+    if estado in ('CONTINGENCIA', 'PENDIENTEENVIO', 'PENDIENTE_ENVIO'):
+        return 'Diferido', 'Contingencia'
+    return 'Previo', 'Normal'
+
+
 def _formatear_fecha_hora(venta):
-    """Formato DD/MM/YYYY HH:MM:SS para PDF."""
     if not venta.fecha_emision:
         return ''
     fecha = venta.fecha_emision.strftime('%d/%m/%Y')
@@ -68,11 +179,10 @@ def _formatear_fecha_hora(venta):
 
 
 def _valor_en_letras(total_pagar):
-    """Convierte el total a valor en letras (ej: CIEN DÓLARES CON 00/100 USD)."""
     try:
         total = float(Decimal(str(total_pagar)))
     except (TypeError, ValueError):
-        return "CERO DÓLARES CON 00/100 USD"
+        return "CERO DOLARES CON 00/100 USD"
     entero = int(total)
     centavos = round((total - entero) * 100)
     if centavos >= 100:
@@ -82,16 +192,19 @@ def _valor_en_letras(total_pagar):
     if num2words:
         try:
             palabras = num2words(entero, lang='es')
-            palabras = palabras.upper().replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+            palabras = (
+                palabras.upper()
+                .replace('Á', 'A').replace('É', 'E').replace('Í', 'I')
+                .replace('Ó', 'O').replace('Ú', 'U')
+            )
         except Exception:
             palabras = str(entero)
     else:
         palabras = str(entero)
-    return f"{palabras} DÓLARES CON {centavos_str}/100 USD"
+    return f"{palabras} DOLARES CON {centavos_str}/100 USD"
 
 
 def _obtener_ruta_logo(empresa):
-    """Obtiene la ruta del logo: empresa.logo, static/logo.png o None."""
     if empresa and getattr(empresa, 'logo', None) and empresa.logo:
         try:
             path = empresa.logo.path
@@ -111,19 +224,13 @@ def _obtener_ruta_logo(empresa):
 
 
 def _generar_qr_imagen_reportlab(url, size_pt=70):
-    """
-    Genera el código QR como imagen compatible con ReportLab.
-    Retorna un objeto que ReportLab puede dibujar (BytesIO con PNG) o None si falla.
-    """
     if not qrcode:
         return None
     try:
         qr = qrcode.QRCode(version=1, box_size=3, border=2)
         qr.add_data(url)
         qr.make(fit=True)
-        # Asegurar que usamos backend PIL para tener .resize() y .save()
         img = qr.make_image(fill_color="black", back_color="white")
-        # Convertir a bytes PNG en memoria
         buf = io.BytesIO()
         if hasattr(img, 'resize'):
             size_px = max(80, int(size_pt * 2.5))
@@ -136,7 +243,6 @@ def _generar_qr_imagen_reportlab(url, size_pt=70):
 
 
 def _d(val, default=0):
-    """Convierte a float para cálculos."""
     try:
         return float(Decimal(str(val or default)))
     except (TypeError, ValueError):
@@ -148,53 +254,107 @@ def _obtener_datos_emisor(venta):
     if not empresa:
         return {
             'nombre': 'EMPRESA S.A. DE C.V.',
-            'nrc': '0000-000000-000-0',
-            'nit': '0614-000000-000-0',
+            'nombre_comercial': 'EMPRESA S.A. DE C.V.',
+            'nrc': '0000-0',
+            'nit': '00000000-0',
+            'actividad_economica': 'N/A',
             'direccion': 'San Salvador, El Salvador',
             'telefono': '',
             'correo': '',
+            'tipo_establecimiento': TIPOS_ESTABLECIMIENTO['01'],
         }
+    nombre = (empresa.nombre or 'EMPRESA S.A. DE C.V.').strip()
+    nombre_comercial = (
+        (getattr(empresa, 'nombre_comercial', None) or '').strip() or nombre
+    )
+    cod_act = (getattr(empresa, 'cod_actividad', None) or '').strip()
+    desc_act = (getattr(empresa, 'desc_actividad', None) or '').strip()
+    if desc_act:
+        actividad = desc_act
+    elif cod_act:
+        actividad = cod_act
+    else:
+        actividad = 'N/A'
     return {
-        'nombre': (empresa.nombre or 'EMPRESA S.A. DE C.V.').strip(),
-        'nrc': (empresa.nrc or '0000-000000-000-0').strip(),
-        'nit': (empresa.nit or '').strip() or '0614-000000-000-0',
-        'direccion': (getattr(empresa, 'direccion', None) or '').strip() or 'San Salvador, El Salvador',
+        'nombre': nombre,
+        'nombre_comercial': nombre_comercial,
+        'nrc': _formatear_nrc_display(empresa.nrc),
+        'nit': _formatear_nit_display(empresa.nit or ''),
+        'actividad_economica': actividad,
+        'direccion': _armar_direccion(
+            getattr(empresa, 'direccion', None),
+            getattr(empresa, 'departamento', None),
+        ),
         'telefono': (getattr(empresa, 'telefono', None) or '').strip(),
         'correo': (getattr(empresa, 'correo', None) or '').strip(),
+        'tipo_establecimiento': TIPOS_ESTABLECIMIENTO.get('01', 'Sucursal / Agencia'),
     }
 
 
 def _obtener_datos_receptor(venta):
+    tipo_venta = (getattr(venta, 'tipo_venta', None) or '').strip().upper()
+    es_ccf = tipo_venta == 'CCF'
+
     nombre = (venta.nombre_receptor or '').strip()
     if not nombre and venta.cliente:
         nombre = (venta.cliente.nombre or '').strip()
     if not nombre:
         nombre = 'Consumidor Final'
+
     nrc = (venta.nrc_receptor or '').strip()
     if not nrc and venta.cliente:
         nrc = (venta.cliente.nrc or '').strip()
+
     nit_dui = (venta.documento_receptor or '').strip()
     if not nit_dui and venta.cliente:
         nit_dui = (venta.cliente.documento_identidad or venta.cliente.nit or venta.cliente.dui or '').strip()
-    direccion = (venta.direccion_receptor or '').strip()
-    if not direccion and venta.cliente:
-        direccion = (getattr(venta.cliente, 'direccion', None) or '').strip()
+
+    direccion_comp = (venta.direccion_receptor or '').strip()
+    if not direccion_comp and venta.cliente:
+        direccion_comp = (getattr(venta.cliente, 'direccion', None) or '').strip()
+
+    depto = ''
+    if venta.cliente:
+        depto = (getattr(venta.cliente, 'departamento', None) or '').strip()
+
     correo = (venta.correo_receptor or '').strip()
     if not correo and venta.cliente:
         correo = (getattr(venta.cliente, 'email_contacto', None) or '').strip()
-    actividad = ''
+
+    telefono = ''
     if venta.cliente:
+        telefono = (getattr(venta.cliente, 'telefono', None) or '').strip()
+
+    actividad = ''
+    cod = (getattr(venta, 'cod_actividad_receptor', None) or '').strip()
+    desc = (getattr(venta, 'desc_actividad_receptor', None) or '').strip()
+    if not cod and not desc and venta.cliente:
         cod = (getattr(venta.cliente, 'cod_actividad', None) or '').strip()
         desc = (getattr(venta.cliente, 'desc_actividad', None) or '').strip()
-        if cod or desc:
-            actividad = f"{cod} - {desc}".strip(' -')
+    if cod or desc:
+        actividad = f"{cod} - {desc}".strip(' -')
+
+    tipo_doc = (getattr(venta, 'tipo_doc_receptor', None) or '').strip().upper()
+    if not tipo_doc and venta.cliente:
+        tipo_doc = (getattr(venta.cliente, 'tipo_documento', None) or '').strip().upper()
+    if tipo_doc == 'DUI':
+        etiqueta_doc = 'DUI'
+        doc_display = nit_dui or 'N/A'
+    else:
+        etiqueta_doc = 'NIT'
+        doc_display = _formatear_nit_display(nit_dui) if nit_dui else 'N/A'
+
     return {
         'nombre': nombre,
-        'nit_dui': nit_dui or 'N/A',
-        'nrc': nrc or 'N/A',
-        'actividad_economica': actividad or 'N/A',
-        'direccion': direccion or 'N/A',
-        'correo': correo or 'N/A',
+        'etiqueta_doc': etiqueta_doc,
+        'nit_dui': doc_display,
+        'nrc': _formatear_nrc_display(nrc) if nrc else '',
+        'actividad_economica': actividad if es_ccf else '',
+        'mostrar_nrc': bool(nrc) and (es_ccf or tipo_venta in ('NC', 'ND')),
+        'mostrar_actividad': bool(actividad) and es_ccf,
+        'direccion': _armar_direccion(direccion_comp, depto),
+        'correo': correo or '',
+        'telefono': telefono or '',
     }
 
 
@@ -206,37 +366,72 @@ def _tipo_documento_label(venta):
         return 'NOTA DE CRÉDITO'
     if tipo == 'ND':
         return 'NOTA DE DÉBITO'
+    if tipo == 'FSE':
+        return 'FACTURA SUJETO EXCLUIDO'
+    return 'FACTURA'
+
+
+def _tipo_documento_corto(venta):
+    tipo = (venta.tipo_venta or 'CF').upper()
+    if tipo == 'CCF':
+        return 'CRÉDITO FISCAL'
+    if tipo == 'NC':
+        return 'NOTA DE CRÉDITO'
+    if tipo == 'ND':
+        return 'NOTA DE DÉBITO'
+    if tipo == 'FSE':
+        return 'SUJETO EXCLUIDO'
     return 'FACTURA'
 
 
 def generar_pdf_venta(venta):
     """
-    Genera el PDF de la versión legible del DTE según modelo MH.
-    Todo el contenido usa Platypus (Paragraph + Table) para respetar márgenes.
-    Returns: BytesIO con el contenido del PDF.
+    Genera PDF comercial (versión legible DTE) con tema de color de la empresa.
+    Returns: BytesIO
     """
     buffer = io.BytesIO()
+    empresa = venta.empresa
+    pal = _palette(empresa)
     styles = getSampleStyleSheet()
+
     estilo_normal = ParagraphStyle(
-        name='NormalWrap',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=8,
-        leading=10,
-        wordWrap='CJK',
+        name='NormalWrap', parent=styles['Normal'],
+        fontName='Helvetica', fontSize=8, leading=10,
+        textColor=pal['text'], wordWrap='CJK',
     )
     estilo_bold = ParagraphStyle(
-        name='BoldWrap',
-        parent=estilo_normal,
-        fontName='Helvetica-Bold',
+        name='BoldWrap', parent=estilo_normal, fontName='Helvetica-Bold',
     )
-    # Fuente más pequeña para el Sello de Recepción (texto muy largo)
     estilo_sello = ParagraphStyle(
-        name='SelloSmall',
-        parent=estilo_normal,
-        fontSize=6,
-        leading=8,
-        wordWrap='CJK',
+        name='SelloSmall', parent=estilo_normal, fontSize=6, leading=8, wordWrap='CJK',
+    )
+    estilo_header_white = ParagraphStyle(
+        name='HeaderWhite', parent=estilo_normal,
+        fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=pal['white'],
+    )
+    estilo_title_white = ParagraphStyle(
+        name='TitleWhite', parent=estilo_normal,
+        fontName='Helvetica-Bold', fontSize=14, leading=17, textColor=pal['white'],
+        alignment=2,  # RIGHT
+    )
+    estilo_sub_white = ParagraphStyle(
+        name='SubWhite', parent=estilo_normal,
+        fontSize=8, leading=10, textColor=pal['white'], alignment=2,
+    )
+    estilo_section = ParagraphStyle(
+        name='Section', parent=estilo_bold,
+        fontSize=9, leading=11, textColor=pal['primary'],
+    )
+    estilo_footer = ParagraphStyle(
+        name='FooterTiny', parent=estilo_normal,
+        fontSize=7, leading=9, textColor=pal['muted'], alignment=1,
+    )
+    estilo_celda = ParagraphStyle(
+        name='CeldaTiny', parent=estilo_normal, fontSize=7, leading=9,
+    )
+    estilo_th = ParagraphStyle(
+        name='TH', parent=estilo_normal,
+        fontName='Helvetica-Bold', fontSize=7, leading=8, textColor=pal['white'],
     )
 
     emisor = _obtener_datos_emisor(venta)
@@ -245,11 +440,17 @@ def generar_pdf_venta(venta):
     codigo_gen = (venta.codigo_generacion or '').strip() or 'N/A'
     numero_control = (venta.numero_control or venta.numero_documento or '').strip() or 'N/A'
     sello = (venta.sello_recepcion or '').strip() or 'N/A'
-    empresa = venta.empresa
     codigo_gen_raw = (venta.codigo_generacion or '').strip()
     fecha_iso = venta.fecha_emision.strftime('%Y-%m-%d') if venta.fecha_emision else ''
+    modelo_fact, tipo_trans = _modelo_transmision(venta)
+    condicion_op = _condicion_operacion_label(venta)
+    ambiente_venta = (
+        getattr(venta, 'ambiente_emision', None)
+        or getattr(empresa, 'ambiente', None)
+        or '01'
+    )
     if codigo_gen_raw:
-        params = {'ambiente': '01', 'codGen': codigo_gen_raw}
+        params = {'ambiente': ambiente_venta, 'codGen': codigo_gen_raw}
         if fecha_iso:
             params['fechaEmi'] = fecha_iso
         url_consulta = f"https://admin.factura.gob.sv/consultaPublica?{urlencode(params)}"
@@ -266,132 +467,260 @@ def generar_pdf_venta(venta):
     )
     elements = []
 
-    # ----- LOGO + DATOS EMISOR (Paragraph para dirección larga) -----
+    # ----- CABECERA DE COLOR -----
     logo_path = _obtener_ruta_logo(empresa) if empresa else None
-    logo_w, logo_h = 100, 55
+    img_logo = None
     if logo_path:
         try:
-            img_logo = Image(logo_path, width=logo_w, height=logo_h)
+            img_logo = Image(logo_path, width=72, height=40)
         except Exception:
             img_logo = None
-    else:
-        img_logo = None
 
-    # Emisor: Paragraph para nombre y dirección (se ajustan al ancho, máx 7cm)
-    emisor_nombre_p = Paragraph(_escape_html(emisor['nombre']), estilo_bold)
-    emisor_nrc_nit_p = Paragraph(
-        f"NRC: {_escape_html(emisor['nrc'])} &nbsp; NIT: {_escape_html(emisor['nit'])}",
-        estilo_normal,
-    )
-    emisor_direccion_p = Paragraph(_escape_html(emisor['direccion']), estilo_normal)
-    lineas_emisor = [emisor_nombre_p, emisor_nrc_nit_p, emisor_direccion_p]
-    if emisor['telefono']:
-        lineas_emisor.append(Paragraph(f"Tel: {_escape_html(emisor['telefono'])}", estilo_normal))
-    if emisor['correo']:
-        lineas_emisor.append(Paragraph(f"Correo: {_escape_html(emisor['correo'])}", estilo_normal))
-    tabla_emisor_celda = Table([[p] for p in lineas_emisor], colWidths=[ANCHO_PARRAFO_EMISOR])
-    tabla_emisor_celda.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    brand_lines = [
+        Paragraph(f"<b>{_escape_html(emisor['nombre'])}</b>", estilo_header_white),
+        Paragraph(
+            f"NRC: {_escape_html(emisor['nrc'])}  ·  NIT: {_escape_html(emisor['nit'])}",
+            ParagraphStyle(name='BrandMeta', parent=estilo_header_white, fontName='Helvetica', fontSize=7),
+        ),
+    ]
+    brand_cell = Table([[p] for p in brand_lines], colWidths=[10 * cm])
+    brand_cell.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BACKGROUND', (0, 0), (-1, -1), pal['primary']),
     ]))
 
-    # Columna izquierda: logo arriba + datos emisor
-    if img_logo:
-        izquierda_content = Table([[img_logo], [tabla_emisor_celda]], colWidths=[ANCHO_PARRAFO_EMISOR])
-    else:
-        placeholder = Paragraph('<i>LOGO</i>', estilo_normal)
-        izquierda_content = Table([[placeholder], [tabla_emisor_celda]], colWidths=[ANCHO_PARRAFO_EMISOR])
-    izquierda_content.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    left_brand = [[img_logo, brand_cell]] if img_logo else [[brand_cell]]
+    left_w = [2.2 * cm, 9.5 * cm] if img_logo else [11.7 * cm]
+    left_header = Table(left_brand, colWidths=left_w)
+    left_header.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BACKGROUND', (0, 0), (-1, -1), pal['primary']),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
     ]))
 
-    # ----- Tabla anidada DTE (derecha): con bordes GRID y fondo gris en títulos -----
+    right_header = Table([
+        [Paragraph('DOCUMENTO TRIBUTARIO ELECTRÓNICO', estilo_sub_white)],
+        [Paragraph(_escape_html(_tipo_documento_corto(venta)), estilo_title_white)],
+    ], colWidths=[6.5 * cm])
+    right_header.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), pal['accent']),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+    ]))
+
+    header = Table([[left_header, right_header]], colWidths=[CONTENT_W * 0.62, CONTENT_W * 0.38])
+    header.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(header)
+    # Franja acento
+    accent_bar = Table([['']], colWidths=[CONTENT_W], rowHeights=[4])
+    accent_bar.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), pal['accent']),
+    ]))
+    elements.append(accent_bar)
+    elements.append(Spacer(1, 0.35 * cm))
+
+    # ----- CAJA DTE + QR -----
+    qr_buf = _generar_qr_imagen_reportlab(url_consulta, size_pt=78) if url_consulta else None
+    img_qr = None
+    if qr_buf:
+        try:
+            img_qr = Image(qr_buf, width=72, height=72)
+        except Exception:
+            img_qr = None
+
     datos_criticos = [
-        ('Código de Generación:', Paragraph(_escape_html(codigo_gen), estilo_normal)),
-        ('Número de Control:', Paragraph(_escape_html(numero_control), estilo_normal)),
-        ('Sello de Recepción:', Paragraph(_escape_html(sello), estilo_sello)),
-        ('Fecha y Hora de Emisión:', Paragraph(_escape_html(fecha_hora), estilo_normal)),
-        ('Modelo de Facturación:', Paragraph('Previo', estilo_normal)),
-        ('Tipo de Transmisión:', Paragraph('Normal', estilo_normal)),
+        ('Código de Generación', codigo_gen),
+        ('Número de Control', numero_control),
+        ('Sello de Recepción', sello),
+        ('Fecha y Hora', fecha_hora),
+        ('Modelo', modelo_fact),
+        ('Transmisión', tipo_trans),
     ]
     filas_dte = []
-    for label, value_flowable in datos_criticos:
+    for label, value in datos_criticos:
+        estilo_val = estilo_sello if label.startswith('Sello') else estilo_normal
         filas_dte.append([
             Paragraph(f"<b>{_escape_html(label)}</b>", estilo_normal),
-            value_flowable,
+            Paragraph(_escape_html(value), estilo_val),
         ])
-    tabla_dte = Table(filas_dte, colWidths=[95, 100])
+    tabla_dte = Table(filas_dte, colWidths=[3.4 * cm, 8.2 * cm])
     tabla_dte.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#E5E7EB')),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('BACKGROUND', (0, 0), (0, -1), pal['soft']),
+        ('TEXTCOLOR', (0, 0), (-1, -1), pal['text']),
+        ('BOX', (0, 0), (-1, -1), 0.8, pal['border']),
+        ('INNERGRID', (0, 0), (-1, -1), 0.4, pal['border']),
         ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
     ]))
 
-    titulo_dte = Paragraph('<b>DOCUMENTO TRIBUTARIO ELECTRÓNICO</b>', estilo_bold)
-    subtitulo_dte = Paragraph(_escape_html(_tipo_documento_label(venta)), estilo_normal)
-    caja_dte = Table([
-        [titulo_dte],
-        [subtitulo_dte],
-        [tabla_dte],
-    ], colWidths=[200])
-    caja_dte.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    qr_block = []
+    if img_qr:
+        qr_block = [
+            [Paragraph('<b>Consulta MH</b>', ParagraphStyle(
+                name='QRLab', parent=estilo_normal, fontSize=7, alignment=1, textColor=pal['primary'],
+            ))],
+            [img_qr],
+        ]
+    else:
+        qr_block = [[Paragraph('<i>QR N/D</i>', estilo_normal)]]
+    tabla_qr = Table(qr_block, colWidths=[3.2 * cm])
+    tabla_qr.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOX', (0, 0), (-1, -1), 0.8, pal['border']),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.white),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
 
-    # ----- MASTER TABLE: encabezado unificado (sin bordes), 60% izquierda / 40% derecha -----
-    ancho_total = PAGE_W - 2 * MARGIN
-    col_izq = 0.60 * ancho_total
-    col_der = 0.40 * ancho_total
-    tabla_master = Table([[izquierda_content, caja_dte]], colWidths=[col_izq, col_der])
-    tabla_master.setStyle(TableStyle([
+    meta_row = Table([[tabla_dte, tabla_qr]], colWidths=[CONTENT_W - 3.6 * cm, 3.6 * cm])
+    meta_row.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-    ]))
-    elements.append(tabla_master)
-    elements.append(Spacer(1, 0.4 * cm))
-
-    # ----- RECEPTOR (Paragraph para nombre, dirección, actividad, correo) -----
-    elements.append(Paragraph('<b>RECEPTOR</b>', estilo_bold))
-    elements.append(Spacer(1, 4))
-    receptor_nombre_p = Paragraph(f"<b>Nombre/Razón Social:</b> {_escape_html(receptor['nombre'])}", estilo_normal)
-    receptor_nit_p = Paragraph(f"<b>NIT/DUI:</b> {_escape_html(receptor['nit_dui'])}", estilo_normal)
-    receptor_nrc_p = Paragraph(f"<b>NRC:</b> {_escape_html(receptor['nrc'])}", estilo_normal)
-    receptor_act_p = Paragraph(f"<b>Actividad Económica:</b> {_escape_html(receptor['actividad_economica'])}", estilo_normal)
-    receptor_dir_p = Paragraph(f"<b>Dirección:</b> {_escape_html(receptor['direccion'])}", estilo_normal)
-    receptor_correo_p = Paragraph(f"<b>Correo:</b> {_escape_html(receptor['correo'])}", estilo_normal)
-    tabla_receptor = Table(
-        [[receptor_nombre_p], [receptor_nit_p], [receptor_nrc_p], [receptor_act_p], [receptor_dir_p], [receptor_correo_p]],
-        colWidths=[RIGHT - LEFT - 2 * cm],
-    )
-    tabla_receptor.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
     ]))
-    elements.append(tabla_receptor)
-    elements.append(Spacer(1, 0.4 * cm))
+    elements.append(meta_row)
+    elements.append(Spacer(1, 0.35 * cm))
 
-    # ----- TABLA DE DETALLE: Descripción como Paragraph para que no se salga -----
+    # ----- EMISOR / RECEPTOR -----
+    def _bloque_persona(titulo, lineas):
+        head = Paragraph(titulo, estilo_section)
+        body = [[Paragraph(ln, estilo_normal)] for ln in lineas]
+        body_t = Table(body, colWidths=[CONTENT_W * 0.47])
+        body_t.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 1),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+            ('BACKGROUND', (0, 0), (-1, -1), pal['soft']),
+        ]))
+        wrap = Table([[head], [body_t]], colWidths=[CONTENT_W * 0.48])
+        wrap.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, 0), colors.white),
+            ('BOTTOMPADDING', (0, 0), (0, 0), 3),
+            ('BOX', (0, 1), (0, 1), 0.8, pal['border']),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ]))
+        return wrap
+
+    lineas_emisor = [
+        f"<b>Nombre:</b> {_escape_html(emisor['nombre'])}",
+        f"<b>NRC:</b> {_escape_html(emisor['nrc'])} &nbsp; <b>NIT:</b> {_escape_html(emisor['nit'])}",
+        f"<b>Actividad:</b> {_escape_html(emisor['actividad_economica'])}",
+        f"<b>Dirección:</b> {_escape_html(emisor['direccion'])}",
+    ]
+    if emisor['telefono']:
+        lineas_emisor.append(f"<b>Tel:</b> {_escape_html(emisor['telefono'])}")
+    if emisor['correo']:
+        lineas_emisor.append(f"<b>Correo:</b> {_escape_html(emisor['correo'])}")
+    lineas_emisor.append(f"<b>Nombre comercial:</b> {_escape_html(emisor['nombre_comercial'])}")
+    lineas_emisor.append(f"<b>Establecimiento:</b> {_escape_html(emisor['tipo_establecimiento'])}")
+
+    lineas_receptor = [
+        f"<b>Nombre:</b> {_escape_html(receptor['nombre'])}",
+        f"<b>{_escape_html(receptor['etiqueta_doc'])}:</b> {_escape_html(receptor['nit_dui'])}",
+    ]
+    if receptor.get('mostrar_nrc') and receptor.get('nrc'):
+        lineas_receptor.append(f"<b>NRC:</b> {_escape_html(receptor['nrc'])}")
+    if receptor.get('mostrar_actividad') and receptor.get('actividad_economica'):
+        lineas_receptor.append(f"<b>Actividad:</b> {_escape_html(receptor['actividad_economica'])}")
+    lineas_receptor.append(f"<b>Dirección:</b> {_escape_html(receptor['direccion'])}")
+    if receptor.get('telefono'):
+        lineas_receptor.append(f"<b>Tel:</b> {_escape_html(receptor['telefono'])}")
+    if receptor.get('correo'):
+        lineas_receptor.append(f"<b>Correo:</b> {_escape_html(receptor['correo'])}")
+
+    bloques = Table(
+        [[_bloque_persona('EMISOR', lineas_emisor), _bloque_persona('RECEPTOR', lineas_receptor)]],
+        colWidths=[CONTENT_W * 0.5, CONTENT_W * 0.5],
+    )
+    bloques.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (0, 0), 4),
+        ('LEFTPADDING', (1, 0), (1, 0), 4),
+    ]))
+    elements.append(bloques)
+    elements.append(Spacer(1, 0.3 * cm))
+
+    # ----- DOCUMENTOS RELACIONADOS -----
+    tipo_venta_doc = (getattr(venta, 'tipo_venta', None) or '').strip().upper()
+    doc_rel_num = (
+        (getattr(venta, 'codigo_generacion_referenciado', None) or '').strip()
+        or (getattr(venta, 'documento_relacionado_numero_control', None) or '').strip()
+    )
+    if tipo_venta_doc in ('NC', 'ND') and doc_rel_num:
+        elements.append(Paragraph('DOCUMENTOS RELACIONADOS', estilo_section))
+        elements.append(Spacer(1, 3))
+        tipo_rel = (getattr(venta, 'documento_relacionado_tipo', None) or '').strip() or '-'
+        fecha_rel = getattr(venta, 'documento_relacionado_fecha_emision', None)
+        fecha_rel_txt = fecha_rel.strftime('%d/%m/%Y') if fecha_rel else '-'
+        tabla_rel = Table(
+            [
+                [
+                    Paragraph('<b>Tipo</b>', estilo_th),
+                    Paragraph('<b>N° de Documento</b>', estilo_th),
+                    Paragraph('<b>Fecha</b>', estilo_th),
+                ],
+                [
+                    Paragraph(_escape_html(tipo_rel), estilo_celda),
+                    Paragraph(_escape_html(doc_rel_num), estilo_celda),
+                    Paragraph(_escape_html(fecha_rel_txt), estilo_celda),
+                ],
+            ],
+            colWidths=[2.5 * cm, CONTENT_W - 5.5 * cm, 3 * cm],
+        )
+        tabla_rel.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), pal['primary']),
+            ('GRID', (0, 0), (-1, -1), 0.4, pal['border']),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(tabla_rel)
+        elements.append(Spacer(1, 0.25 * cm))
+
+    # ----- DETALLE -----
     detalles = list(venta.detalles.all()) if hasattr(venta, 'detalles') else []
     es_cf = getattr(venta, 'tipo_venta', None) == 'CF'
-    col_widths = [1.5 * cm, 1.2 * cm, 8 * cm, 2.5 * cm, 2 * cm, 2 * cm, 2 * cm]
-    headers = ['Cantidad', 'Unidad', 'Descripción', 'P. Unitario', 'No Sujetas', 'Exentas', 'Gravadas']
+    col_widths = [0.7 * cm, 1.2 * cm, 1.2 * cm, 5.4 * cm, 2.0 * cm, 1.5 * cm, 1.7 * cm, 1.7 * cm, 2.0 * cm]
+    headers = [
+        Paragraph('N°', estilo_th),
+        Paragraph('Cant.', estilo_th),
+        Paragraph('Unidad', estilo_th),
+        Paragraph('Descripción', estilo_th),
+        Paragraph('P. Unit.', estilo_th),
+        Paragraph('Desc.', estilo_th),
+        Paragraph('No Suj.', estilo_th),
+        Paragraph('Exentas', estilo_th),
+        Paragraph('Gravadas', estilo_th),
+    ]
     rows = [headers]
-    for d in detalles:
+    for idx, d in enumerate(detalles, start=1):
         desc = (d.producto.descripcion if d.producto else d.descripcion_libre) or 'Item'
-        desc_paragraph = Paragraph(_escape_html(desc), estilo_normal)
-        # CF: mostrar valor con IVA incluido (igual que DTE para MH)
         if es_cf and (_d(d.venta_gravada) + _d(d.iva_item)) > 0:
             total_linea = _d(d.venta_gravada) + _d(d.iva_item)
             p_unit = total_linea / _d(d.cantidad) if _d(d.cantidad) else total_linea
@@ -399,38 +728,47 @@ def generar_pdf_venta(venta):
         else:
             p_unit = _d(d.precio_unitario)
             gravada_col = _d(d.venta_gravada)
+        num_item = getattr(d, 'numero_item', None) or idx
         rows.append([
+            str(num_item),
             f"{_d(d.cantidad):.2f}",
-            'UND',
-            desc_paragraph,
-            f"${p_unit:.2f}",
-            f"${_d(d.venta_no_sujeta):.2f}",
-            f"${_d(d.venta_exenta):.2f}",
-            f"${gravada_col:.2f}",
+            'Unidad',
+            Paragraph(_escape_html(desc), estilo_celda),
+            f"${p_unit:,.2f}",
+            f"${_d(d.monto_descuento):,.2f}",
+            f"${_d(d.venta_no_sujeta):,.2f}",
+            f"${_d(d.venta_exenta):,.2f}",
+            f"${gravada_col:,.2f}",
         ])
     if not detalles:
-        rows.append(['-', '-', Paragraph('Sin ítems', estilo_normal), '-', '-', '-', '-'])
+        rows.append(['-', '-', '-', Paragraph('Sin ítems', estilo_celda), '-', '-', '-', '-', '-'])
 
     table_items = Table(rows, colWidths=col_widths)
-    table_items.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E5E7EB')),
+    item_style = [
+        ('BACKGROUND', (0, 0), (-1, 0), pal['primary']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), pal['white']),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
-        ('ALIGN', (2, 0), (2, -1), 'LEFT'),
-        ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+        ('ALIGN', (3, 0), (3, -1), 'LEFT'),
+        ('ALIGN', (4, 0), (-1, -1), 'RIGHT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('GRID', (0, 0), (-1, -1), 0.4, pal['border']),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-    ]))
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+    ]
+    for i in range(1, len(rows)):
+        if i % 2 == 0:
+            item_style.append(('BACKGROUND', (0, i), (-1, i), pal['zebra']))
+    table_items.setStyle(TableStyle(item_style))
     elements.append(table_items)
-    elements.append(Spacer(1, 0.4 * cm))
+    elements.append(Spacer(1, 0.3 * cm))
 
-    # ----- CÁLCULOS PARA RESUMEN (Pie de página) -----
+    # ----- TOTALES -----
     venta_gravada = _d(venta.venta_gravada)
     venta_exenta = _d(venta.venta_exenta)
     venta_no_sujeta = _d(venta.venta_no_sujeta)
@@ -439,100 +777,119 @@ def generar_pdf_venta(venta):
     iva_ret_2 = _d(venta.iva_retenido_2)
     tipo_venta = (getattr(venta, 'tipo_venta', None) or '').strip().upper()
     es_cf = tipo_venta == 'CF'
-    # CF: todo con IVA incluido (Suma de Ventas = Sub-Total = Total a pagar = 25)
     if es_cf:
         suma_ventas = round(venta_gravada + debito_fiscal + venta_exenta + venta_no_sujeta, 2)
+        gravadas_display = suma_ventas - venta_exenta - venta_no_sujeta
     else:
         suma_ventas = venta_gravada + venta_exenta + venta_no_sujeta
+        gravadas_display = venta_gravada
     descuentos = 0
     subtotal = suma_ventas - descuentos
-    total_pagar = round(subtotal + (0 if es_cf else debito_fiscal) - iva_ret_1 - iva_ret_2, 2)
+    monto_total_operacion = subtotal + (0 if es_cf else debito_fiscal)
+    total_pagar = round(monto_total_operacion - iva_ret_1 - iva_ret_2, 2)
     valor_letras = _valor_en_letras(total_pagar)
 
-    # ----- 1. TABLA DE TOTALES (Columna derecha ~35%): solo cálculos numéricos -----
-    # CF: no mostrar línea de IVA; Suma de Ventas y Sub-Total ya son el total con IVA
     datos_totales = [
-        ['Suma de Ventas:', f"$ {suma_ventas:.2f}"],
-        ['Descuento:', f"$ {descuentos:.2f}"],
-        ['Sub-Total:', f"$ {subtotal:.2f}"],
+        ['Ventas No Sujetas:', f"$ {venta_no_sujeta:,.2f}"],
+        ['Ventas Exentas:', f"$ {venta_exenta:,.2f}"],
+        ['Ventas Gravadas:', f"$ {gravadas_display:,.2f}"],
+        ['Sumatoria de ventas:', f"$ {suma_ventas:,.2f}"],
+        ['Descuento:', f"$ {descuentos:,.2f}"],
+        ['Sub-Total:', f"$ {subtotal:,.2f}"],
     ]
     if not es_cf:
-        datos_totales.append(['IVA 13%:', f"$ {debito_fiscal:.2f}"])
-    datos_totales.append(['IVA Retenido:', f"$ {iva_ret_1:.2f}"])
+        datos_totales.append(['IVA 13%:', f"$ {debito_fiscal:,.2f}"])
+    datos_totales.append(['IVA Retenido:', f"$ {iva_ret_1:,.2f}"])
     if iva_ret_2 > 0:
-        datos_totales.append(['IVA Percibido:', f"$ {iva_ret_2:.2f}"])
-    datos_totales.append(['TOTAL A PAGAR:', f"$ {total_pagar:.2f}"])
-    tabla_calculos = Table(datos_totales, colWidths=[3 * cm, 2.5 * cm])
-    tabla_calculos.setStyle(TableStyle([
+        datos_totales.append(['IVA Percibido:', f"$ {iva_ret_2:,.2f}"])
+    datos_totales.append(['Monto Total Operación:', f"$ {monto_total_operacion:,.2f}"])
+    datos_totales.append(['TOTAL A PAGAR:', f"$ {total_pagar:,.2f}"])
+
+    tabla_calculos = Table(datos_totales, colWidths=[3.8 * cm, 2.5 * cm])
+    n_tot = len(datos_totales)
+    calc_style = [
         ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
         ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LINEABOVE', (0, -1), (-1, -1), 1.5, colors.black),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#E8E8E8')),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, -1), (-1, -1), 9),
-    ]))
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('TEXTCOLOR', (0, 0), (-1, -2), pal['text']),
+        ('BACKGROUND', (0, n_tot - 1), (-1, n_tot - 1), pal['accent']),
+        ('TEXTCOLOR', (0, n_tot - 1), (-1, n_tot - 1), pal['white']),
+        ('FONTNAME', (0, n_tot - 1), (-1, n_tot - 1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, n_tot - 1), (-1, n_tot - 1), 9),
+        ('TOPPADDING', (0, n_tot - 1), (-1, n_tot - 1), 6),
+        ('BOTTOMPADDING', (0, n_tot - 1), (-1, n_tot - 1), 6),
+        ('BOX', (0, 0), (-1, -2), 0.5, pal['border']),
+    ]
+    tabla_calculos.setStyle(TableStyle(calc_style))
 
-    # ----- 2. BLOQUE IZQUIERDO (~65%): Valor en letras, Observaciones, QR, Resolución -----
-    valor_letras_p = Paragraph(
-        f"<b>SON: {_escape_html(valor_letras)}</b>",
-        ParagraphStyle(name='ValorLetras', parent=estilo_normal, fontSize=9, leading=11),
-    )
-    filas_izq = [[valor_letras_p]]
-    observaciones = (getattr(venta, 'observaciones_mh', None) or '').strip()
-    if observaciones:
-        obs_p = Paragraph(f"<b>Observaciones:</b> {_escape_html(observaciones[:200])}", estilo_normal)
-        filas_izq.append([Spacer(1, 8)])
-        filas_izq.append([obs_p])
-    filas_izq.append([Spacer(1, 10)])
-    qr_buf = _generar_qr_imagen_reportlab(url_consulta, size_pt=70) if url_consulta else None
-    if qr_buf:
-        try:
-            img_qr = Image(qr_buf, width=70, height=70)
-            filas_izq.append([Paragraph('<b>Consulta pública MH</b>', ParagraphStyle(name='QRCap', parent=estilo_normal, fontSize=7))])
-            filas_izq.append([img_qr])
-        except Exception:
-            filas_izq.append([Paragraph('<i>QR no disponible</i>', estilo_normal)])
-    else:
-        filas_izq.append([Paragraph('<i>QR no disponible (instale qrcode[pil])</i>', estilo_normal)])
+    observaciones = (getattr(venta, 'observaciones', None) or '').strip() or '-'
+    info_izq = [
+        [Paragraph(f"<b>Valor en Letras:</b> {_escape_html(valor_letras)}", estilo_normal)],
+        [Spacer(1, 4)],
+        [Paragraph(f"<b>Condición de la Operación:</b> {_escape_html(condicion_op)}", estilo_normal)],
+        [Spacer(1, 4)],
+        [Paragraph(f"<b>Observaciones:</b> {_escape_html(observaciones[:200])}", estilo_normal)],
+    ]
     numero_resolucion = (getattr(venta, 'numero_resolucion', None) or '').strip()
     serie_documento = (getattr(venta, 'serie_documento', None) or '').strip()
     if numero_resolucion or serie_documento:
-        resolucion_texto = []
+        partes = []
         if numero_resolucion:
-            resolucion_texto.append(f"Resolución No. {_escape_html(numero_resolucion)}")
+            partes.append(f"Resolución No. {_escape_html(numero_resolucion)}")
         if serie_documento:
-            resolucion_texto.append(f"Serie {_escape_html(serie_documento)}")
-        resolucion_p = Paragraph(
-            ' '.join(resolucion_texto),
-            ParagraphStyle(name='Resol', parent=estilo_normal, fontSize=7),
-        )
-        filas_izq.append([Spacer(1, 8)])
-        filas_izq.append([resolucion_p])
-    ancho_izq_footer = 0.65 * (PAGE_W - 2 * MARGIN)
-    contenido_izquierdo = Table(filas_izq, colWidths=[ancho_izq_footer])
+            partes.append(f"Serie {_escape_html(serie_documento)}")
+        info_izq.append([Spacer(1, 4)])
+        info_izq.append([Paragraph(' '.join(partes), ParagraphStyle(
+            name='Resol', parent=estilo_normal, fontSize=7, textColor=pal['muted'],
+        ))])
+
+    contenido_izquierdo = Table(info_izq, colWidths=[CONTENT_W * 0.55])
     contenido_izquierdo.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
     ]))
 
-    # ----- 3. MASTER TABLE DE PIE DE PÁGINA (2 columnas: 65% izq / 35% der) -----
-    ancho_total_footer = PAGE_W - 2 * MARGIN
-    col_izq_footer = 0.65 * ancho_total_footer
-    col_der_footer = 0.35 * ancho_total_footer
-    tabla_footer = Table(
+    footer_row = Table(
         [[contenido_izquierdo, tabla_calculos]],
-        colWidths=[col_izq_footer, col_der_footer],
+        colWidths=[CONTENT_W * 0.58, CONTENT_W * 0.42],
     )
-    tabla_footer.setStyle(TableStyle([
+    footer_row.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
     ]))
-    elements.append(tabla_footer)
+    elements.append(footer_row)
+    elements.append(Spacer(1, 0.45 * cm))
+
+    # ----- PIE AgilDTE -----
+    contact_bits = []
+    if emisor.get('telefono'):
+        contact_bits.append(f"Tel: {_escape_html(emisor['telefono'])}")
+    if emisor.get('correo'):
+        contact_bits.append(_escape_html(emisor['correo']))
+    contact_line = '  ·  '.join(contact_bits) if contact_bits else ''
+
+    pie_bar = Table(
+        [
+            [Paragraph('Gracias por su confianza', ParagraphStyle(
+                name='Thanks', parent=estilo_normal, fontSize=8, alignment=1,
+                textColor=pal['primary'], fontName='Helvetica-Bold',
+            ))],
+            [Paragraph(contact_line, estilo_footer)] if contact_line else [Spacer(1, 1)],
+            [Paragraph('factura por AgilDTE.com', estilo_footer)],
+        ],
+        colWidths=[CONTENT_W],
+    )
+    pie_bar.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), pal['soft']),
+        ('BOX', (0, 0), (-1, -1), 0.5, pal['border']),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+    ]))
+    elements.append(KeepTogether([pie_bar]))
 
     doc.build(elements)
     buffer.seek(0)

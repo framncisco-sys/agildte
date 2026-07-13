@@ -13,6 +13,12 @@ const AMBIENTES = [
 
 const TIPOS_DTE_VALIDOS = ['01', '03', '14', '05', '06']
 
+const PDF_TEMAS = [
+  { value: 'ocean', label: 'Océano', primary: '#0B3A5C', accent: '#0D9488' },
+  { value: 'emerald', label: 'Esmeralda', primary: '#064E3B', accent: '#059669' },
+  { value: 'amber', label: 'Ámbar', primary: '#78350F', accent: '#D97706' },
+]
+
 export default function ConfiguracionPage() {
   const empresaId = useEmpresaStore((s) => s.empresaId)
   const empresas = useEmpresaStore((s) => s.empresas)
@@ -31,6 +37,7 @@ export default function ConfiguracionPage() {
     cod_punto_venta: '',
     ambiente: '01',
     desc_actividad: '',
+    pdf_tema_color: 'ocean',
   })
   const [logoFile, setLogoFile] = useState(null)
   const [logoPreview, setLogoPreview] = useState(null)
@@ -69,6 +76,7 @@ export default function ConfiguracionPage() {
             cod_punto_venta: data.cod_punto_venta ?? 'P001',
             ambiente: data.ambiente ?? '01',
             desc_actividad: data.desc_actividad ?? '',
+            pdf_tema_color: data.pdf_tema_color ?? 'ocean',
           })
           setLogoPreview(data.logo_url ?? null)
         }
@@ -349,6 +357,38 @@ export default function ConfiguracionPage() {
                       onChange={handleLogoChange}
                     />
                   </label>
+                  <div className="w-full max-w-[11rem] mt-2">
+                    <p className="text-xs font-medium text-slate-700 mb-1.5 text-center">Color de factura PDF</p>
+                    <div className="flex justify-center gap-2">
+                      {PDF_TEMAS.map((tema) => {
+                        const selected = (form.pdf_tema_color || 'ocean') === tema.value
+                        return (
+                          <button
+                            key={tema.value}
+                            type="button"
+                            title={tema.label}
+                            aria-label={tema.label}
+                            aria-pressed={selected}
+                            onClick={() => setForm((prev) => ({ ...prev, pdf_tema_color: tema.value }))}
+                            className={`flex flex-col items-center gap-1 rounded-lg p-1.5 border transition ${
+                              selected
+                                ? 'border-slate-800 ring-2 ring-slate-400/60 bg-white'
+                                : 'border-slate-200 hover:border-slate-400 bg-slate-50'
+                            }`}
+                          >
+                            <span
+                              className="w-8 h-8 rounded-md shadow-sm overflow-hidden flex"
+                              aria-hidden
+                            >
+                              <span className="w-1/2 h-full" style={{ backgroundColor: tema.primary }} />
+                              <span className="w-1/2 h-full" style={{ backgroundColor: tema.accent }} />
+                            </span>
+                            <span className="text-[10px] text-slate-600 leading-none">{tema.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
                 </div>
                 <div className="flex-1 min-w-0 space-y-4">
                   <div>

@@ -214,6 +214,19 @@ class Empresa(models.Model):
         help_text="Plataforma principal de facturación operativa de la empresa.",
     )
 
+    # Tema visual de la versión legible PDF (factura comercial)
+    PDF_TEMA_COLOR_CHOICES = [
+        ('ocean', 'Océano (azul / teal)'),
+        ('emerald', 'Esmeralda (verde)'),
+        ('amber', 'Ámbar (dorado)'),
+    ]
+    pdf_tema_color = models.CharField(
+        max_length=20,
+        choices=PDF_TEMA_COLOR_CHOICES,
+        default='ocean',
+        help_text="Paleta de color de la factura PDF legible (versión comercial).",
+    )
+
     def save(self, *args, **kwargs):
         # Limpiar espacios al inicio/final en credenciales (evitar rechazo MH "CREDENCIALES INVÁLIDAS")
         for field in (

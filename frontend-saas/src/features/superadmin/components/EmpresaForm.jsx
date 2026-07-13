@@ -13,6 +13,12 @@ const TIPOS_SISTEMA = [
   { value: 'MIXTO', label: 'Mixto — PosAgil + AgilDTE' },
 ]
 
+const PDF_TEMAS = [
+  { value: 'ocean', label: 'Océano', primary: '#0B3A5C', accent: '#0D9488' },
+  { value: 'emerald', label: 'Esmeralda', primary: '#064E3B', accent: '#059669' },
+  { value: 'amber', label: 'Ámbar', primary: '#78350F', accent: '#D97706' },
+]
+
 const EMPTY = {
   nombre: '',
   nrc: '',
@@ -26,6 +32,7 @@ const EMPTY = {
   cod_actividad: '',
   desc_actividad: '',
   tipo_sistema: 'AGILDTE',
+  pdf_tema_color: 'ocean',
   user_api_mh: '',
   clave_api_mh: '',
   clave_certificado: '',
@@ -147,6 +154,35 @@ export function EmpresaForm({ initial = EMPTY, onSubmit, saving = false, submitL
               rows={2}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
+          </div>
+          <div className="mt-4">
+            <p className="block text-sm font-medium text-slate-700 mb-2">Color de factura PDF</p>
+            <div className="flex flex-wrap gap-3">
+              {PDF_TEMAS.map((tema) => {
+                const selected = (form.pdf_tema_color || 'ocean') === tema.value
+                return (
+                  <button
+                    key={tema.value}
+                    type="button"
+                    title={tema.label}
+                    aria-pressed={selected}
+                    onClick={() => setForm((f) => ({ ...f, pdf_tema_color: tema.value }))}
+                    className={`flex items-center gap-2 rounded-lg px-3 py-2 border text-sm transition ${
+                      selected
+                        ? 'border-indigo-600 ring-2 ring-indigo-200 bg-white'
+                        : 'border-slate-200 hover:border-slate-400 bg-slate-50'
+                    }`}
+                  >
+                    <span className="w-7 h-7 rounded-md overflow-hidden flex shadow-sm" aria-hidden>
+                      <span className="w-1/2 h-full" style={{ backgroundColor: tema.primary }} />
+                      <span className="w-1/2 h-full" style={{ backgroundColor: tema.accent }} />
+                    </span>
+                    {tema.label}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">Aplica a la versión legible PDF de las facturas de esta empresa.</p>
           </div>
         </section>
 
