@@ -1,10 +1,11 @@
 """
 Builder para DTE-03 (Comprobante Crédito Fiscal).
-Esquema fe-ccf-v3 - Contribuyente con NRC, Nombre Comercial, Actividad.
+Esquema fe-ccf-v4 - Contribuyente con NRC, Nombre Comercial, Actividad.
 """
 from .base_builder import BaseDTEBuilder
 from api.constants import DTE_LINEA_DESCRIPCION_MAX_LENGTH
 from api.dte_generator import formatear_decimal, formatear_nrc_emisor
+from api.utils.mh_direccion import armar_direccion_mh
 from api.utils.mh_documento import (
     documento_cliente_para_mh,
     documento_receptor_desde_payload,
@@ -15,10 +16,10 @@ from api.utils.mh_documento import (
 
 
 class DTE03Builder(BaseDTEBuilder):
-    """Builder para Crédito Fiscal (DTE-03)."""
+    """Builder para Crédito Fiscal (DTE-03) — fe-ccf-v4."""
 
     TIPO_DTE = '03'
-    VERSION_DTE = 3
+    VERSION_DTE = 4
 
     def _construir_receptor(self):
         """Receptor CCF: NRC, Nombre Comercial, codActividad, descActividad obligatorios.
@@ -29,8 +30,21 @@ class DTE03Builder(BaseDTEBuilder):
         if not cliente:
             raise ValueError("DTE-03 (Crédito Fiscal) requiere cliente con NRC.")
 
-        codigo_departamento = str(getattr(cliente, 'departamento', None) or '06').strip().zfill(2)
-        codigo_municipio = str(getattr(cliente, 'municipio', None) or '14').strip().zfill(2)
+        codigo_departamento = str(
+            getattr(self.venta, 'departamento_receptor', None)
+            or getattr(cliente, 'departamento', None)
+            or '06'
+        ).strip().zfill(2)
+        codigo_municipio = str(
+            getattr(self.venta, 'municipio_receptor', None)
+            or getattr(cliente, 'municipio', None)
+            or '23'
+        ).strip().zfill(2)
+        codigo_distrito = str(
+            getattr(self.venta, 'distrito_receptor', None)
+            or getattr(cliente, 'distrito', None)
+            or ''
+        ).strip() or None
 
         # nrc: primero el del formulario (nrc_receptor), luego el del cliente en BD (sin placeholders)
         nrc_receptor_venta = str(self.venta.nrc_receptor or '').strip()
@@ -83,7 +97,8 @@ class DTE03Builder(BaseDTEBuilder):
             cliente.nombre
         )
         nombre_comercial = (
-            getattr(cliente, 'nombre_comercial', None)
+            (getattr(self.venta, 'nombre_comercial_receptor', None) or '').strip()
+            or getattr(cliente, 'nombre_comercial', None)
             or getattr(cliente, 'razon_social', None)
             or nombre_receptor
         )
@@ -110,15 +125,16 @@ class DTE03Builder(BaseDTEBuilder):
             "nombreComercial": nombre_comercial,
             "codActividad": cod_actividad,
             "descActividad": desc_actividad,
-            "direccion": {
-                "departamento": codigo_departamento,
-                "municipio": codigo_municipio,
-                "complemento": (
+            "direccion": armar_direccion_mh(
+                codigo_departamento,
+                codigo_municipio,
+                (
                     str(getattr(self.venta, 'direccion_receptor', None) or '').strip()
                     or (cliente.direccion and str(cliente.direccion).strip())
                     or "San Miguel"
                 ),
-            },
+                distrito=codigo_distrito,
+            ),
             "telefono": telefono,
         }
         correo_receptor = str(getattr(self.venta, 'correo_receptor', None) or '').strip()
@@ -316,36 +332,33 @@ class DTE03Builder(BaseDTEBuilder):
         return item
 
     def _construir_resumen(self, cuerpo_documento):
-        """Resumen CCF: ivaPerci1=0, tributos con IVA, NO totalIva."""
+        """Resumen CCF fe-ccf-v4: ivaPerci/ivaRete (sin sufijo 1), observaciones, sin reteRenta."""
         total_gravado = float(sum(i.get("ventaGravada", 0) for i in cuerpo_documento))
         total_exento = float(sum(i.get("ventaExenta", 0) for i in cuerpo_documento))
         total_no_sujeto = float(sum(i.get("ventaNoSuj", 0) for i in cuerpo_documento))
         total_descu = float(sum(i.get("montoDescu", 0) for i in cuerpo_documento))
         total_iva = round(total_gravado * 0.13, 2)
+        total_no_gravado = float(sum(i.get("noGravado", 0) for i in cuerpo_documento))
 
+        # ventaGravada/Exenta/NoSuj ya vienen netas de descuento de línea.
         subtotal_ventas = round(total_gravado + total_exento + total_no_sujeto, 2)
-        sub_total = round(subtotal_ventas - total_descu, 2)
+        descu_global_gravada = 0.00
+        sub_total = round(subtotal_ventas - descu_global_gravada, 2)
         monto_total_operacion = round(sub_total + total_iva, 2)
         iva_retenido_1 = float(self.venta.iva_retenido_1 or 0) if self.venta.iva_retenido_1 is not None else 0.0
         iva_retenido_2 = float(self.venta.iva_retenido_2 or 0) if self.venta.iva_retenido_2 is not None else 0.0
-        rete_renta = float(self.venta.rete_renta or 0) if hasattr(self.venta, 'rete_renta') and self.venta.rete_renta is not None else 0.0
-        total_pagar = round(monto_total_operacion - iva_retenido_1 - iva_retenido_2, 2)
+        total_pagar = round(max(monto_total_operacion - iva_retenido_1 - iva_retenido_2, 0), 2)
 
         tributos_value = [
             {"codigo": "20", "descripcion": "Impuesto al Valor Agregado 13%", "valor": round(total_iva, 2)}
         ] if total_iva > 0 else []
 
         condicion_op = int(getattr(self.venta, 'condicion_operacion', 1) or 1)
-        # MH esquema fe-ccf-v3:
-        #   plazo  → string con patrón ^0[1-3]$ : "01"=Días, "02"=Semanas, "03"=Meses
-        #   periodo → number (entero): cantidad de unidades (ej: 30)
         plazo_raw = str(getattr(self.venta, 'plazo_pago', '') or '').strip()
         periodo_raw = str(getattr(self.venta, 'periodo_pago', '') or '').strip()
 
         if condicion_op == 2:
-            # plazo debe ser "01", "02" o "03"
             plazo_val = plazo_raw if plazo_raw in ("01", "02", "03") else "03"
-            # periodo debe ser un número entero
             try:
                 periodo_val = int(periodo_raw)
             except (ValueError, TypeError):
@@ -362,6 +375,8 @@ class DTE03Builder(BaseDTEBuilder):
             "plazo": plazo_val,
         }]
 
+        observaciones = (getattr(self.venta, 'observaciones', None) or '').strip() or None
+
         resumen = {
             "totalNoSuj": round(total_no_sujeto, 2),
             "totalExenta": round(total_exento, 2),
@@ -369,21 +384,21 @@ class DTE03Builder(BaseDTEBuilder):
             "subTotalVentas": round(subtotal_ventas, 2),
             "descuNoSuj": 0.00,
             "descuExenta": 0.00,
-            "descuGravada": round(total_descu, 2),
+            "descuGravada": round(descu_global_gravada, 2),
             "porcentajeDescuento": 0.00,
             "totalDescu": round(total_descu, 2),
             "tributos": tributos_value,
             "subTotal": sub_total,
-            "reteRenta": round(rete_renta, 2),
-            "ivaPerci1": 0.0,
-            "ivaRete1": round(iva_retenido_1, 2),
+            "ivaPerci": round(iva_retenido_2, 2),
+            "ivaRete": round(iva_retenido_1, 2),
             "montoTotalOperacion": monto_total_operacion,
-            "totalNoGravado": 0.00,
+            "totalNoGravado": round(total_no_gravado, 2),
             "saldoFavor": 0.00,
             "totalPagar": total_pagar,
             "totalLetras": self._numero_a_letras(total_pagar),
             "condicionOperacion": condicion_op,
             "pagos": pagos,
             "numPagoElectronico": None,
+            "observaciones": observaciones,
         }
         return resumen

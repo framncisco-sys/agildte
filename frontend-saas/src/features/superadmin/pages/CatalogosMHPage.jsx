@@ -5,7 +5,8 @@ import { getActividades } from '../../../api/actividades'
 
 const CATALOGOS_INFO = [
   { titulo: 'Actividades económicas', desc: 'Códigos oficiales de actividad económica (CIIU MH).' },
-  { titulo: 'Departamentos / municipios', desc: 'Catálogo geográfico para receptores DTE (próximamente importación centralizada).' },
+  { titulo: 'Departamentos / municipios (CAT-012 / CAT-013)', desc: '44 municipios nuevos. Obligatorios en dirección emisor/receptor.' },
+  { titulo: 'Distritos (CAT-008)', desc: 'Distritos = antiguos municipios. Requerido en MH normativa 2.0 junto al municipio nuevo.' },
   { titulo: 'Tipos de DTE', desc: 'FE (01), CCF (03), NC (05), ND (06), FSE (14), F05 contingencia.' },
   { titulo: 'Unidades de medida', desc: 'Catálogo MH de unidades (integrado en generador DTE).' },
 ]

@@ -1,42 +1,60 @@
 # Programador: Oscar Amaya Romero
 from __future__ import annotations
 
-from azdigital.data.departamentos_municipios import DEPTO_DEFAULT, MUNI_DEFAULT
+from azdigital.data.departamentos_municipios import (
+    DEPTO_DEFAULT,
+    DISTRITO_DEFAULT,
+    MUNI_DEFAULT,
+    normalizar_ubicacion_mh,
+)
 
 
-def _norm_depto_muni(departamento: str | None, municipio: str | None) -> tuple[str, str]:
-    d = (departamento or "").strip()[:2] or DEPTO_DEFAULT
-    m = (municipio or "").strip()[:2] or MUNI_DEFAULT
-    return d, m
+def _norm_depto_muni(
+    departamento: str | None,
+    municipio: str | None,
+    distrito: str | None = None,
+) -> tuple[str, str, str]:
+    return normalizar_ubicacion_mh(departamento, municipio, distrito)
 
 
 def _row_a_tuple(row) -> tuple:
     """
-    Fila SELECT extendida → tuple estándar:
+    Fila SELECT extendida → tuple estándar (18 campos):
     id, empresa_id, sucursal_id, nombre, tipo_doc, num_doc, correo, contrib, gran,
-    direccion, telefono, cod_act, nrc, departamento, municipio
+    direccion, telefono, cod_act, nrc, departamento, municipio, distrito,
+    nombre_comercial, desc_actividad
     """
     if not row:
         return None
     n = len(row)
+    if n >= 18:
+        return (
+            row[0], row[1], row[2], row[3], row[4], row[5], row[6], bool(row[7]), bool(row[8]),
+            row[9], row[10], row[11] or "", row[12] or "",
+            row[13] or DEPTO_DEFAULT, row[14] or MUNI_DEFAULT, row[15] or DISTRITO_DEFAULT,
+            row[16] or "", row[17] or "",
+        )
     if n >= 15:
         return (
             row[0], row[1], row[2], row[3], row[4], row[5], row[6], bool(row[7]), bool(row[8]),
-            row[9], row[10], row[11] or "", row[12] or "", row[13] or DEPTO_DEFAULT, row[14] or MUNI_DEFAULT,
+            row[9], row[10], row[11] or "", row[12] or "",
+            row[13] or DEPTO_DEFAULT, row[14] or MUNI_DEFAULT, DISTRITO_DEFAULT, "", "",
         )
     if n >= 12:
         return (
             row[0], row[1], None, row[2], row[3], row[4], row[5], row[6], bool(row[7]), bool(row[8]),
-            row[9], row[10], row[11] or "", "", DEPTO_DEFAULT, MUNI_DEFAULT,
+            row[9], row[10], row[11] or "", "", DEPTO_DEFAULT, MUNI_DEFAULT, DISTRITO_DEFAULT, "", "",
         )
     if n >= 10:
         return (
             row[0], row[1], None, row[2], row[3], row[4], row[5], row[6], bool(row[7]), False,
-            row[8], row[9], row[10] if n > 10 else "", "", DEPTO_DEFAULT, MUNI_DEFAULT,
+            row[8], row[9], row[10] if n > 10 else "", "",
+            DEPTO_DEFAULT, MUNI_DEFAULT, DISTRITO_DEFAULT, "", "",
         )
     return (
         row[0], row[1], None, row[2], row[3], row[4], row[5], row[6], False, False,
-        row[7] if n > 7 else "", row[8] if n > 8 else "", "", "", DEPTO_DEFAULT, MUNI_DEFAULT,
+        row[7] if n > 7 else "", row[8] if n > 8 else "", "", "",
+        DEPTO_DEFAULT, MUNI_DEFAULT, DISTRITO_DEFAULT, "", "",
     )
 
 
@@ -138,13 +156,30 @@ def listar_clientes(cur, empresa_id: int = 1):
 
 
 def get_cliente(cur, cliente_id: int):
-    """Retorna tuple estándar de 15 elementos (ver _row_a_tuple)."""
+    """Retorna tuple estándar de 18 elementos (ver _row_a_tuple)."""
     try:
         cur.execute(
             """
             SELECT id, empresa_id, sucursal_id, nombre_cliente, tipo_documento, numero_documento, correo,
                    es_contribuyente, COALESCE(es_gran_contribuyente, FALSE), direccion, telefono,
-                   COALESCE(codigo_actividad_economica, ''), COALESCE(nrc, ''), COALESCE(departamento, '06'), COALESCE(municipio, '14')
+                   COALESCE(codigo_actividad_economica, ''), COALESCE(nrc, ''),
+                   COALESCE(departamento, '06'), COALESCE(municipio, '23'), COALESCE(distrito, '14'),
+                   COALESCE(nombre_comercial, ''), COALESCE(desc_actividad, '')
+            FROM clientes
+            WHERE id = %s
+            """,
+            (cliente_id,),
+        )
+        return _row_a_tuple(cur.fetchone())
+    except Exception:
+        cur.connection.rollback()
+    try:
+        cur.execute(
+            """
+            SELECT id, empresa_id, sucursal_id, nombre_cliente, tipo_documento, numero_documento, correo,
+                   es_contribuyente, COALESCE(es_gran_contribuyente, FALSE), direccion, telefono,
+                   COALESCE(codigo_actividad_economica, ''), COALESCE(nrc, ''),
+                   COALESCE(departamento, '06'), COALESCE(municipio, '23')
             FROM clientes
             WHERE id = %s
             """,
@@ -193,10 +228,35 @@ def crear_cliente(
     nrc: str = "",
     departamento: str = "",
     municipio: str = "",
+    distrito: str = "",
+    nombre_comercial: str = "",
+    desc_actividad: str = "",
 ) -> int:
     cod_act = (codigo_actividad_economica or "").strip() or None
     nrc_val = (nrc or "").strip() or None
-    depto, muni = _norm_depto_muni(departamento, municipio)
+    nom_com = (nombre_comercial or "").strip() or None
+    desc_act = (desc_actividad or "").strip() or None
+    depto, muni, dist = _norm_depto_muni(departamento, municipio, distrito)
+    try:
+        cur.execute(
+            """
+            INSERT INTO clientes (
+                empresa_id, sucursal_id, nombre_cliente, tipo_documento, numero_documento, correo,
+                es_contribuyente, es_gran_contribuyente, direccion, telefono, codigo_actividad_economica,
+                nrc, departamento, municipio, distrito, nombre_comercial, desc_actividad
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                empresa_id, sucursal_id, nombre_cliente, tipo_documento or None, numero_documento or None,
+                correo or None, es_contribuyente, es_gran_contribuyente, direccion or None, telefono or None,
+                cod_act, nrc_val, depto, muni, dist, nom_com, desc_act,
+            ),
+        )
+        return int(cur.fetchone()[0])
+    except Exception:
+        cur.connection.rollback()
     try:
         cur.execute(
             """
@@ -289,10 +349,47 @@ def actualizar_cliente(
     nrc: str = "",
     departamento: str = "",
     municipio: str = "",
+    distrito: str = "",
+    nombre_comercial: str = "",
+    desc_actividad: str = "",
 ) -> None:
     cod_act = (codigo_actividad_economica or "").strip() or None
     nrc_val = (nrc or "").strip() or None
-    depto, muni = _norm_depto_muni(departamento, municipio)
+    nom_com = (nombre_comercial or "").strip() or None
+    desc_act = (desc_actividad or "").strip() or None
+    depto, muni, dist = _norm_depto_muni(departamento, municipio, distrito)
+    set_extra = [
+        "codigo_actividad_economica = %s", "es_gran_contribuyente = %s", "nrc = %s",
+        "departamento = %s", "municipio = %s", "distrito = %s",
+        "nombre_comercial = %s", "desc_actividad = %s",
+    ]
+    vals = [
+        nombre_cliente, tipo_documento or None, numero_documento or None, correo or None, es_contribuyente,
+        direccion or None, telefono or None, cod_act, es_gran_contribuyente, nrc_val, depto, muni, dist,
+        nom_com, desc_act,
+    ]
+    if empresa_id is not None:
+        set_extra.append("empresa_id = %s")
+        vals.append(empresa_id)
+    if actualizar_sucursal:
+        set_extra.append("sucursal_id = %s")
+        vals.append(sucursal_id)
+    vals.append(cliente_id)
+    sep = ", " + ", ".join(set_extra)
+    try:
+        cur.execute(
+            f"""
+            UPDATE clientes
+            SET nombre_cliente = %s, tipo_documento = %s, numero_documento = %s, correo = %s, es_contribuyente = %s,
+                direccion = %s, telefono = %s{sep}
+            WHERE id = %s
+            """,
+            tuple(vals),
+        )
+        return
+    except Exception:
+        cur.connection.rollback()
+    # Fallback sin distrito / nombre_comercial / desc_actividad
     set_extra = ["codigo_actividad_economica = %s", "es_gran_contribuyente = %s", "nrc = %s", "departamento = %s", "municipio = %s"]
     vals = [
         nombre_cliente, tipo_documento or None, numero_documento or None, correo or None, es_contribuyente,

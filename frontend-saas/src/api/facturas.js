@@ -12,8 +12,11 @@ function mapearPayloadFrontendADjango(payload) {
   const fechaEmisionFinal = payload.fechaFacturacion || hoy
   const periodo = String(fechaEmisionFinal).slice(0, 7) // YYYY-MM
 
-  // tipoDocumento: '01'=CF, '03'=CCF, '05'=NC, '06'=ND, '14'=FSE, '07'=CCF
-  const tipoVentaMap = { '01': 'CF', '03': 'CCF', '05': 'NC', '06': 'ND', '14': 'FSE', '07': 'CCF' }
+  // Solo tipos con builder validado. Nunca sustituir un DTE por otro silenciosamente.
+  if (['07', '08', '09', '15'].includes(tipoDocumento)) {
+    throw new Error(`DTE-${tipoDocumento} temporalmente no disponible por actualización MH.`)
+  }
+  const tipoVentaMap = { '01': 'CF', '03': 'CCF', '05': 'NC', '06': 'ND', '14': 'FSE' }
   const tipoVenta = tipoVentaMap[tipoDocumento] ?? 'CCF'
   const esFSE = tipoDocumento === '14'
 
@@ -90,6 +93,7 @@ function mapearPayloadFrontendADjango(payload) {
     receptor_correo: cliente?.correo?.trim() || null,
     receptor_departamento: cliente?.departamento?.trim() || null,
     receptor_municipio: cliente?.municipio?.trim() || null,
+    receptor_distrito: (cliente?.distrito || cliente?.municipio || '').trim() || null,
     receptor_telefono: cliente?.telefono?.trim() || null,
     fecha_emision: fechaEmisionFinal,
     periodo_aplicado: periodo,
@@ -118,6 +122,12 @@ function mapearPayloadFrontendADjango(payload) {
     body.enviar_whatsapp = true
     const tel = (cliente?.telefono || '').trim()
     if (tel) body.whatsapp_telefono = tel
+  }
+  // false = emitir sin tocar la ficha; true/omitido = sincronizar cliente (compat POS)
+  if (payload.actualizarCliente === false) {
+    body.actualizar_cliente = false
+  } else if (payload.actualizarCliente === true) {
+    body.actualizar_cliente = true
   }
   return body
 }

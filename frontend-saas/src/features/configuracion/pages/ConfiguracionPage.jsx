@@ -5,6 +5,8 @@ import { getEmpresa, updateEmpresa, getCorrelativos, updateCorrelativos, activar
 import { changePassword } from '../../../api/auth'
 import { ImagePlus, Save, Building2, Lock, Hash } from 'lucide-react'
 import { ActividadesCatalogoCard } from '../components/ActividadesCatalogoCard'
+import { UbicacionMHFields } from '../../../components/UbicacionMHFields'
+import { distritoDefault } from '../../../data/distritos-cat008'
 
 const AMBIENTES = [
   { value: '01', label: 'Pruebas (MH)' },
@@ -31,6 +33,9 @@ export default function ConfiguracionPage() {
     nrc: '',
     nit: '',
     direccion: '',
+    departamento: '06',
+    municipio: '23',
+    distrito: '14',
     telefono: '',
     correo: '',
     cod_establecimiento: '',
@@ -70,6 +75,9 @@ export default function ConfiguracionPage() {
             nrc: data.nrc ?? '',
             nit: data.nit ?? '',
             direccion: data.direccion ?? '',
+            departamento: data.departamento ?? '06',
+            municipio: data.municipio ?? '23',
+            distrito: data.distrito ?? distritoDefault(data.departamento ?? '06', data.municipio ?? '23') ?? '14',
             telefono: data.telefono ?? '',
             correo: data.correo ?? '',
             cod_establecimiento: data.cod_establecimiento ?? 'M001',
@@ -429,14 +437,22 @@ export default function ConfiguracionPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Dirección</label>
-                    <textarea
-                      name="direccion"
-                      value={form.direccion}
-                      onChange={handleChange}
-                      rows={2}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-slate-500 focus:border-slate-500"
-                      placeholder="Dirección fiscal"
+                    <h3 className="text-sm font-semibold text-slate-800 mb-2">Ubicación fiscal (MH V2)</h3>
+                    <UbicacionMHFields
+                      departamento={form.departamento}
+                      municipio={form.municipio}
+                      distrito={form.distrito}
+                      complemento={form.direccion}
+                      onChange={(patch) => {
+                        setForm((prev) => ({
+                          ...prev,
+                          ...(patch.departamento != null ? { departamento: patch.departamento } : {}),
+                          ...(patch.municipio != null ? { municipio: patch.municipio } : {}),
+                          ...(patch.distrito != null ? { distrito: patch.distrito } : {}),
+                          ...(patch.complemento != null ? { direccion: patch.complemento } : {}),
+                        }))
+                      }}
+                      required
                     />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

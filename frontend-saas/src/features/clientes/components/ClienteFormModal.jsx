@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import { X, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createCliente, updateCliente } from '../../../api/clientes'
-import { DEPARTAMENTOS, MUNICIPIOS_POR_DEPARTAMENTO } from '../../../data/departamentos-municipios'
+import { distritoDefault } from '../../../data/distritos-cat008'
 import { ModalBuscadorActividad } from '../../facturacion/components/ModalBuscadorActividad'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
+import { UbicacionMHFields } from '../../../components/UbicacionMHFields'
 
 const TIPO_DOCUMENTO_OPTIONS = [
   { value: 'NIT', label: 'NIT' },
@@ -21,6 +22,7 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
   const [modalActividadAbierto, setModalActividadAbierto] = useState(false)
   const [form, setForm] = useState({
     nombre: '',
+    nombre_comercial: '',
     tipo_documento: 'NIT',
     documento_identidad: '',
     nrc: '',
@@ -30,13 +32,10 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
     correo: '',
     telefono: '',
     direccion_departamento: '06',
-    direccion_municipio: '14',
+    direccion_municipio: '23',
+    direccion_distrito: '14',
     direccion_complemento: '',
   })
-
-  const municipiosOpciones = form.direccion_departamento
-    ? (MUNICIPIOS_POR_DEPARTAMENTO[form.direccion_departamento] || [])
-    : []
 
   useEffect(() => {
     if (!isOpen) return
@@ -45,8 +44,16 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
       const codAct = clienteEdit.actividad_economica ?? clienteEdit.cod_actividad ?? ''
       const descAct = clienteEdit.desc_actividad ?? ''
       const displayAct = codAct && descAct ? `${codAct} - ${descAct}` : codAct
+      const depto = clienteEdit.direccion_departamento ?? clienteEdit.departamento ?? '06'
+      const muni = clienteEdit.direccion_municipio ?? clienteEdit.municipio ?? '23'
+      const dist =
+        clienteEdit.direccion_distrito ??
+        clienteEdit.distrito ??
+        distritoDefault(depto, muni) ??
+        '14'
       setForm({
         nombre: clienteEdit.nombre ?? '',
+        nombre_comercial: clienteEdit.nombre_comercial ?? '',
         tipo_documento: clienteEdit.tipo_documento ?? 'NIT',
         documento_identidad: clienteEdit.documento_identidad ?? clienteEdit.nit ?? clienteEdit.dui ?? '',
         nrc: clienteEdit.nrc ?? '',
@@ -55,13 +62,15 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
         actividad_economica_display: displayAct,
         correo: clienteEdit.correo ?? clienteEdit.email_contacto ?? '',
         telefono: clienteEdit.telefono ?? '',
-        direccion_departamento: clienteEdit.direccion_departamento ?? clienteEdit.departamento ?? '06',
-        direccion_municipio: clienteEdit.direccion_municipio ?? clienteEdit.municipio ?? '14',
+        direccion_departamento: depto,
+        direccion_municipio: muni,
+        direccion_distrito: dist,
         direccion_complemento: clienteEdit.direccion_complemento ?? clienteEdit.direccion ?? '',
       })
     } else {
       setForm({
         nombre: '',
+        nombre_comercial: '',
         tipo_documento: 'NIT',
         documento_identidad: '',
         nrc: '',
@@ -71,7 +80,8 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
         correo: '',
         telefono: '',
         direccion_departamento: '06',
-        direccion_municipio: '14',
+        direccion_municipio: '23',
+        direccion_distrito: '14',
         direccion_complemento: '',
       })
     }
@@ -80,15 +90,24 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }))
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: null }))
-    if (field === 'direccion_departamento') {
-      const munis = MUNICIPIOS_POR_DEPARTAMENTO[value] || []
-      const firstCod = munis.length ? munis[0].codigo : ''
-      setForm((prev) => ({
-        ...prev,
-        direccion_departamento: value,
-        direccion_municipio: firstCod,
-      }))
-    }
+  }
+
+  const handleUbicacionChange = (patch) => {
+    setForm((prev) => ({
+      ...prev,
+      ...(patch.departamento != null ? { direccion_departamento: patch.departamento } : {}),
+      ...(patch.municipio != null ? { direccion_municipio: patch.municipio } : {}),
+      ...(patch.distrito != null ? { direccion_distrito: patch.distrito } : {}),
+      ...(patch.complemento != null ? { direccion_complemento: patch.complemento } : {}),
+    }))
+    setErrors((prev) => ({
+      ...prev,
+      departamento: null,
+      municipio: null,
+      distrito: null,
+      complemento: null,
+      direccion: null,
+    }))
   }
 
   const validate = () => {
@@ -100,12 +119,17 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
     if (form.nrc?.trim() && !form.actividad_economica?.trim()) {
       next.actividad_economica = 'Si ingresa NRC, el campo Actividad Económica es obligatorio (requisito para DTE-03).'
     }
+    if (!form.direccion_departamento) next.departamento = 'Departamento obligatorio (MH V2).'
+    if (!form.direccion_municipio) next.municipio = 'Municipio obligatorio (CAT-013).'
+    if (!form.direccion_distrito) next.distrito = 'Distrito obligatorio (CAT-008).'
+    if (!form.direccion_complemento?.trim()) next.complemento = 'Dirección / complemento obligatorio.'
     setErrors(next)
     return Object.keys(next).length === 0
   }
 
   const buildPayload = () => ({
     nombre: form.nombre.trim(),
+    nombre_comercial: form.nombre_comercial?.trim() || null,
     tipo_documento: form.tipo_documento,
     documento_identidad: form.documento_identidad?.trim() || null,
     nrc: form.nrc?.trim() || null,
@@ -114,7 +138,8 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
     correo: form.correo?.trim() || null,
     telefono: form.telefono?.trim() || null,
     direccion_departamento: form.direccion_departamento || '06',
-    direccion_municipio: form.direccion_municipio || '14',
+    direccion_municipio: form.direccion_municipio || '23',
+    direccion_distrito: form.direccion_distrito || (form.direccion_municipio === '23' ? '14' : form.direccion_municipio) || '14',
     direccion_complemento: form.direccion_complemento?.trim() || null,
     empresa_id: empresaId,
   })
@@ -200,6 +225,17 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.nombre ? 'border-red-500' : 'border-gray-300'}`}
             />
             {errors.nombre && <p className="mt-1 text-sm text-red-600">{errors.nombre}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre comercial (opcional)</label>
+            <input
+              type="text"
+              value={form.nombre_comercial}
+              onChange={(e) => handleChange('nombre_comercial', e.target.value)}
+              placeholder="Si no se indica, se usa la razón social"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -288,41 +324,16 @@ export function ClienteFormModal({ isOpen, onClose, onSaved, clienteEdit = null 
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Departamento (código MH)</label>
-              <select
-                value={form.direccion_departamento}
-                onChange={(e) => handleChange('direccion_departamento', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {DEPARTAMENTOS.map((d) => (
-                  <option key={d.codigo} value={d.codigo}>{d.nombre}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Municipio (código MH)</label>
-              <select
-                value={form.direccion_municipio}
-                onChange={(e) => handleChange('direccion_municipio', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {municipiosOpciones.map((m) => (
-                  <option key={m.codigo} value={m.codigo}>{m.nombre}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Dirección (complemento)</label>
-            <input
-              type="text"
-              value={form.direccion_complemento}
-              onChange={(e) => handleChange('direccion_complemento', e.target.value)}
-              placeholder="Dirección exacta"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            <h3 className="text-sm font-semibold text-gray-800 mb-2">Ubicación MH (obligatoria)</h3>
+            <UbicacionMHFields
+              departamento={form.direccion_departamento}
+              municipio={form.direccion_municipio}
+              distrito={form.direccion_distrito}
+              complemento={form.direccion_complemento}
+              onChange={handleUbicacionChange}
+              errors={errors}
+              required
             />
           </div>
 

@@ -142,6 +142,23 @@ MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media')))
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# --- WhatsApp Cloud API (Meta) — número único centralizado AgilDTE ---
+# Credenciales maestras del servidor (no por empresa). El flag premium por empresa
+# solo habilita el botón/endpoint; el envío siempre sale del Phone ID de AgilDTE.
+WHATSAPP_PHONE_NUMBER_ID = (os.environ.get('WHATSAPP_PHONE_NUMBER_ID') or '').strip()
+WHATSAPP_ACCESS_TOKEN = (os.environ.get('WHATSAPP_ACCESS_TOKEN') or '').strip()
+WHATSAPP_GRAPH_API_VERSION = (os.environ.get('WHATSAPP_GRAPH_API_VERSION') or 'v18.0').strip()
+WHATSAPP_FACTURA_DOWNLOAD_URL = (
+    os.environ.get('WHATSAPP_FACTURA_DOWNLOAD_URL')
+    or 'https://agildte.com/api/descargar-factura/?nis={nis}'
+).strip()
+# Plantilla oficial aprobada en Meta Business (body: {{1}}=nombre, {{2}}=enlace).
+WHATSAPP_TEMPLATE_NAME = (os.environ.get('WHATSAPP_TEMPLATE_NAME') or 'agildte_factura').strip()
+WHATSAPP_TEMPLATE_LANGUAGE = (os.environ.get('WHATSAPP_TEMPLATE_LANGUAGE') or 'en').strip()
+# Cantidad de variables del body (0 = hello_world; 2 = nombre+enlace). Vacío = auto.
+_raw_wa_body = (os.environ.get('WHATSAPP_TEMPLATE_BODY_PARAMS') or '').strip()
+WHATSAPP_TEMPLATE_BODY_PARAMS = int(_raw_wa_body) if _raw_wa_body.isdigit() else None
+
 # --- Facturación Asíncrona ---
 # Si False (default), la transmisión al Firmador y MH es síncrona: el usuario espera y ve RECIBIDO/RECHAZADO al instante.
 # Si True, se encola la tarea y se responde de inmediato (estado queda Pendiente hasta que el worker procese).

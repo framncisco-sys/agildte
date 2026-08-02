@@ -34,17 +34,16 @@ try:
 except ImportError:
     qrcode = None
 
+from api.utils.mh_ubicacion_labels import (
+    nombre_departamento as _nombre_departamento_cat,
+    nombre_distrito as _nombre_distrito_cat,
+    nombre_municipio as _nombre_municipio_cat,
+)
+
 
 MARGIN = 1.2 * cm
 PAGE_W, PAGE_H = letter
 CONTENT_W = PAGE_W - 2 * MARGIN
-
-DEPARTAMENTOS = {
-    '01': 'Ahuachapán', '02': 'Santa Ana', '03': 'Sonsonate', '04': 'Chalatenango',
-    '05': 'La Libertad', '06': 'San Salvador', '07': 'Cuscatlán', '08': 'La Paz',
-    '09': 'Cabañas', '10': 'San Vicente', '11': 'Usulután', '12': 'Morazán',
-    '13': 'San Miguel', '14': 'La Unión',
-}
 
 TIPOS_ESTABLECIMIENTO = {
     '01': 'Sucursal / Agencia',
@@ -128,8 +127,7 @@ def _formatear_nrc_display(valor):
 
 
 def _nombre_departamento(codigo):
-    cod = str(codigo or '').strip().zfill(2)
-    nombre = DEPARTAMENTOS.get(cod, '')
+    nombre = _nombre_departamento_cat(codigo)
     return (
         nombre.upper()
         .replace('Á', 'A').replace('É', 'E').replace('Í', 'I')
@@ -137,18 +135,36 @@ def _nombre_departamento(codigo):
     )
 
 
-def _armar_direccion(complemento, departamento_codigo, municipio_nombre=''):
+def _armar_direccion(complemento, departamento_codigo, municipio_codigo=None, distrito_codigo=None):
     partes = []
-    comp = (complemento or '').strip()
+    comp = (complemento or '').strip().rstrip(',')
     if comp:
-        partes.append(comp.rstrip(','))
-    mun = (municipio_nombre or '').strip()
-    if mun:
-        partes.append(mun)
+        partes.append(comp)
+    dist_nom = _nombre_distrito_cat(departamento_codigo, municipio_codigo, distrito_codigo)
+    if dist_nom:
+        partes.append(f'Distrito {dist_nom}')
+    muni_nom = _nombre_municipio_cat(departamento_codigo, municipio_codigo)
+    if muni_nom:
+        partes.append(muni_nom)
     depto = _nombre_departamento(departamento_codigo)
     if depto:
         partes.append(depto)
-    return ', '.join(partes) if partes else 'N/A'
+    return ', '.join(partes)
+
+
+def _linea_si(etiqueta, valor):
+    """Devuelve línea HTML solo si hay valor útil (excluye vacío / N/A)."""
+    txt = str(valor or '').strip()
+    if not txt or txt.upper() in ('N/A', 'NA', '-', 'NONE', 'NULL'):
+        return None
+    return f"<b>{etiqueta}:</b> {_escape_html(txt)}"
+
+
+def _agregar_lineas(destino, pares):
+    for etiqueta, valor in pares:
+        ln = _linea_si(etiqueta, valor)
+        if ln:
+            destino.append(ln)
 
 
 def _condicion_operacion_label(venta):
@@ -254,52 +270,75 @@ def _obtener_datos_emisor(venta):
     if not empresa:
         return {
             'nombre': 'EMPRESA S.A. DE C.V.',
-            'nombre_comercial': 'EMPRESA S.A. DE C.V.',
-            'nrc': '0000-0',
-            'nit': '00000000-0',
-            'actividad_economica': 'N/A',
-            'direccion': 'San Salvador, El Salvador',
+            'nombre_comercial': '',
+            'nrc': '',
+            'nit': '',
+            'actividad_economica': '',
+            'direccion': '',
+            'municipio': '',
+            'distrito': '',
+            'departamento': '',
             'telefono': '',
             'correo': '',
-            'tipo_establecimiento': TIPOS_ESTABLECIMIENTO['01'],
+            'tipo_establecimiento': '',
+            'cod_establecimiento': '',
         }
     nombre = (empresa.nombre or 'EMPRESA S.A. DE C.V.').strip()
-    nombre_comercial = (
-        (getattr(empresa, 'nombre_comercial', None) or '').strip() or nombre
-    )
+    nombre_comercial = (getattr(empresa, 'nombre_comercial', None) or '').strip()
     cod_act = (getattr(empresa, 'cod_actividad', None) or '').strip()
     desc_act = (getattr(empresa, 'desc_actividad', None) or '').strip()
-    if desc_act:
+    if desc_act and cod_act:
+        actividad = f"{cod_act} - {desc_act}"
+    elif desc_act:
         actividad = desc_act
     elif cod_act:
         actividad = cod_act
     else:
-        actividad = 'N/A'
+        actividad = ''
+
+    depto = (getattr(empresa, 'departamento', None) or '').strip()
+    muni = (getattr(empresa, 'municipio', None) or '').strip()
+    dist = (getattr(empresa, 'distrito', None) or '').strip()
+    complemento = (getattr(empresa, 'direccion', None) or '').strip()
+    cod_est = (getattr(empresa, 'cod_establecimiento', None) or '').strip()
+    tipo_est = TIPOS_ESTABLECIMIENTO.get('01', 'Sucursal / Agencia')
+    if cod_est and cod_est in TIPOS_ESTABLECIMIENTO:
+        tipo_est = TIPOS_ESTABLECIMIENTO[cod_est]
+    elif cod_est:
+        tipo_est = f"{TIPOS_ESTABLECIMIENTO.get('01', 'Sucursal / Agencia')} ({cod_est})"
+
     return {
         'nombre': nombre,
-        'nombre_comercial': nombre_comercial,
-        'nrc': _formatear_nrc_display(empresa.nrc),
-        'nit': _formatear_nit_display(empresa.nit or ''),
+        'nombre_comercial': nombre_comercial if nombre_comercial != nombre else '',
+        'nrc': _formatear_nrc_display(empresa.nrc) if empresa.nrc else '',
+        'nit': _formatear_nit_display(empresa.nit or '') if empresa.nit else '',
         'actividad_economica': actividad,
-        'direccion': _armar_direccion(
-            getattr(empresa, 'direccion', None),
-            getattr(empresa, 'departamento', None),
-        ),
+        'direccion': _armar_direccion(complemento, depto, muni, dist),
+        'complemento': complemento,
+        'municipio': _nombre_municipio_cat(depto, muni),
+        'distrito': _nombre_distrito_cat(depto, muni, dist),
+        'departamento': _nombre_departamento_cat(depto),
         'telefono': (getattr(empresa, 'telefono', None) or '').strip(),
         'correo': (getattr(empresa, 'correo', None) or '').strip(),
-        'tipo_establecimiento': TIPOS_ESTABLECIMIENTO.get('01', 'Sucursal / Agencia'),
+        'tipo_establecimiento': tipo_est,
+        'cod_establecimiento': cod_est,
     }
 
 
 def _obtener_datos_receptor(venta):
     tipo_venta = (getattr(venta, 'tipo_venta', None) or '').strip().upper()
-    es_ccf = tipo_venta == 'CCF'
 
     nombre = (venta.nombre_receptor or '').strip()
     if not nombre and venta.cliente:
         nombre = (venta.cliente.nombre or '').strip()
     if not nombre:
         nombre = 'Consumidor Final'
+
+    nombre_comercial = (getattr(venta, 'nombre_comercial_receptor', None) or '').strip()
+    if not nombre_comercial and venta.cliente:
+        nombre_comercial = (getattr(venta.cliente, 'nombre_comercial', None) or '').strip()
+    if nombre_comercial and nombre_comercial.lower() == nombre.lower():
+        nombre_comercial = ''
 
     nrc = (venta.nrc_receptor or '').strip()
     if not nrc and venta.cliente:
@@ -313,16 +352,23 @@ def _obtener_datos_receptor(venta):
     if not direccion_comp and venta.cliente:
         direccion_comp = (getattr(venta.cliente, 'direccion', None) or '').strip()
 
-    depto = ''
+    depto = (getattr(venta, 'departamento_receptor', None) or '').strip()
+    muni = (getattr(venta, 'municipio_receptor', None) or '').strip()
+    dist = (getattr(venta, 'distrito_receptor', None) or '').strip()
     if venta.cliente:
-        depto = (getattr(venta.cliente, 'departamento', None) or '').strip()
+        if not depto:
+            depto = (getattr(venta.cliente, 'departamento', None) or '').strip()
+        if not muni:
+            muni = (getattr(venta.cliente, 'municipio', None) or '').strip()
+        if not dist:
+            dist = (getattr(venta.cliente, 'distrito', None) or '').strip()
 
     correo = (venta.correo_receptor or '').strip()
     if not correo and venta.cliente:
         correo = (getattr(venta.cliente, 'email_contacto', None) or '').strip()
 
-    telefono = ''
-    if venta.cliente:
+    telefono = (getattr(venta, 'telefono_receptor', None) or '').strip() if hasattr(venta, 'telefono_receptor') else ''
+    if not telefono and venta.cliente:
         telefono = (getattr(venta.cliente, 'telefono', None) or '').strip()
 
     actividad = ''
@@ -331,30 +377,41 @@ def _obtener_datos_receptor(venta):
     if not cod and not desc and venta.cliente:
         cod = (getattr(venta.cliente, 'cod_actividad', None) or '').strip()
         desc = (getattr(venta.cliente, 'desc_actividad', None) or '').strip()
-    if cod or desc:
-        actividad = f"{cod} - {desc}".strip(' -')
+    if cod and desc:
+        actividad = f"{cod} - {desc}"
+    elif desc:
+        actividad = desc
+    elif cod:
+        actividad = cod
 
     tipo_doc = (getattr(venta, 'tipo_doc_receptor', None) or '').strip().upper()
     if not tipo_doc and venta.cliente:
         tipo_doc = (getattr(venta.cliente, 'tipo_documento', None) or '').strip().upper()
-    if tipo_doc == 'DUI':
+    if tipo_doc in ('DUI', '13'):
         etiqueta_doc = 'DUI'
-        doc_display = nit_dui or 'N/A'
-    else:
+        doc_display = nit_dui or ''
+    elif tipo_doc in ('NIT', '36'):
         etiqueta_doc = 'NIT'
-        doc_display = _formatear_nit_display(nit_dui) if nit_dui else 'N/A'
+        doc_display = _formatear_nit_display(nit_dui) if nit_dui else ''
+    else:
+        etiqueta_doc = 'NIT' if (nit_dui and len(''.join(c for c in nit_dui if c.isdigit())) >= 14) else 'Documento'
+        doc_display = _formatear_nit_display(nit_dui) if nit_dui and etiqueta_doc == 'NIT' else (nit_dui or '')
 
     return {
         'nombre': nombre,
+        'nombre_comercial': nombre_comercial,
         'etiqueta_doc': etiqueta_doc,
         'nit_dui': doc_display,
         'nrc': _formatear_nrc_display(nrc) if nrc else '',
-        'actividad_economica': actividad if es_ccf else '',
-        'mostrar_nrc': bool(nrc) and (es_ccf or tipo_venta in ('NC', 'ND')),
-        'mostrar_actividad': bool(actividad) and es_ccf,
-        'direccion': _armar_direccion(direccion_comp, depto),
+        'actividad_economica': actividad,
+        'direccion': _armar_direccion(direccion_comp, depto, muni, dist),
+        'complemento': direccion_comp,
+        'municipio': _nombre_municipio_cat(depto, muni),
+        'distrito': _nombre_distrito_cat(depto, muni, dist),
+        'departamento': _nombre_departamento_cat(depto),
         'correo': correo or '',
         'telefono': telefono or '',
+        'tipo_venta': tipo_venta,
     }
 
 
@@ -483,7 +540,9 @@ def generar_pdf_venta(venta):
             ParagraphStyle(name='BrandMeta', parent=estilo_header_white, fontName='Helvetica', fontSize=7),
         ),
     ]
-    brand_cell = Table([[p] for p in brand_lines], colWidths=[10 * cm])
+    # Con logo: columna logo + 2 cm de separación + texto (evita nombre/NRC sobre el logo).
+    brand_text_w = 7.2 * cm if img_logo else 11.7 * cm
+    brand_cell = Table([[p] for p in brand_lines], colWidths=[brand_text_w])
     brand_cell.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
@@ -493,14 +552,20 @@ def generar_pdf_venta(venta):
         ('BACKGROUND', (0, 0), (-1, -1), pal['primary']),
     ]))
 
-    left_brand = [[img_logo, brand_cell]] if img_logo else [[brand_cell]]
-    left_w = [2.2 * cm, 9.5 * cm] if img_logo else [11.7 * cm]
+    if img_logo:
+        left_brand = [[img_logo, '', brand_cell]]
+        left_w = [2.5 * cm, 2.0 * cm, brand_text_w]
+    else:
+        left_brand = [[brand_cell]]
+        left_w = [brand_text_w]
     left_header = Table(left_brand, colWidths=left_w)
     left_header.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BACKGROUND', (0, 0), (-1, -1), pal['primary']),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (0, 0), 6),
+        ('RIGHTPADDING', (0, 0), (0, 0), 0),
+        ('LEFTPADDING', (1, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (1, 0), (-1, -1), 4),
         ('TOPPADDING', (0, 0), (-1, -1), 8),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
     ]))
@@ -625,32 +690,38 @@ def generar_pdf_venta(venta):
         ]))
         return wrap
 
-    lineas_emisor = [
-        f"<b>Nombre:</b> {_escape_html(emisor['nombre'])}",
-        f"<b>NRC:</b> {_escape_html(emisor['nrc'])} &nbsp; <b>NIT:</b> {_escape_html(emisor['nit'])}",
-        f"<b>Actividad:</b> {_escape_html(emisor['actividad_economica'])}",
-        f"<b>Dirección:</b> {_escape_html(emisor['direccion'])}",
-    ]
-    if emisor['telefono']:
-        lineas_emisor.append(f"<b>Tel:</b> {_escape_html(emisor['telefono'])}")
-    if emisor['correo']:
-        lineas_emisor.append(f"<b>Correo:</b> {_escape_html(emisor['correo'])}")
-    lineas_emisor.append(f"<b>Nombre comercial:</b> {_escape_html(emisor['nombre_comercial'])}")
-    lineas_emisor.append(f"<b>Establecimiento:</b> {_escape_html(emisor['tipo_establecimiento'])}")
+    lineas_emisor = []
+    _agregar_lineas(lineas_emisor, [
+        ('Nombre', emisor.get('nombre')),
+        ('NRC', emisor.get('nrc')),
+        ('NIT', emisor.get('nit')),
+        ('Actividad', emisor.get('actividad_economica')),
+        ('Dirección', emisor.get('complemento') or emisor.get('direccion')),
+        ('Municipio', emisor.get('municipio')),
+        ('Distrito', emisor.get('distrito')),
+        ('Departamento', emisor.get('departamento')),
+        ('Tel', emisor.get('telefono')),
+        ('Correo', emisor.get('correo')),
+        ('Nombre comercial', emisor.get('nombre_comercial')),
+        ('Establecimiento', emisor.get('tipo_establecimiento')),
+    ])
 
-    lineas_receptor = [
-        f"<b>Nombre:</b> {_escape_html(receptor['nombre'])}",
-        f"<b>{_escape_html(receptor['etiqueta_doc'])}:</b> {_escape_html(receptor['nit_dui'])}",
-    ]
-    if receptor.get('mostrar_nrc') and receptor.get('nrc'):
-        lineas_receptor.append(f"<b>NRC:</b> {_escape_html(receptor['nrc'])}")
-    if receptor.get('mostrar_actividad') and receptor.get('actividad_economica'):
-        lineas_receptor.append(f"<b>Actividad:</b> {_escape_html(receptor['actividad_economica'])}")
-    lineas_receptor.append(f"<b>Dirección:</b> {_escape_html(receptor['direccion'])}")
-    if receptor.get('telefono'):
-        lineas_receptor.append(f"<b>Tel:</b> {_escape_html(receptor['telefono'])}")
-    if receptor.get('correo'):
-        lineas_receptor.append(f"<b>Correo:</b> {_escape_html(receptor['correo'])}")
+    lineas_receptor = []
+    _agregar_lineas(lineas_receptor, [
+        ('Nombre', receptor.get('nombre')),
+        ('Nombre comercial', receptor.get('nombre_comercial')),
+        (receptor.get('etiqueta_doc') or 'Documento', receptor.get('nit_dui')),
+        ('NRC', receptor.get('nrc')),
+        ('Actividad', receptor.get('actividad_economica')),
+        ('Dirección', receptor.get('complemento') or receptor.get('direccion')),
+        ('Municipio', receptor.get('municipio')),
+        ('Distrito', receptor.get('distrito')),
+        ('Departamento', receptor.get('departamento')),
+        ('Tel', receptor.get('telefono')),
+        ('Correo', receptor.get('correo')),
+    ])
+    if not lineas_receptor:
+        lineas_receptor.append('<b>Nombre:</b> Consumidor Final')
 
     bloques = Table(
         [[_bloque_persona('EMISOR', lineas_emisor), _bloque_persona('RECEPTOR', lineas_receptor)]],

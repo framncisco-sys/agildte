@@ -7,7 +7,7 @@ const TIPOS_DOCUMENTO = [
   { codigo: '05', titulo: 'Nota de Crédito', subtitulo: 'DTE-05', icono: CreditCard, color: 'border-amber-200 bg-amber-50 hover:border-amber-400 ring-amber-400', requiereDocRel: true },
   { codigo: '06', titulo: 'Nota de Débito', subtitulo: 'DTE-06', icono: FileMinus, color: 'border-orange-200 bg-orange-50 hover:border-orange-400 ring-orange-400', requiereDocRel: true },
   { codigo: '14', titulo: 'Sujeto Excluido', subtitulo: 'DTE-14', icono: UserX, color: 'border-slate-200 bg-slate-50 hover:border-slate-400', requiereDocRel: false },
-  { codigo: '07', titulo: 'Retención', subtitulo: 'DTE-07', icono: Shield, color: 'border-violet-200 bg-violet-50 hover:border-violet-400', requiereDocRel: false },
+  { codigo: '07', titulo: 'Retención', subtitulo: 'DTE-07', icono: Shield, color: 'border-violet-200 bg-violet-50', requiereDocRel: false, disabled: true },
 ]
 
 export function SelectorDocumento({ onSelect }) {
@@ -23,15 +23,17 @@ export function SelectorDocumento({ onSelect }) {
       <h1 className="text-xl font-semibold text-gray-800 mb-6">Nueva Factura</h1>
       <p className="text-gray-600 mb-6">Selecciona el tipo de documento a emitir</p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-        {TIPOS_DOCUMENTO.map(({ codigo, titulo, subtitulo, icono: Icono, color, requiereDocRel }) => {
+        {TIPOS_DOCUMENTO.map(({ codigo, titulo, subtitulo, icono: Icono, color, requiereDocRel, disabled }) => {
           const estaSeleccionado = seleccionado === codigo
           const esDelicado = requiereDocRel && estaSeleccionado
           return (
             <button
               key={codigo}
               type="button"
-              onClick={() => handleSelect(codigo)}
-              className={`flex flex-col sm:flex-row items-center sm:items-start gap-3 p-4 sm:p-5 rounded-xl border-2 transition-all hover:scale-[1.02] ${color} ${esDelicado ? 'ring-2 ring-amber-500 border-amber-400' : ''}`}
+              onClick={() => !disabled && handleSelect(codigo)}
+              disabled={disabled}
+              title={disabled ? 'En actualización al schema oficial MH v2' : undefined}
+              className={`flex flex-col sm:flex-row items-center sm:items-start gap-3 p-4 sm:p-5 rounded-xl border-2 transition-all ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02]'} ${color} ${esDelicado ? 'ring-2 ring-amber-500 border-amber-400' : ''}`}
             >
               <div className="p-2.5 rounded-lg bg-white/80 shadow-sm shrink-0">
                 <Icono size={28} className="text-gray-700" />
@@ -41,6 +43,9 @@ export function SelectorDocumento({ onSelect }) {
                 <p className="text-xs text-gray-500">{subtitulo}</p>
                 {requiereDocRel && (
                   <span className="inline-block mt-1 text-xs text-amber-700 font-medium">Requiere doc. relacionado</span>
+                )}
+                {disabled && (
+                  <span className="inline-block mt-1 text-xs text-violet-700 font-medium">En actualización MH v2</span>
                 )}
               </div>
             </button>

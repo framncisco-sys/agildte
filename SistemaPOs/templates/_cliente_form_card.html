@@ -90,6 +90,11 @@
             <input type="text" name="nombre_cliente" id="cliNombre" class="form-control" value="{{ cliente_dict.nombre if cliente_dict else '' }}" required placeholder="Nombre o razón social del cliente" autocomplete="organization">
             <span class="cli-field-feedback" id="cliNombreErr">Ingrese el nombre del cliente.</span>
         </div>
+        <div class="mb-3">
+            <label class="form-label">Nombre comercial <span class="text-muted fw-semibold">(opcional)</span></label>
+            <input type="text" name="nombre_comercial" id="cliNombreComercial" class="form-control" value="{{ cliente_dict.nombre_comercial if cliente_dict else '' }}" placeholder="Razón social" autocomplete="organization">
+            <small class="cli-form-hint">Si se omite, se usa la razón social en el DTE.</small>
+        </div>
         {% set es_super = (es_superadmin or (rol_actual or session.get('rol')) in ('ADMIN', 'SUPERADMIN')) %}
         {% if es_super %}
         <div class="mb-3">
@@ -142,8 +147,9 @@
     <div class="cli-form-section" data-cli-section data-cli-fiscal-extra>
         <div class="cli-form-section-title"><i class="bi bi-briefcase"></i> Datos fiscales</div>
         {% set _cod_act = (cliente_dict.get('codigo_actividad_economica') or '') if cliente_dict else '' %}
+        {% set _desc_act = (cliente_dict.get('desc_actividad') or '') if cliente_dict else '' %}
         <div data-cli-actividad-wrap style="{% if not (cliente_dict and cliente_dict.es_contribuyente) %}display:none{% endif %}">
-        {% with field_name='codigo_actividad_economica', label='Actividad Económica (código)', codigo_value=_cod_act, descripcion_value='', hint='Obligatorio si el cliente es contribuyente (crédito fiscal). Catálogo AgilDTE.' %}
+        {% with field_name='codigo_actividad_economica', label='Actividad Económica (código)', codigo_value=_cod_act, descripcion_value=_desc_act, desc_hidden_name='desc_actividad', hint='Obligatorio si el cliente es contribuyente (crédito fiscal). Catálogo AgilDTE.' %}
         {% include '_campo_actividad_economica.html' %}
         {% endwith %}
         </div>
@@ -169,7 +175,7 @@
             <input type="email" name="correo" id="cliCorreo" class="form-control" value="{{ cliente_dict.correo if cliente_dict else '' }}" placeholder="cliente@empresa.com" autocomplete="email">
         </div>
         <div class="row g-2 mb-3">
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <label class="form-label">Departamento</label>
                 <select name="departamento" id="sel_departamento_cliente" class="form-select">
                     {% for cod, nom in (departamentos or []) %}
@@ -177,21 +183,34 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <label class="form-label">Municipio</label>
-                <select name="municipio" id="sel_municipio_cliente" class="form-select" data-inicial="{{ cliente_dict.municipio if cliente_dict else '14' }}">
+                <select name="municipio" id="sel_municipio_cliente" class="form-select" data-inicial="{{ cliente_dict.municipio if cliente_dict else '23' }}">
                     {% if departamentos is defined and municipios_por_departamento is defined %}
                     {% set depto_ini = cliente_dict.departamento if cliente_dict else '06' %}
                     {% for cod_m, nom_m in municipios_por_departamento.get(depto_ini, []) %}
-                    <option value="{{ cod_m }}" {{ 'selected' if cliente_dict and cliente_dict.municipio == cod_m else ('selected' if not cliente_dict and cod_m == '14' else '') }}>{{ nom_m }}</option>
+                    <option value="{{ cod_m }}" {{ 'selected' if cliente_dict and cliente_dict.municipio == cod_m else ('selected' if not cliente_dict and cod_m == '23' else '') }}>{{ nom_m }}</option>
+                    {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Distrito</label>
+                <select name="distrito" id="sel_distrito_cliente" class="form-select" data-inicial="{{ cliente_dict.distrito if cliente_dict else '14' }}">
+                    {% if distritos_por_municipio is defined %}
+                    {% set depto_ini = cliente_dict.departamento if cliente_dict else '06' %}
+                    {% set muni_ini = cliente_dict.municipio if cliente_dict else '23' %}
+                    {% for cod_d, nom_d in distritos_por_municipio.get(depto_ini, {}).get(muni_ini, []) %}
+                    <option value="{{ cod_d }}" {{ 'selected' if cliente_dict and cliente_dict.distrito == cod_d else ('selected' if not cliente_dict and cod_d == '14' else '') }}>{{ nom_d }}</option>
                     {% endfor %}
                     {% endif %}
                 </select>
             </div>
         </div>
         <div class="mb-3">
-            <label class="form-label">Dirección (complemento)</label>
-            <textarea name="direccion" class="form-control" rows="2" placeholder="Calle, colonia, número…">{{ cliente_dict.direccion if cliente_dict else '' }}</textarea>
+            <label class="form-label">Dirección (complemento) <span class="text-danger d-none" id="cliDirReqMark">*</span></label>
+            <textarea name="direccion" id="cliDireccion" class="form-control" rows="2" placeholder="Calle, colonia, número…">{{ cliente_dict.direccion if cliente_dict else '' }}</textarea>
+            <span class="cli-field-feedback" id="cliDirErr">La dirección es obligatoria para contribuyentes.</span>
         </div>
         <div class="mb-0">
             <label class="form-label">Teléfono</label>
@@ -335,24 +354,68 @@
 
     {% if municipios_por_departamento is defined %}
     var MUNIS = {{ municipios_por_departamento | tojson }};
+    var DISTRITOS = {{ (distritos_por_municipio or {}) | tojson }};
+    var CABECERAS = {{ (distrito_cabecera or {}) | tojson }};
     var selDepto = qs('sel_departamento_cliente');
     var selMuni = qs('sel_municipio_cliente');
-    if (selDepto && selMuni) {
-        function llenarMunicipios(depto, seleccionado) {
-            var lista = MUNIS[depto] || [];
-            selMuni.innerHTML = '';
-            lista.forEach(function(par) {
-                var opt = document.createElement('option');
-                opt.value = par[0];
-                opt.textContent = par[1];
-                if (seleccionado && par[0] === seleccionado) opt.selected = true;
-                selMuni.appendChild(opt);
-            });
-            if (!selMuni.value && lista.length) selMuni.value = lista[0][0];
+    var selDistrito = qs('sel_distrito_cliente');
+
+    function llenarDistritos(depto, muni, seleccionado) {
+        if (!selDistrito) return;
+        var lista = (DISTRITOS[depto] && DISTRITOS[depto][muni]) ? DISTRITOS[depto][muni] : [];
+        selDistrito.innerHTML = '';
+        lista.forEach(function(par) {
+            var opt = document.createElement('option');
+            opt.value = par[0];
+            opt.textContent = par[1];
+            if (seleccionado && par[0] === seleccionado) opt.selected = true;
+            selDistrito.appendChild(opt);
+        });
+        if (!selDistrito.value && lista.length) {
+            var cab = CABECERAS[depto + '/' + muni];
+            selDistrito.value = cab || lista[0][0];
         }
-        selDepto.addEventListener('change', function() { llenarMunicipios(selDepto.value, null); });
+    }
+
+    function llenarMunicipios(depto, seleccionado, distritoSel) {
+        var lista = MUNIS[depto] || [];
+        selMuni.innerHTML = '';
+        lista.forEach(function(par) {
+            var opt = document.createElement('option');
+            opt.value = par[0];
+            opt.textContent = par[1];
+            if (seleccionado && par[0] === seleccionado) opt.selected = true;
+            selMuni.appendChild(opt);
+        });
+        if (!selMuni.value && lista.length) {
+            var defMuni = (depto === '06') ? '23' : lista[0][0];
+            var existe = lista.some(function(p) { return p[0] === defMuni; });
+            selMuni.value = existe ? defMuni : lista[0][0];
+        }
+        llenarDistritos(depto, selMuni.value, distritoSel || null);
+    }
+
+    if (selDepto && selMuni) {
+        selDepto.addEventListener('change', function() { llenarMunicipios(selDepto.value, null, null); });
+        selMuni.addEventListener('change', function() { llenarDistritos(selDepto.value, selMuni.value, null); });
+        var muniIni = selMuni.getAttribute('data-inicial') || selMuni.value;
+        var distIni = selDistrito ? (selDistrito.getAttribute('data-inicial') || selDistrito.value) : null;
+        if (!selMuni.options.length) llenarMunicipios(selDepto.value, muniIni, distIni);
+        else if (selDistrito && !selDistrito.options.length) llenarDistritos(selDepto.value, selMuni.value, distIni);
     }
     {% endif %}
+
+    var dirMark = qs('cliDirReqMark');
+    var dirErr = qs('cliDirErr');
+    var inpDir = qs('cliDireccion');
+    function syncContribReq() {
+        var on = chkContrib && chkContrib.checked;
+        if (dirMark) dirMark.classList.toggle('d-none', !on);
+    }
+    if (chkContrib) {
+        chkContrib.addEventListener('change', syncContribReq);
+        syncContribReq();
+    }
 
     document.querySelectorAll('[data-cli-section]').forEach(function(sec) {
         sec.querySelectorAll('input, select, textarea').forEach(function(el) {
@@ -394,6 +457,43 @@
         }
         if (nombre) nombre.classList.remove('is-invalid');
         if (nombreErr) nombreErr.classList.remove('is-visible');
+
+        if (chkContrib && chkContrib.checked) {
+            var dirVal = (inpDir && inpDir.value || '').trim();
+            var codAct = form.querySelector('[data-actividad-codigo]');
+            var actVal = (codAct && codAct.value || '').trim();
+            if (!dirVal) {
+                e.preventDefault();
+                if (inpDir) inpDir.classList.add('is-invalid');
+                if (dirErr) dirErr.classList.add('is-visible');
+                inpDir && inpDir.focus();
+                return;
+            }
+            if (inpDir) inpDir.classList.remove('is-invalid');
+            if (dirErr) dirErr.classList.remove('is-visible');
+            if (!actVal) {
+                e.preventDefault();
+                alert('Seleccione la actividad económica (obligatoria para contribuyentes).');
+                if (wrapActividad) wrapActividad.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+            var nrcVal = (nrc && nrc.value || '').trim();
+            if (!nrcVal) {
+                e.preventDefault();
+                alert('El NRC es obligatorio para contribuyentes.');
+                nrc && nrc.focus();
+                return;
+            }
+            var dEl = qs('sel_departamento_cliente');
+            var mEl = qs('sel_municipio_cliente');
+            var diEl = qs('sel_distrito_cliente');
+            if (!dEl || !dEl.value || !mEl || !mEl.value || !diEl || !diEl.value) {
+                e.preventDefault();
+                alert('Departamento, municipio y distrito son obligatorios para contribuyentes.');
+                return;
+            }
+        }
+
         var btn = qs('cliBtnGuardar');
         if (btn) {
             btn.disabled = true;

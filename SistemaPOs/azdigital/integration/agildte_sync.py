@@ -56,7 +56,7 @@ def _extraer_id_venta_remota(resp: Any) -> int | None:
 def _receptor_desde_cliente_row(cl: tuple | list | None) -> dict[str, Any] | None:
     if not cl:
         return None
-    # get_cliente: 0 id … 11 cod_act, 12 nrc, 13 departamento, 14 municipio
+    # get_cliente: … 11 cod_act, 12 nrc, 13 depto, 14 muni, 15 distrito, 16 nom_com, 17 desc_act
     try:
         nombre = (cl[3] or "").strip() if len(cl) > 3 else ""
         tipo = (cl[4] or "NIT").strip() if len(cl) > 4 else "NIT"
@@ -69,7 +69,10 @@ def _receptor_desde_cliente_row(cl: tuple | list | None) -> dict[str, Any] | Non
         if not nrc and tipo.upper() == "NRC" and num:
             nrc = num
         departamento = (cl[13] or "06").strip() if len(cl) > 13 else "06"
-        municipio = (cl[14] or "14").strip() if len(cl) > 14 else "14"
+        municipio = (cl[14] or "23").strip() if len(cl) > 14 else "23"
+        distrito = (cl[15] or "14").strip() if len(cl) > 15 else "14"
+        nombre_comercial = (cl[16] or "").strip() if len(cl) > 16 else ""
+        desc_actividad = (cl[17] or "").strip() if len(cl) > 17 else ""
         out = {
             "nombre": nombre or "Consumidor Final",
             "tipo_documento": tipo,
@@ -84,6 +87,12 @@ def _receptor_desde_cliente_row(cl: tuple | list | None) -> dict[str, Any] | Non
             out["departamento"] = departamento
         if municipio:
             out["municipio"] = municipio
+        if distrito:
+            out["distrito"] = distrito
+        if nombre_comercial:
+            out["nombre_comercial"] = nombre_comercial
+        if desc_actividad:
+            out["desc_actividad"] = desc_actividad
         return out
     except Exception:
         return None
@@ -115,8 +124,8 @@ def sync_venta_a_agildte(
     try:
         if cli is None:
             cli = login_client_from_request_or_env(trust_request_bearer=False)
-        if cli.empresa_id is None:
-            cli.set_empresa_id(empresa_id_local)
+        # Siempre alinear tenant con la empresa de la venta POS (no el default del login).
+        cli.set_empresa_id(int(empresa_id_local))
         eid = int(cli.empresa_id or empresa_id_local)
 
         receptor = None
@@ -181,13 +190,22 @@ def sync_venta_a_agildte(
             ok = bool(creado.get("ok", True))
 
         dte_persistido = False
-        if ok and isinstance(venta_payload, dict):
+        # Persistir código/sello siempre que vengan en la respuesta (aunque ok=False p.ej. rechazo).
+        if isinstance(venta_payload, dict):
             try:
                 dte_persistido = ventas_repo.actualizar_dte_desde_respuesta_agildte(
                     cur, venta_id_local, empresa_id_local, venta_payload
                 )
             except Exception:
                 dte_persistido = False
+            # Fallback: a veces el cuerpo viene aplanado (sin anidar en «venta»).
+            if not dte_persistido and isinstance(creado, dict):
+                try:
+                    dte_persistido = ventas_repo.actualizar_dte_desde_respuesta_agildte(
+                        cur, venta_id_local, empresa_id_local, creado
+                    )
+                except Exception:
+                    dte_persistido = False
 
         out: dict[str, Any] = {
             "ok": ok,

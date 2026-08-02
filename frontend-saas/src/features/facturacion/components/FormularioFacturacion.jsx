@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -11,9 +10,13 @@ import { BuscarDocumentoModal } from './BuscarDocumentoModal'
 import { ItemDescripcionCombobox } from './ItemDescripcionCombobox'
 import { ModalCatalogoItems } from './ModalCatalogoItems'
 import { ModalBuscadorActividad } from './ModalBuscadorActividad'
-import { DEPARTAMENTOS, MUNICIPIOS_POR_DEPARTAMENTO } from '../../../data/departamentos-municipios'
+import { ConfirmActualizarClienteModal } from './ConfirmActualizarClienteModal'
+import { distritoDefault } from '../../../data/distritos-cat008'
+import { normalizarUbicacionMh } from '../../../data/departamentos-municipios'
+import { UbicacionMHFields } from '../../../components/UbicacionMHFields'
 import { crearVenta } from '../../../api/facturas'
 import { createCliente, getClienteById } from '../../../api/clientes'
+import { detectarCambiosCliente, snapshotDesdeCliente } from '../utils/clienteDiff'
 import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 import { fechaHoyElSalvadorISO } from '../../../utils/format'
 import { formatApiErrorMessage } from '../../../utils/apiErrors'
@@ -28,67 +31,88 @@ const TITULOS_POR_TIPO = {
   '07': 'COMPROBANTE DE RETENCIÓN',
 }
 
-const schema = z.object({
-  nombreCompleto: z.string().min(1, 'Nombre o razón social es requerido'),
-  nombreComercial: z.string().optional(),
-  tipoDocCliente: z.enum(['NIT', 'DUI']),
-  numeroDocumento: z.string().optional(),
-  nrc: z.string().optional(),
-  codActividad: z.string().optional(),
-  descActividad: z.string().optional(),
-  correo: z.union([z.string().email('Correo inválido'), z.literal('')]),
-  telefono: z.string().optional(),
-  departamento: z.string().optional(),
-  municipio: z.string().optional(),
-  direccion: z.string().optional(),
-  condicionOperacion: z.enum(['1', '2', '3']).default('1'),
-  plazoPago: z.string().optional(),
-  periodoPago: z.string().optional(),
-  items: z.array(
-    z.object({
-      cantidad: z.coerce.number().min(0.01, 'Cantidad requerida'),
-      descripcion: z
-        .string()
-        .min(1, 'Descripción requerida')
-        .max(
-          DTE_LINEA_DESCRIPCION_MAX,
-          `La descripción no puede superar ${DTE_LINEA_DESCRIPCION_MAX} caracteres`
-        ),
-      precioUnitario: z.coerce.number().min(0, 'Precio requerido'),
-    })
-  ).min(1, 'Debe agregar al menos un ítem'),
-})
+const NOMBRE_CF_DEFAULT = 'Consumidor Final'
 
-const defaultValues = {
-  nombreCompleto: '',
-  nombreComercial: '',
-  tipoDocCliente: 'NIT',
-  numeroDocumento: '',
-  nrc: '',
-  codActividad: '',
-  descActividad: '',
-  correo: '',
-  telefono: '',
-  departamento: '06',
-  municipio: '20',
-  direccion: '',
-  condicionOperacion: '1',
-  plazoPago: '03',
-  periodoPago: '30',
-  items: [{ cantidad: 1, descripcion: '', precioUnitario: 0 }],
+/** CF: nombre y ubicación opcionales. Otros DTE: siguen obligatorios. */
+function createSchema(esCF) {
+  return z.object({
+    nombreCompleto: esCF
+      ? z.string().optional().default('')
+      : z.string().min(1, 'Nombre o razón social es requerido'),
+    nombreComercial: z.string().optional(),
+    tipoDocCliente: z.enum(['NIT', 'DUI']),
+    numeroDocumento: z.string().optional(),
+    nrc: z.string().optional(),
+    codActividad: z.string().optional(),
+    descActividad: z.string().optional(),
+    correo: z.union([z.string().email('Correo inválido'), z.literal('')]),
+    telefono: z.string().optional(),
+    departamento: esCF
+      ? z.string().optional().default('')
+      : z.string().min(1, 'Departamento requerido (MH V2)'),
+    municipio: esCF
+      ? z.string().optional().default('')
+      : z.string().min(1, 'Municipio requerido (CAT-013)'),
+    distrito: esCF
+      ? z.string().optional().default('')
+      : z.string().min(1, 'Distrito requerido (CAT-008)'),
+    direccion: esCF
+      ? z.string().optional().default('')
+      : z.string().min(1, 'Dirección / complemento requerida'),
+    condicionOperacion: z.enum(['1', '2', '3']).default('1'),
+    plazoPago: z.string().optional(),
+    periodoPago: z.string().optional(),
+    items: z.array(
+      z.object({
+        cantidad: z.coerce.number().min(0.01, 'Cantidad requerida'),
+        descripcion: z
+          .string()
+          .min(1, 'Descripción requerida')
+          .max(
+            DTE_LINEA_DESCRIPCION_MAX,
+            `La descripción no puede superar ${DTE_LINEA_DESCRIPCION_MAX} caracteres`
+          ),
+        precioUnitario: z.coerce.number().min(0, 'Precio requerido'),
+      })
+    ).min(1, 'Debe agregar al menos un ítem'),
+  })
+}
+
+function buildDefaultValues(esCF) {
+  return {
+    nombreCompleto: '',
+    nombreComercial: '',
+    tipoDocCliente: 'NIT',
+    numeroDocumento: '',
+    nrc: '',
+    codActividad: '',
+    descActividad: '',
+    correo: '',
+    telefono: '',
+    // CF: ubicación vacía (opcional). Otros: San Salvador Centro por defecto.
+    departamento: esCF ? '' : '06',
+    municipio: esCF ? '' : '23',
+    distrito: esCF ? '' : '14',
+    direccion: '',
+    condicionOperacion: '1',
+    plazoPago: '03',
+    periodoPago: '30',
+    items: [{ cantidad: 1, descripcion: '', precioUnitario: 0 }],
+  }
 }
 
 // Umbral mínimo para aplicar retención 1% (según normativa MH)
 const UMBRAL_RETENCION = 100
 
 export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSeleccionada }) {
-  const navigate = useNavigate()
   const empresaId = useEmpresaStore((s) => s.empresaId)
   const hoy = fechaHoyElSalvadorISO()
   const [modalAbierto, setModalAbierto] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [guardandoCliente, setGuardandoCliente] = useState(false)
   const [clienteIdSeleccionado, setClienteIdSeleccionado] = useState(null)
+  const [clienteSnapshot, setClienteSnapshot] = useState(null)
+  const [confirmCliente, setConfirmCliente] = useState(null) // { data, cambios } | null
   const [documentoRelacionado, setDocumentoRelacionado] = useState(null)
   const [errorDocumentoRelacionado, setErrorDocumentoRelacionado] = useState('')
   const [modalDocumentoAbierto, setModalDocumentoAbierto] = useState(false)
@@ -102,6 +126,9 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
   const [whatsappPremium, setWhatsappPremium] = useState(false)
   const [enviarWhatsApp, setEnviarWhatsApp] = useState(true)
   const requiereDocumentoRelacionado = tipoDocumento === '05' || tipoDocumento === '06'
+  const esCF = tipoDocumento === '01'
+  const schema = useMemo(() => createSchema(esCF), [esCF])
+  const defaultValues = useMemo(() => buildDefaultValues(esCF), [esCF])
 
   const {
     register,
@@ -118,6 +145,9 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'items' })
   const items = watch('items')
   const departamentoSeleccionado = watch('departamento')
+  const municipioSeleccionado = watch('municipio')
+  const distritoSeleccionado = watch('distrito')
+  const direccionSeleccionada = watch('direccion')
 
   useEffect(() => {
     if (!empresaId) {
@@ -139,14 +169,12 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
   const telefonoWatch = watch('telefono')
   const condicionOperacionWatch = watch('condicionOperacion')
   const esCredito = condicionOperacionWatch === '2'
-  const municipios = MUNICIPIOS_POR_DEPARTAMENTO[departamentoSeleccionado] ?? []
 
   const totalGravadas = (items ?? []).reduce(
     (sum, it) => sum + (Number(it.cantidad) || 0) * (Number(it.precioUnitario) || 0),
     0
   )
   const esCreditoFiscal = ['03', '05', '06'].includes(tipoDocumento)
-  const esCF = tipoDocumento === '01'
   // La retención 1% aplica a CF (entidades gobierno), CCF, NC y ND
   const permiteRetencion = ['01', '03', '05', '06'].includes(tipoDocumento)
   // CF: totalGravadas es total con IVA → base gravada = total/1.13. CCF/NC/ND: totalGravadas ya es base sin IVA
@@ -190,8 +218,17 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
     if (codAct || descAct) aplicarActividadDisplay(codAct, descAct)
   }
 
+  const aplicarUbicacion = (departamento, municipio, distrito) => {
+    const ubi = normalizarUbicacionMh(departamento, municipio, distrito)
+    const dist = ubi.distrito || distritoDefault(ubi.departamento, ubi.municipio) || ''
+    setValue('departamento', ubi.departamento)
+    setValue('municipio', ubi.municipio)
+    setValue('distrito', dist)
+  }
+
   const onClienteSeleccionado = (cliente, ventaOrigen = null) => {
     setClienteIdSeleccionado(cliente?.id ?? null)
+    setClienteSnapshot(cliente?.id ? snapshotDesdeCliente(cliente) : null)
     const nitCliente = (cliente.nit || cliente.documento_identidad || '').trim()
     const duiCliente = (cliente.dui || '').trim()
     const tipoDoc = duiCliente && !nitCliente ? 'DUI' : 'NIT'
@@ -207,9 +244,34 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
     )
     setValue('correo', cliente.email_contacto ?? cliente.correo ?? '')
     setValue('telefono', cliente.telefono ?? '')
-    setValue('departamento', cliente.departamento ?? '06')
-    setValue('municipio', cliente.municipio ?? '20')
-    setValue('direccion', cliente.direccion ?? '')
+    // Prioridad: snapshot del CCF/documento relacionado > ficha cliente
+    const depto =
+      ventaOrigen?.departamento_receptor ||
+      ventaOrigen?.departamentoReceptor ||
+      cliente.departamento ||
+      cliente.direccion_departamento ||
+      '06'
+    const muni =
+      ventaOrigen?.municipio_receptor ||
+      ventaOrigen?.municipioReceptor ||
+      cliente.municipio ||
+      cliente.direccion_municipio ||
+      '23'
+    const dist =
+      ventaOrigen?.distrito_receptor ||
+      ventaOrigen?.distritoReceptor ||
+      cliente.distrito ||
+      cliente.direccion_distrito ||
+      ''
+    aplicarUbicacion(depto, muni, dist)
+    setValue(
+      'direccion',
+      ventaOrigen?.direccion_receptor ||
+        ventaOrigen?.direccionReceptor ||
+        cliente.direccion ||
+        cliente.direccion_complemento ||
+        ''
+    )
     if (ventaOrigen) aplicarReceptorDesdeVenta(ventaOrigen)
   }
 
@@ -262,6 +324,7 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
 
     const completarDesdeVentaSinCliente = () => {
       setClienteIdSeleccionado(clienteId ?? null)
+      setClienteSnapshot(null)
       setValue('nombreCompleto', venta.nombre_receptor || venta.nombreReceptor || '')
       setValue('nombreComercial', venta.nombre_comercial_receptor || venta.nombre_receptor || '')
       const nit = (venta.nit_receptor || '').trim()
@@ -273,8 +336,11 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
       setValue('numeroDocumento', esNit ? (nit || doc) : (doc || nit))
       setValue('correo', venta.correo_receptor || venta.correoReceptor || '')
       setValue('telefono', venta.telefono_receptor || venta.telefonoReceptor || '')
-      setValue('departamento', venta.departamento_receptor || '06')
-      setValue('municipio', venta.municipio_receptor || '14')
+      aplicarUbicacion(
+        venta.departamento_receptor || venta.departamentoReceptor || '06',
+        venta.municipio_receptor || venta.municipioReceptor || '23',
+        venta.distrito_receptor || venta.distritoReceptor || ''
+      )
       setValue('direccion', venta.direccion_receptor || venta.direccionReceptor || '')
       aplicarReceptorDesdeVenta(venta)
     }
@@ -331,11 +397,27 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
         telefono: data.telefono?.trim() || null,
         direccion_departamento: data.departamento || '06',
         direccion_municipio: data.municipio || '20',
+        direccion_distrito: data.distrito || data.municipio || '20',
         direccion_complemento: data.direccion?.trim() || null,
         empresa_id: empresaId,
       }
       const nuevo = await createCliente(payload)
       setClienteIdSeleccionado(nuevo.id)
+      setClienteSnapshot(snapshotDesdeCliente(nuevo) || {
+        nombreCompleto: data.nombreCompleto.trim(),
+        nombreComercial: data.nombreComercial?.trim() || '',
+        tipoDocCliente: data.tipoDocCliente ?? 'NIT',
+        numeroDocumento: data.numeroDocumento?.trim() || '',
+        nrc: data.nrc?.trim() || '',
+        codActividad: data.codActividad?.trim() || '',
+        descActividad: data.descActividad?.trim() || '',
+        correo: data.correo?.trim() || '',
+        telefono: data.telefono?.trim() || '',
+        departamento: data.departamento || '',
+        municipio: data.municipio || '',
+        distrito: data.distrito || '',
+        direccion: data.direccion?.trim() || '',
+      })
       toast.success(`Cliente "${data.nombreCompleto.trim()}" guardado correctamente.`)
     } catch (err) {
       const d = err.response?.data
@@ -373,6 +455,20 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
         return
       }
     }
+
+    if (clienteIdSeleccionado && clienteSnapshot) {
+      const cambios = detectarCambiosCliente(clienteSnapshot, data)
+      if (cambios.length > 0) {
+        setConfirmCliente({ data, cambios })
+        return
+      }
+    }
+
+    await emitirDocumento(data, true)
+  }
+
+  const emitirDocumento = async (data, actualizarCliente) => {
+    const notificarUpdateFicha = actualizarCliente && !!clienteIdSeleccionado && !!confirmCliente
     setEnviando(true)
     try {
       const payload = {
@@ -380,9 +476,10 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
         empresaId,
         fechaFacturacion,
         clienteId: clienteIdSeleccionado,
+        actualizarCliente: !!actualizarCliente,
         documentoRelacionado: requiereDocumentoRelacionado ? documentoRelacionado : null,
         cliente: {
-          nombreCompleto: data.nombreCompleto,
+          nombreCompleto: data.nombreCompleto?.trim() || (esCF ? NOMBRE_CF_DEFAULT : ''),
           nombreComercial: data.nombreComercial,
           tipoDocCliente: data.tipoDocCliente,
           numeroDocumento: data.numeroDocumento,
@@ -391,8 +488,10 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
           descActividad: data.descActividad,
           correo: data.correo,
           telefono: data.telefono,
-          departamento: data.departamento,
-          municipio: data.municipio,
+          // CF sin complemento: no enviar ubicación parcial (MH exige los 4 campos juntos o null)
+          departamento: esCF && !data.direccion?.trim() ? '' : data.departamento,
+          municipio: esCF && !data.direccion?.trim() ? '' : data.municipio,
+          distrito: esCF && !data.direccion?.trim() ? '' : (data.distrito || data.municipio),
           direccion: data.direccion,
           condicionOperacion: data.condicionOperacion,
         },
@@ -401,9 +500,7 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
         iva: esCreditoFiscal ? iva : 0,
         ivaRetenido1: montoRetencion1,
         condicionOperacion: Number(data.condicionOperacion ?? 1),
-        // plazo_pago → código de unidad MH: "01"=Días, "02"=Semanas, "03"=Meses
         plazoPago: data.condicionOperacion === '2' ? (data.plazoPago || '03') : null,
-        // periodo_pago → cantidad numérica (ej: 30)
         periodoPago: data.condicionOperacion === '2' ? (Number(data.periodoPago) || 30) : null,
         enviarWhatsApp: whatsappPremium && enviarWhatsApp && !!(data.telefono || '').trim(),
       }
@@ -411,6 +508,24 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
       const estado = respuesta?.estado_dte || respuesta?.estado
       const mensaje = respuesta?.mensaje
       const esAsync = respuesta?.procesamiento === 'asincrono'
+
+      if (actualizarCliente && clienteIdSeleccionado) {
+        setClienteSnapshot({
+          nombreCompleto: data.nombreCompleto?.trim() || '',
+          nombreComercial: data.nombreComercial?.trim() || '',
+          tipoDocCliente: data.tipoDocCliente || 'NIT',
+          numeroDocumento: data.numeroDocumento?.trim() || '',
+          nrc: data.nrc?.trim() || '',
+          codActividad: data.codActividad?.trim() || '',
+          descActividad: data.descActividad?.trim() || '',
+          correo: data.correo?.trim() || '',
+          telefono: data.telefono?.trim() || '',
+          departamento: data.departamento || '',
+          municipio: data.municipio || '',
+          distrito: data.distrito || '',
+          direccion: data.direccion?.trim() || '',
+        })
+      }
 
       if (estado === 'AceptadoMH' || estado === 'PROCESADO') {
         if (respuesta?.whatsapp_aviso) {
@@ -420,18 +535,26 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
         } else {
           toast.success(mensaje || '¡Factura enviada a Hacienda correctamente!')
         }
+        if (notificarUpdateFicha) {
+          toast.success('Ficha del cliente actualizada.')
+        }
         onChangeTipo()
       } else if (estado === 'RechazadoMH' || estado === 'RECHAZADO') {
         toast.error(mensaje || 'Factura rechazada por Hacienda')
-        // Permanece en el formulario para corregir datos
       } else if (esAsync) {
         toast.success(
           mensaje ||
             'Factura registrada. Se está enviando a Hacienda; en unos segundos aparecerá como PROCESADA en el listado.'
         )
+        if (notificarUpdateFicha) {
+          toast.success('Ficha del cliente actualizada.')
+        }
         onChangeTipo()
       } else {
         toast.success(mensaje || 'Documento guardado')
+        if (notificarUpdateFicha) {
+          toast.success('Ficha del cliente actualizada.')
+        }
         onChangeTipo()
       }
     } catch (err) {
@@ -442,6 +565,7 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
       toast.error(msg)
     } finally {
       setEnviando(false)
+      setConfirmCliente(null)
     }
   }
 
@@ -465,23 +589,6 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
         <section className={`rounded-xl px-6 py-4 ${requiereDocumentoRelacionado ? 'bg-amber-50 border-2 border-amber-200' : 'bg-slate-100'}`}>
           <h2 className="text-lg font-semibold text-gray-800">{titulo}</h2>
         </section>
-
-        {esCF && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-950">
-            <p className="font-medium mb-1">Informe consolidado por día (solo CF)</p>
-            <p className="text-emerald-900/90 mb-2">
-              En el historial, elige Factura (CF), define fechas inicio/fin y usa el botón de informe para ver por cada día el
-              primer y último código de generación y el total del día.
-            </p>
-            <button
-              type="button"
-              onClick={() => navigate('/facturacion/lista')}
-              className="text-emerald-800 font-semibold underline hover:text-emerald-950"
-            >
-              Ir al historial de documentos
-            </button>
-          </div>
-        )}
 
         {/* Sección 1a: Fecha de facturación */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -606,12 +713,17 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
             {/* Nombre completo — fila completa */}
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Nombre completo / Razón Social <span className="text-red-500">*</span>
+                Nombre completo / Razón Social{' '}
+                {esCF ? (
+                  <span className="text-gray-400 font-normal">(opcional — si vacío: Consumidor Final)</span>
+                ) : (
+                  <span className="text-red-500">*</span>
+                )}
               </label>
               <input
                 {...register('nombreCompleto')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Razón social o nombre completo"
+                placeholder={esCF ? 'Consumidor Final (si lo dejas vacío)' : 'Razón social o nombre completo'}
               />
               {errors.nombreCompleto && (
                 <p className="mt-1 text-sm text-red-600">{errors.nombreCompleto.message}</p>
@@ -690,39 +802,33 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
               </div>
             </div>
 
-            {/* Departamento */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Departamento</label>
-              <select
-                {...register('departamento')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {DEPARTAMENTOS.map((d) => (
-                  <option key={d.codigo} value={d.codigo}>{d.nombre}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Municipio */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Municipio</label>
-              <select
-                {...register('municipio')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {municipios.map((m) => (
-                  <option key={m.codigo} value={m.codigo}>{m.nombre}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Dirección — fila completa */}
+            {/* Ubicación MH V2 — en CF es opcional (se puede dejar vacía) */}
             <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
-              <input
-                {...register('direccion')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Colonia, calle, número, etc."
+              <h3 className="text-sm font-semibold text-gray-800 mb-2">
+                Ubicación del receptor (MH V2)
+                {esCF && (
+                  <span className="ml-2 text-xs font-normal text-gray-400">(opcional)</span>
+                )}
+              </h3>
+              <UbicacionMHFields
+                departamento={departamentoSeleccionado}
+                municipio={municipioSeleccionado}
+                distrito={distritoSeleccionado}
+                complemento={direccionSeleccionada ?? ''}
+                onChange={(patch) => {
+                  if (patch.departamento != null) setValue('departamento', patch.departamento, { shouldValidate: true })
+                  if (patch.municipio != null) setValue('municipio', patch.municipio, { shouldValidate: true })
+                  if (patch.distrito != null) setValue('distrito', patch.distrito, { shouldValidate: true })
+                  if (patch.complemento != null) setValue('direccion', patch.complemento, { shouldValidate: true })
+                }}
+                errors={{
+                  departamento: errors.departamento?.message,
+                  municipio: errors.municipio?.message,
+                  distrito: errors.distrito?.message,
+                  complemento: errors.direccion?.message,
+                }}
+                required={!esCF}
+                showHint={false}
               />
             </div>
 
@@ -1051,6 +1157,22 @@ export function FormularioFacturacion({ tipoDocumento, onChangeTipo, plantillaSe
         isOpen={modalAbierto}
         onClose={() => setModalAbierto(false)}
         onSelect={onClienteSeleccionado}
+      />
+
+      <ConfirmActualizarClienteModal
+        open={!!confirmCliente}
+        nombreCliente={confirmCliente?.data?.nombreCompleto}
+        cambios={confirmCliente?.cambios || []}
+        enviando={enviando}
+        onCancelar={() => setConfirmCliente(null)}
+        onOmitir={() => {
+          if (!confirmCliente) return
+          emitirDocumento(confirmCliente.data, false)
+        }}
+        onConfirmar={() => {
+          if (!confirmCliente) return
+          emitirDocumento(confirmCliente.data, true)
+        }}
       />
 
       <ModalCatalogoItems

@@ -219,7 +219,11 @@ class EmpresaAdmin(admin.ModelAdmin):
                 'whatsapp_access_token',
                 'whatsapp_business_account_id',
             ),
-            'description': 'Envío de facturas por API de Meta. Token cifrado en BD.',
+            'description': (
+                'Activa el módulo premium por empresa. El envío usa el número único AgilDTE '
+                '(WHATSAPP_PHONE_NUMBER_ID / WHATSAPP_ACCESS_TOKEN en el servidor). '
+                'Los campos de credenciales por empresa están obsoletos.'
+            ),
         }),
         ('Dashboard premium', {
             'fields': ('dashboard_compras_premium_enabled',),

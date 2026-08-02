@@ -466,9 +466,18 @@ def receptor_anidado_a_campos_serializer(receptor: dict[str, Any] | None) -> dic
     muni = (receptor.get("municipio") or receptor.get("receptor_municipio") or "").strip()
     if muni:
         out["receptor_municipio"] = muni[:2]
+    distrito = (receptor.get("distrito") or receptor.get("receptor_distrito") or "").strip()
+    if distrito:
+        out["receptor_distrito"] = distrito[:2]
+    nombre_comercial = (receptor.get("nombre_comercial") or "").strip()
+    if nombre_comercial:
+        out["nombre_comercial_receptor"] = nombre_comercial
     cod_act = (receptor.get("codigo_actividad_economica") or receptor.get("cod_actividad") or "").strip()
     if cod_act:
         out["cod_actividad_receptor"] = cod_act
+    desc_act = (receptor.get("desc_actividad") or receptor.get("desc_actividad_receptor") or "").strip()
+    if desc_act:
+        out["desc_actividad_receptor"] = desc_act
     return out
 
 

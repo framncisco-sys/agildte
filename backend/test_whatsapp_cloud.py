@@ -1,7 +1,7 @@
 """
-Prueba aislada de WhatsApp Cloud API (Meta) — SIN Django ni variables .env.
+Prueba aislada de WhatsApp Cloud API (Meta) — SIN Django.
 
-Simula credenciales dinámicas por empresa (token y phone_id desde BD).
+Usa el número único centralizado AgilDTE (token + phone_id del servidor).
 
 Ejecutar (reemplaza TOKEN, PHONE_ID y TARGET abajo):
 
@@ -109,8 +109,8 @@ def testWhatsAppConnection(
     Envía la plantilla de prueba hello_world de Meta.
 
     Args:
-        token: Access token permanente de la app (como whatsapp_access_token en BD).
-        phoneId: Phone Number ID (como whatsapp_phone_number_id en BD).
+        token: Access token permanente de la app AgilDTE (WHATSAPP_ACCESS_TOKEN).
+        phoneId: Phone Number ID central (WHATSAPP_PHONE_NUMBER_ID).
         targetNumber: Celular destino (8 dígitos SV o 503XXXXXXXX).
 
     Returns:

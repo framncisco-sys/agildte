@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Save, Loader2, Search, Upload, FileKey, MessageCircle, Monitor } from 'lucide-react'
 import { ModalBuscadorActividad } from '../../facturacion/components/ModalBuscadorActividad'
+import { UbicacionMHFields } from '../../../components/UbicacionMHFields'
+import { distritoDefault } from '../../../data/distritos-cat008'
 
 const AMBIENTES = [
   { value: '01', label: 'Pruebas (AgilDTE)' },
@@ -24,6 +26,9 @@ const EMPTY = {
   nrc: '',
   nit: '',
   direccion: '',
+  departamento: '06',
+  municipio: '23',
+  distrito: '14',
   telefono: '',
   correo: '',
   cod_establecimiento: 'M001',
@@ -62,7 +67,15 @@ export function EmpresaForm({ initial = EMPTY, onSubmit, saving = false, submitL
   const [modalActividadAbierto, setModalActividadAbierto] = useState(false)
 
   useEffect(() => {
-    setForm({ ...EMPTY, ...initial })
+    const depto = initial?.departamento ?? '06'
+    const muni = initial?.municipio ?? '23'
+    setForm({
+      ...EMPTY,
+      ...initial,
+      departamento: depto,
+      municipio: muni,
+      distrito: initial?.distrito ?? distritoDefault(depto, muni) ?? '14',
+    })
     setCertificadoFile(null)
   }, [initial?.id])
 
@@ -146,13 +159,22 @@ export function EmpresaForm({ initial = EMPTY, onSubmit, saving = false, submitL
             {field('cod_punto_venta', 'Código punto de venta')}
           </div>
           <div className="mt-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1">Dirección</label>
-            <textarea
-              name="direccion"
-              value={form.direccion ?? ''}
-              onChange={handleChange}
-              rows={2}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            <h4 className="text-sm font-semibold text-slate-800 mb-2">Ubicación fiscal (MH V2)</h4>
+            <UbicacionMHFields
+              departamento={form.departamento}
+              municipio={form.municipio}
+              distrito={form.distrito}
+              complemento={form.direccion}
+              onChange={(patch) => {
+                setForm((f) => ({
+                  ...f,
+                  ...(patch.departamento != null ? { departamento: patch.departamento } : {}),
+                  ...(patch.municipio != null ? { municipio: patch.municipio } : {}),
+                  ...(patch.distrito != null ? { distrito: patch.distrito } : {}),
+                  ...(patch.complemento != null ? { direccion: patch.complemento } : {}),
+                }))
+              }}
+              required
             />
           </div>
           <div className="mt-4">
@@ -300,9 +322,9 @@ export function EmpresaForm({ initial = EMPTY, onSubmit, saving = false, submitL
         <section className="border-t border-slate-200 pt-6">
           <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
             <MessageCircle className="h-4 w-4 text-emerald-600" />
-            WhatsApp Cloud API (Meta)
+            WhatsApp (módulo premium)
           </h3>
-          <label className="inline-flex items-center gap-2 mb-4 cursor-pointer">
+          <label className="inline-flex items-center gap-2 mb-2 cursor-pointer">
             <input
               type="checkbox"
               name="whatsapp_premium_enabled"
@@ -312,13 +334,9 @@ export function EmpresaForm({ initial = EMPTY, onSubmit, saving = false, submitL
             />
             <span className="text-sm text-slate-700">Activar envío de facturas por WhatsApp</span>
           </label>
-          {form.whatsapp_premium_enabled && (
-            <div className="grid sm:grid-cols-2 gap-4">
-              {field('whatsapp_phone_number_id', 'Phone Number ID (Meta)')}
-              {field('whatsapp_business_account_id', 'WABA ID (opcional)')}
-              {field('whatsapp_access_token', 'Access Token Meta', { type: 'password' })}
-            </div>
-          )}
+          <p className="text-xs text-slate-500">
+            Los mensajes salen del número único centralizado de AgilDTE. No se requieren credenciales Meta por empresa.
+          </p>
         </section>
 
         <div className="flex justify-end border-t border-slate-200 pt-4">

@@ -7,6 +7,7 @@ import { useEmpresaStore } from '../../../stores/useEmpresaStore'
 import { DetalleRechazoModal } from '../components/DetalleRechazoModal'
 import { InvalidacionModal } from '../components/InvalidacionModal'
 import { ReenviarCorreoModal } from '../components/ReenviarCorreoModal'
+import { EnviarWhatsAppModal } from '../components/EnviarWhatsAppModal'
 import { WhatsAppFacturaButton } from '../../../components/WhatsAppFacturaButton'
 
 const ESTADO_BADGES = {
@@ -149,6 +150,7 @@ export function ListaFacturas() {
   const [modalRechazo, setModalRechazo] = useState(null)
   const [modalInvalidacion, setModalInvalidacion] = useState(null)
   const [modalReenviarCorreo, setModalReenviarCorreo] = useState(null)
+  const [modalWhatsApp, setModalWhatsApp] = useState(null)
   const [descargandoLote, setDescargandoLote] = useState(null)
   const [reenviandoId, setReenviandoId] = useState(null)
   const [modalInformeCf, setModalInformeCf] = useState(false)
@@ -255,6 +257,12 @@ export function ListaFacturas() {
     )
   }
 
+  const handleWhatsAppExito = (ventaActualizada) => {
+    setVentas((prev) =>
+      prev.map((v) => (v.id === ventaActualizada.id ? { ...v, ...ventaActualizada } : v))
+    )
+  }
+
   const handleReenviar = async (v) => {
     setReenviandoId(v.id)
     try {
@@ -335,11 +343,7 @@ export function ListaFacturas() {
       </p>
       {whatsappPremiumEmpresa && (
         <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          WhatsApp premium <strong>activo</strong> para esta empresa. Configura token y Phone ID en{' '}
-          <a href="/framncisco/" target="_blank" rel="noreferrer" className="underline font-medium">
-            Django Admin → Empresas
-          </a>
-          .
+          WhatsApp premium <strong>activo</strong> para esta empresa. Los envíos usan el número centralizado de AgilDTE.
         </div>
       )}
 
@@ -502,12 +506,11 @@ export function ListaFacturas() {
                     )}
                     <div className="flex gap-1 pt-2 flex-nowrap items-center">
                       <WhatsAppFacturaButton
-                        ventaId={v.id}
-                        telefono={v.cliente_telefono}
                         premiumEnabled={!!v.whatsapp_premium_enabled || whatsappPremiumEmpresa}
                         facturaProcesada={esProcesado}
                         compact
                         className="border border-gray-200"
+                        onOpen={() => setModalWhatsApp(v)}
                       />
                       {esProcesado && (
                         <>
@@ -589,12 +592,11 @@ export function ListaFacturas() {
                       <td className="px-2 py-2 whitespace-nowrap">
                         <div className="flex items-center justify-center gap-0.5 flex-nowrap">
                           <WhatsAppFacturaButton
-                            ventaId={v.id}
-                            telefono={v.cliente_telefono}
                             premiumEnabled={!!v.whatsapp_premium_enabled || whatsappPremiumEmpresa}
                             facturaProcesada={esProcesado}
                             compact
                             className="border border-gray-200"
+                            onOpen={() => setModalWhatsApp(v)}
                           />
                           {esProcesado && (
                             <>
@@ -676,6 +678,13 @@ export function ListaFacturas() {
         onClose={() => setModalReenviarCorreo(null)}
         venta={modalReenviarCorreo || {}}
         onExito={handleReenvioCorreoExito}
+      />
+
+      <EnviarWhatsAppModal
+        open={!!modalWhatsApp}
+        onClose={() => setModalWhatsApp(null)}
+        venta={modalWhatsApp || {}}
+        onExito={handleWhatsAppExito}
       />
 
       {modalInformeCf && (

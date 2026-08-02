@@ -152,10 +152,8 @@ def actualizar_dte_desde_respuesta_agildte(
     if estado:
         sets.append("estado_dte = %s")
         vals.append(estado[:40])
-    amb = str(remota.get("ambiente_emision") or "").strip()
-    if amb in ("00", "01"):
-        sets.append("ambiente_emision = %s")
-        vals.append(amb)
+    # No actualizar ambiente_emision: muchas BD locales del POS no tienen esa columna
+    # y el fallo silencioso dejaba el ticket sin código/sello.
     if not sets:
         return False
     vals.append(venta_id)

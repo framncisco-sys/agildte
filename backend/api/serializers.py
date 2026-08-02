@@ -80,6 +80,7 @@ class ClienteSerializer(serializers.ModelSerializer):
     direccion_complemento = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
     direccion_departamento = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
     direccion_municipio = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
+    direccion_distrito = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
     actividad_economica = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
 
     class Meta:
@@ -93,6 +94,7 @@ class ClienteSerializer(serializers.ModelSerializer):
         data['direccion_complemento'] = instance.direccion
         data['direccion_departamento'] = instance.departamento
         data['direccion_municipio'] = instance.municipio
+        data['direccion_distrito'] = getattr(instance, 'distrito', None) or instance.municipio
         data['actividad_economica'] = instance.cod_actividad
         # Rellenar documento_identidad desde nit/dui si viene vacío (datos legacy)
         if not data.get('documento_identidad') and instance:
@@ -166,6 +168,11 @@ class ClienteSerializer(serializers.ModelSerializer):
             validated_data['departamento'] = validated_data.pop('direccion_departamento') or validated_data.get('departamento', '06')
         if 'direccion_municipio' in validated_data:
             validated_data['municipio'] = validated_data.pop('direccion_municipio') or validated_data.get('municipio', '14')
+        if 'direccion_distrito' in validated_data:
+            validated_data['distrito'] = validated_data.pop('direccion_distrito') or validated_data.get('distrito') or validated_data.get('municipio', '14')
+        # Si no hay distrito, alinear con municipio
+        if not validated_data.get('distrito') and validated_data.get('municipio'):
+            validated_data['distrito'] = validated_data['municipio']
         if 'actividad_economica' in validated_data:
             validated_data['cod_actividad'] = validated_data.pop('actividad_economica') or validated_data.get('cod_actividad')
 
@@ -560,8 +567,20 @@ class VentaSerializer(serializers.ModelSerializer):
             representation['direccion_receptor'] = (
                 representation.get('direccion_receptor') or getattr(cli, 'direccion', None)
             )
-            representation['departamento_receptor'] = getattr(cli, 'departamento', None)
-            representation['municipio_receptor'] = getattr(cli, 'municipio', None)
+            # Priorizar snapshot de la venta (CCF/NC) sobre ficha cliente
+            representation['departamento_receptor'] = (
+                (instance.departamento_receptor or '').strip()
+                or getattr(cli, 'departamento', None)
+            )
+            representation['municipio_receptor'] = (
+                (instance.municipio_receptor or '').strip()
+                or getattr(cli, 'municipio', None)
+            )
+            representation['distrito_receptor'] = (
+                (instance.distrito_receptor or '').strip()
+                or getattr(cli, 'distrito', None)
+                or getattr(cli, 'municipio', None)
+            )
         else:
             representation['cliente_id'] = None
             representation['cliente_detalle'] = None
@@ -766,7 +785,9 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
     nombre_comercial_receptor = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
     receptor_departamento = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
     receptor_municipio = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
+    receptor_distrito = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
     receptor_telefono = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
+    actualizar_cliente = serializers.BooleanField(required=False, default=True, write_only=True)
     detalles = DetalleVentaSerializer(many=True, required=False, write_only=True)
     
     class Meta:
@@ -789,7 +810,7 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             if (cliente_obj.email_contacto or '') != (correo_limpio or ''):
                 cliente_obj.email_contacto = correo_limpio
                 actualizar = True
-        for campo in ('nit', 'dui', 'nrc', 'tipo_documento', 'documento_identidad', 'nombre_comercial', 'cod_actividad', 'desc_actividad', 'departamento', 'municipio', 'telefono'):
+        for campo in ('nit', 'dui', 'nrc', 'tipo_documento', 'documento_identidad', 'nombre_comercial', 'cod_actividad', 'desc_actividad', 'departamento', 'municipio', 'distrito', 'telefono'):
             val = kwargs.get(campo)
             if val is not None:
                 val_str = str(val).strip() if val else None
@@ -811,12 +832,23 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
         detalles_data = validated_data.pop('detalles', [])
         cliente_input = validated_data.pop('cliente', None)
         cliente_id = validated_data.pop('cliente_id', None)
+        actualizar_cliente = validated_data.pop('actualizar_cliente', True)
+        if actualizar_cliente is None:
+            actualizar_cliente = True
         tipo_dte = validated_data.pop('tipo_dte', None)
         tipo_venta_in = (validated_data.get('tipo_venta') or '').strip().upper()
         if not tipo_dte:
             tipo_dte = {'CF': '01', 'CCF': '03', 'NC': '05', 'ND': '06', 'FSE': '14'}.get(tipo_venta_in)
         elif str(tipo_dte).strip() in ('1', '3', '5', '6', '14'):
             tipo_dte = str(tipo_dte).strip().zfill(2)
+        tipo_dte = str(tipo_dte or '').strip().zfill(2)
+        if tipo_dte in {'07', '08', '09', '15'}:
+            raise serializers.ValidationError({
+                'tipo_dte': (
+                    f'DTE-{tipo_dte} temporalmente no disponible: su builder está siendo '
+                    'migrado al schema oficial MH v2. No se generará otro tipo de DTE como sustituto.'
+                )
+            })
         from .utils.pos_detalle_sync import es_consumidor_final_dte
         es_cf_dte = es_consumidor_final_dte(tipo_dte, tipo_venta_in)
         documento_relacionado_id = validated_data.pop('documento_relacionado_id', None)
@@ -828,7 +860,18 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
         nombre_comercial_receptor = validated_data.pop('nombre_comercial_receptor', None)
         receptor_departamento = validated_data.pop('receptor_departamento', None)
         receptor_municipio = validated_data.pop('receptor_municipio', None)
+        receptor_distrito = validated_data.pop('receptor_distrito', None)
         receptor_telefono = validated_data.pop('receptor_telefono', None)
+        # Snapshot ubicación MH V2 en la venta (sirve CF sin cliente y CCF)
+        if receptor_departamento:
+            validated_data['departamento_receptor'] = str(receptor_departamento).strip()[:2]
+        if receptor_municipio:
+            validated_data['municipio_receptor'] = str(receptor_municipio).strip()[:2]
+        if receptor_distrito or receptor_municipio:
+            validated_data['distrito_receptor'] = str(
+                receptor_distrito or receptor_municipio or ''
+            ).strip()[:2] or None
+
         tipo_venta = validated_data.get('tipo_venta', 'CCF')
         nombre_receptor = validated_data.get('nombre_receptor') or ''
         cod_act_receptor = validated_data.get('cod_actividad_receptor')
@@ -886,17 +929,20 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
                 nom_com = (nombre_comercial_receptor or '').strip() or None
                 dept = (receptor_departamento or '').strip() or None
                 muni = (receptor_municipio or '').strip() or None
+                dist = (receptor_distrito or '').strip() or muni
                 tel = (receptor_telefono or '').strip() or None
                 if tel:
                     from .utils.mh_documento import normalizar_telefono_mh
                     tel = normalizar_telefono_mh(tel)
-                self._actualizar_cliente_si_cambia(
-                    cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
-                    nit=nit_val, dui=dui_val, tipo_documento=tipo_doc, documento_identidad=doc_dig,
-                    nrc=nrc_norm_form,
-                    nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
-                    desc_actividad=desc_act_receptor, departamento=dept, municipio=muni, telefono=tel
-                )
+                if actualizar_cliente:
+                    self._actualizar_cliente_si_cambia(
+                        cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
+                        nit=nit_val, dui=dui_val, tipo_documento=tipo_doc, documento_identidad=doc_dig,
+                        nrc=nrc_norm_form,
+                        nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
+                        desc_actividad=desc_act_receptor, departamento=dept, municipio=muni,
+                        distrito=dist, telefono=tel
+                    )
             except Cliente.DoesNotExist:
                 raise serializers.ValidationError({'cliente_id': 'Cliente no encontrado.'})
             validated_data['cliente'] = cliente_obj
@@ -962,6 +1008,7 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
                 'desc_actividad': (desc_act_receptor or '').strip() or None,
                 'departamento': (receptor_departamento or '').strip()[:2] or '06',
                 'municipio': (receptor_municipio or '').strip()[:2] or '14',
+                'distrito': (receptor_distrito or receptor_municipio or '').strip()[:2] or '14',
                 'telefono': (receptor_telefono or '').strip() or None,
                 'nombre_comercial': (nombre_comercial_receptor or '').strip() or None,
             }
@@ -976,13 +1023,16 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             nom_com = (nombre_comercial_receptor or '').strip() or None
             dept = (receptor_departamento or '').strip() or None
             muni = (receptor_municipio or '').strip() or None
+            dist = (receptor_distrito or '').strip() or muni
             tel = (receptor_telefono or '').strip() or None
-            self._actualizar_cliente_si_cambia(
-                cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
-                nit=nit_val, dui=dui_val, nrc=cliente_input_limpio, tipo_documento=tipo_doc,
-                documento_identidad=doc_dig, nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
-                desc_actividad=desc_act_receptor, departamento=dept, municipio=muni, telefono=tel
-            )
+            if actualizar_cliente:
+                self._actualizar_cliente_si_cambia(
+                    cliente_obj, nombre_receptor, receptor_direccion, receptor_correo,
+                    nit=nit_val, dui=dui_val, nrc=cliente_input_limpio, tipo_documento=tipo_doc,
+                    documento_identidad=doc_dig, nombre_comercial=nom_com, cod_actividad=cod_act_receptor,
+                    desc_actividad=desc_act_receptor, departamento=dept, municipio=muni,
+                    distrito=dist, telefono=tel
+                )
             validated_data['cliente'] = cliente_obj
             validated_data['nrc_receptor'] = cliente_input_limpio
         else:
@@ -1028,6 +1078,15 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
                 validated_data['direccion_receptor'] = str(receptor_direccion).strip()
             if receptor_correo is not None:
                 validated_data['correo_receptor'] = str(receptor_correo or '').strip()
+            if nombre_comercial_receptor is not None:
+                nom_com_snap = str(nombre_comercial_receptor or '').strip() or None
+                if nom_com_snap:
+                    validated_data['nombre_comercial_receptor'] = nom_com_snap
+        elif nombre_comercial_receptor:
+            # CF/FSE u otros: guardar snapshot si vino en el form
+            nom_com_snap = str(nombre_comercial_receptor).strip() or None
+            if nom_com_snap:
+                validated_data['nombre_comercial_receptor'] = nom_com_snap
         
         # 3. Redondear campos monetarios de la venta antes de crear
         campos_monetarios_venta = ['venta_gravada', 'venta_exenta', 'venta_no_sujeta', 'debito_fiscal']

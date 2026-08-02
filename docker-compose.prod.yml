@@ -47,6 +47,7 @@ services:
     build:
       context: ./frontend-saas
       dockerfile: Dockerfile
+    image: proyecto-frontend:local
     restart: always
     env_file: .env
     expose:

@@ -362,7 +362,10 @@ def cliente_datos(cliente_id: int):
             "codigo_actividad": (cl[11] or "").strip() if len(cl) > 11 else "",
             "nrc": (cl[12] or "").strip() if len(cl) > 12 else "",
             "departamento": (cl[13] or "06").strip() if len(cl) > 13 else "06",
-            "municipio": (cl[14] or "14").strip() if len(cl) > 14 else "14",
+            "municipio": (cl[14] or "23").strip() if len(cl) > 14 else "23",
+            "distrito": (cl[15] or "14").strip() if len(cl) > 15 else "14",
+            "nombre_comercial": (cl[16] or "").strip() if len(cl) > 16 else "",
+            "desc_actividad": (cl[17] or "").strip() if len(cl) > 17 else "",
         })
     finally:
         cur.close()
@@ -504,12 +507,31 @@ def cliente_guardar_json():
     direccion = (data.get("direccion") or "").strip()
     telefono = (data.get("telefono") or "").strip()
     codigo_actividad = (data.get("codigo_actividad_economica") or "").strip()
+    desc_actividad = (data.get("desc_actividad") or data.get("actividad") or "").strip()
+    nombre_comercial = (data.get("nombre_comercial") or "").strip()
     nrc = (data.get("nrc") or "").strip()
     departamento = (data.get("departamento") or "").strip()
     municipio = (data.get("municipio") or "").strip()
+    distrito = (data.get("distrito") or "").strip()
 
     if not nombre_cliente:
         return jsonify({"ok": False, "msg": "El nombre es obligatorio."}), 400
+
+    if es_contribuyente:
+        faltan = []
+        if not nrc:
+            faltan.append("NRC")
+        if not codigo_actividad:
+            faltan.append("actividad económica")
+        if not departamento or not municipio or not distrito:
+            faltan.append("departamento, municipio y distrito")
+        if not direccion:
+            faltan.append("dirección")
+        if faltan:
+            return jsonify({
+                "ok": False,
+                "msg": "Para contribuyente son obligatorios: " + ", ".join(faltan) + ".",
+            }), 400
 
     if nrc:
         ok_nrc_campo, msg_nrc = validar_nrc(nrc)
@@ -566,6 +588,9 @@ def cliente_guardar_json():
                     nrc=nrc,
                     departamento=departamento,
                     municipio=municipio,
+                    distrito=distrito,
+                    nombre_comercial=nombre_comercial,
+                    desc_actividad=desc_actividad,
                 )
             except Exception:
                 conn.rollback()
@@ -587,6 +612,9 @@ def cliente_guardar_json():
                     nrc=nrc,
                     departamento=departamento,
                     municipio=municipio,
+                    distrito=distrito,
+                    nombre_comercial=nombre_comercial,
+                    desc_actividad=desc_actividad,
                 )
         else:
             nuevo_id = clientes_repo.crear_cliente(
@@ -605,6 +633,9 @@ def cliente_guardar_json():
                 nrc=nrc,
                 departamento=departamento,
                 municipio=municipio,
+                distrito=distrito,
+                nombre_comercial=nombre_comercial,
+                desc_actividad=desc_actividad,
             )
         registrar_accion(
             cur,
@@ -1140,11 +1171,27 @@ def guardar_venta():
         if agildte_sync is not None and not agildte_sync.get("ok"):
             current_app.logger.warning("AgilDTE sync venta #%s: %s", venta_id, agildte_sync)
 
+        # Confirmar en BD local código de generación / sello si AgilDTE los devolvió.
         if agildte_sync is not None and agildte_sync.get("dte_persistido"):
             try:
                 conn.commit()
             except Exception:
-                current_app.logger.exception("No se pudo confirmar en BD los datos DTE devueltos por AgilDTE")
+                current_app.logger.exception(
+                    "No se pudo confirmar en BD los datos DTE devueltos por AgilDTE (venta #%s)",
+                    venta_id,
+                )
+        elif agildte_sync is not None:
+            # Aunque no se marcaron campos DTE, hacer commit de cualquier UPDATE parcial
+            # y dejar traza para diagnóstico (ticket sin código = sync incompleto).
+            try:
+                conn.commit()
+            except Exception:
+                pass
+            current_app.logger.warning(
+                "AgilDTE sync venta #%s sin dte_persistido (ok=%s). El ticket puede salir sin código/sello.",
+                venta_id,
+                agildte_sync.get("ok"),
+            )
 
         telefono_whatsapp = None
         if cliente_id:

@@ -13,6 +13,7 @@ TZ_EL_SALVADOR = timezone(timedelta(hours=-6))
 
 from api.models import Venta
 from api.dte_generator import CorrelativoDTE, formatear_decimal, formatear_nrc_emisor, limpiar_nulos
+from api.utils.mh_direccion import armar_direccion_mh
 
 
 def _es_valor_vacio(valor):
@@ -30,10 +31,10 @@ def _complemento_receptor(valor):
 
 
 class BaseDTEBuilder(ABC):
-    """Clase base abstracta para builders de DTE."""
+    """Clase base abstracta para builders de DTE (schemas MH V2+)."""
 
     TIPO_DTE = None  # '01' o '03'
-    VERSION_DTE = None  # 1 o 3
+    VERSION_DTE = None  # 2 (FC/FSE) o 4 (CCF/NC/ND)
 
     def __init__(self, venta: Venta):
         if not isinstance(venta, Venta):
@@ -57,14 +58,12 @@ class BaseDTEBuilder(ABC):
         return cod_estable, cod_punto_venta
 
     def _construir_emisor(self):
-        """Construye la sección emisor con campos V3 (codEstableMH, codEstable, codPuntoVentaMH, codPuntoVenta)."""
+        """Emisor según fe-f-v2 / fe-ccf-v4: direccion con distrito; solo codEstable/codPuntoVenta."""
         if not self.empresa:
             raise ValueError("La venta debe tener una empresa asociada")
 
         cod_actividad = self.empresa.cod_actividad or "62010"
         desc_actividad = self.empresa.desc_actividad or "Desarrollo de software"
-        codigo_departamento = str(self.empresa.departamento or "06").strip().zfill(2)
-        codigo_municipio = str(self.empresa.municipio or "14").strip().zfill(2)
         nit_limpio = (self.empresa.nit or self.empresa.nrc or "").replace('-', '').replace(' ', '')
         cod_estable, cod_punto_venta = self._obtener_codigos_establecimiento()
 
@@ -72,33 +71,31 @@ class BaseDTEBuilder(ABC):
         if not nrc_formateado:
             raise ValueError("Empresa sin NRC válido. El NRC es obligatorio para emitir DTE.")
 
+        telefono = (self.empresa.telefono or '').strip() or '22222222'
+        correo = (self.empresa.correo or '').strip() or 'info@empresa.com'
+
         emisor = {
             "nit": nit_limpio,
             "nrc": nrc_formateado,
             "nombre": self.empresa.nombre,
             "codActividad": cod_actividad,
             "descActividad": desc_actividad,
-            "tipoEstablecimiento": "01",
-            "direccion": {
-                "departamento": codigo_departamento,
-                "municipio": codigo_municipio,
-                # MH rechaza el documento si complemento va vacío.
-                "complemento": (self.empresa.direccion or "").strip() or "San Miguel, San Miguel"
-            },
-            "codEstableMH": cod_estable,
-            "codEstable": cod_estable,
-            "codPuntoVentaMH": cod_punto_venta,
-            "codPuntoVenta": cod_punto_venta,
             "nombreComercial": (
                 (getattr(self.empresa, 'nombre_comercial', None) or "").strip()
                 or (self.empresa.nombre or "Empresa").strip()
                 or "Empresa"
             ),
+            "direccion": armar_direccion_mh(
+                getattr(self.empresa, 'departamento', None),
+                getattr(self.empresa, 'municipio', None),
+                getattr(self.empresa, 'direccion', None),
+                distrito=getattr(self.empresa, 'distrito', None),
+            ),
+            "telefono": telefono,
+            "correo": correo,
+            "codEstable": cod_estable,
+            "codPuntoVenta": cod_punto_venta,
         }
-        if self.empresa.telefono:
-            emisor["telefono"] = self.empresa.telefono
-        if self.empresa.correo:
-            emisor["correo"] = self.empresa.correo
         return emisor
 
     def _generar_identificacion(self, ambiente, fecha_str, hora_actual):
@@ -175,18 +172,15 @@ class BaseDTEBuilder(ABC):
                 return "CERO DOLARES CON 00/100 USD"
 
     def _campos_requeridos_mh(self):
-        """Campos que MH exige presentes (pueden ser null o lista vacía)."""
+        """Campos que MH exige presentes (pueden ser null o lista vacía) — schemas v2/v4."""
         return [
             "identificacion.tipoContingencia", "identificacion.motivoContin",
-            "documentoRelacionado", "otrosDocumentos", "ventaTercero", "extension", "apendice",
-            "extension.nombEntrega", "extension.docuEntrega", "extension.nombRecibe",
-            "extension.docuRecibe", "extension.observaciones", "extension.placaVehiculo",
-            "emisor.codEstableMH", "emisor.codEstable", "emisor.codPuntoVentaMH", "emisor.codPuntoVenta",
+            "documentoRelacionado", "otrosDocumentos", "ventaTercero", "apendice",
+            "emisor.codEstable", "emisor.codPuntoVenta",
             "emisor.nombreComercial",
-            "resumen.numPagoElectronico", "resumen.ivaRete1",
+            "resumen.numPagoElectronico", "resumen.ivaRete", "resumen.observaciones",
             "resumen.pagos.referencia", "resumen.pagos.periodo", "resumen.pagos.plazo",
             "cuerpoDocumento.numeroDocumento", "cuerpoDocumento.codTributo",
-            # tributos:[] debe preservarse (MH exige [] en ítems exentos de CCF/NC/ND)
             "cuerpoDocumento.tributos",
         ]
 
@@ -216,7 +210,7 @@ class BaseDTEBuilder(ABC):
         pass
 
     def generar_json(self, ambiente='00', generar_codigo=True, generar_numero_control=True, usar_fecha_actual=False):
-        """Genera el JSON completo del DTE."""
+        """Genera el JSON completo del DTE (fe-f-v2 / fe-ccf-v4: sin extension)."""
         if generar_codigo and not self.venta.codigo_generacion:
             self.venta.codigo_generacion = str(uuid.uuid4()).upper()
 
@@ -243,7 +237,6 @@ class BaseDTEBuilder(ABC):
             "ventaTercero": None,
             "cuerpoDocumento": cuerpo_documento,
             "resumen": self._construir_resumen(cuerpo_documento),
-            "extension": self._generar_extension(),
             "apendice": None,
         }
         return self._limpiar_diccionario_dte(dte_json)

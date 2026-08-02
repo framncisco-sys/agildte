@@ -23,6 +23,7 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import Cliente, Compra, Venta, Retencion, Empresa, Liquidacion, RetencionRecibida, Producto, DetalleVenta, PerfilUsuario, ActividadEconomica, Correlativo, PlantillaFactura, TareaFacturacion
 from .serializers import ClienteSerializer, CompraSerializer, VentaSerializer, RetencionSerializer, EmpresaSerializer, LiquidacionSerializer, RetencionRecibidaSerializer, ProductoSerializer, VentaConDetallesSerializer, ActividadEconomicaSerializer, PlantillaFacturaSerializer
 from .utils.pdf_generator import generar_pdf_venta
+from .utils.dte_historico import obtener_dte_historico
 from .utils.tenant import get_empresa_ids_allowlist, require_empresa_allowed, require_object_empresa_allowed, get_and_validate_empresa
 from .services import FacturacionService, FacturacionServiceError, AutenticacionMHError, FirmaDTEError, EnvioMHError
 from .services.email_service import enviar_factura_email
@@ -2379,9 +2380,14 @@ def enviar_factura_whatsapp_api(request):
     POST /api/facturas/enviar-whatsapp/
     Body: { "factura_id"|"venta_id": int, "telefono"|"numero": str }
 
-    Requiere whatsapp_premium_enabled en la empresa. Usa credenciales Meta de esa empresa.
+    Requiere whatsapp_premium_enabled en la empresa.
+    Envía con el número único AgilDTE (credenciales de servidor + plantilla oficial).
     """
-    from .services.whatsapp_cloud_service import WhatsAppCloudError, enviar_factura_whatsapp
+    from .services.whatsapp_cloud_service import (
+        MSG_WHATSAPP_NO_HABILITADO,
+        WhatsAppCloudError,
+        enviar_factura_whatsapp,
+    )
 
     if not request.user.is_authenticated:
         return Response({'detail': 'Autenticación requerida'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -2411,7 +2417,7 @@ def enviar_factura_whatsapp_api(request):
     if not empresa or not empresa.whatsapp_premium_enabled:
         return Response(
             {
-                'detail': 'WhatsApp premium no está habilitado para esta empresa.',
+                'detail': MSG_WHATSAPP_NO_HABILITADO,
                 'code': 'whatsapp_premium_disabled',
             },
             status=status.HTTP_403_FORBIDDEN,
@@ -2430,9 +2436,12 @@ def enviar_factura_whatsapp_api(request):
     except WhatsAppCloudError as exc:
         code = exc.status_code or status.HTTP_400_BAD_REQUEST
         if code == 403:
-            return Response({'detail': str(exc), 'code': 'whatsapp_premium_disabled'}, status=403)
+            return Response(
+                {'detail': MSG_WHATSAPP_NO_HABILITADO, 'code': 'whatsapp_premium_disabled'},
+                status=403,
+            )
         return Response({'detail': str(exc)}, status=code if 400 <= code < 600 else status.HTTP_400_BAD_REQUEST)
-    except Exception as exc:
+    except Exception:
         logger.exception('enviar_factura_whatsapp_api venta_id=%s', venta_id)
         return Response(
             {'detail': 'Error interno al enviar WhatsApp.'},
@@ -2795,17 +2804,17 @@ def download_batch_ventas(request):
                             pdf_bytes = pdf_buffer.getvalue() if hasattr(pdf_buffer, 'getvalue') else pdf_buffer.read()
                             zf.writestr(nombre_archivo, pdf_bytes)
                         else:
-                            # Misma lógica que GET /ventas/{id}/generar-dte/ (builders + firma MH si existe)
-                            if not v.empresa:
-                                raise ValueError('La venta debe tener empresa asociada para generar el DTE')
-                            ambiente_empresa = (v.empresa.ambiente or '01').strip()
-                            dte_ambiente_map = {'01': '00', '00': '01'}
-                            ambiente_q = request.GET.get('ambiente')
-                            ambiente_dte = ambiente_q if ambiente_q else dte_ambiente_map.get(ambiente_empresa, '00')
-                            dte_json = generar_dte(v, ambiente=ambiente_dte)
-                            if v.dte_firmado and v.sello_recepcion:
-                                dte_json['firmaElectronica'] = v.dte_firmado
-                                dte_json['selloRecibido'] = v.sello_recepcion
+                            # Un DTE aceptado se descarga desde su JWS histórico:
+                            # nunca se reconstruye con builders/versiones actuales.
+                            dte_json = obtener_dte_historico(v)
+                            if dte_json is None:
+                                if not v.empresa:
+                                    raise ValueError('La venta debe tener empresa asociada para generar el DTE')
+                                ambiente_empresa = (v.empresa.ambiente or '01').strip()
+                                dte_ambiente_map = {'01': '00', '00': '01'}
+                                ambiente_q = request.GET.get('ambiente')
+                                ambiente_dte = ambiente_q if ambiente_q else dte_ambiente_map.get(ambiente_empresa, '00')
+                                dte_json = generar_dte(v, ambiente=ambiente_dte)
                             json_bytes = json.dumps(dte_json, indent=2, ensure_ascii=False).encode('utf-8')
                             zf.writestr(nombre_archivo, json_bytes)
                     except Exception as e:
@@ -2865,12 +2874,52 @@ def generar_pdf_venta_endpoint(request, pk):
         logger.error(f"Error generando PDF para venta {pk}: {str(e)}")
         return JsonResponse({'error': f'Error al generar PDF: {str(e)}'}, status=500)
 
+
+@csrf_exempt
+def descargar_factura_publica(request):
+    """
+    Descarga pública del PDF por código de generación (enlace WhatsApp / correo).
+    GET /api/descargar-factura/?nis={codigoGeneracion}
+    Sin autenticación: el UUID es el secreto compartido.
+    """
+    if request.method not in ('GET', 'HEAD'):
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+    nis = (request.GET.get('nis') or '').strip()
+    if len(nis) < 8:
+        return JsonResponse({'error': 'Código de factura inválido.'}, status=400)
+
+    venta = (
+        Venta.objects.select_related('empresa', 'cliente')
+        .prefetch_related('detalles__producto')
+        .filter(codigo_generacion__iexact=nis)
+        .first()
+    )
+    if not venta:
+        return JsonResponse({'error': 'Factura no encontrada.'}, status=404)
+
+    try:
+        buffer = generar_pdf_venta(venta)
+        pdf_content = buffer.getvalue()
+        filename = f"factura_{venta.numero_control or venta.codigo_generacion or venta.id}.pdf".replace('/', '-')
+        response = HttpResponse(
+            pdf_content if request.method == 'GET' else b'',
+            content_type='application/pdf',
+        )
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        response['Content-Length'] = len(pdf_content)
+        response['Cache-Control'] = 'private, max-age=300'
+        return response
+    except Exception as e:
+        logger.exception('Error PDF público nis=%s: %s', nis, e)
+        return JsonResponse({'error': 'No se pudo generar el PDF.'}, status=500)
+
 @api_view(['GET'])
 def generar_dte_venta(request, pk):
     """
     Descarga el JSON DTE completo.
-    - Si la venta fue aceptada por MH (tiene dte_firmado y sello_recepcion):
-      devuelve el JSON con firmaElectronica y selloRecibido tal como lo aceptó MH.
+    - Si la venta conserva dte_firmado, decodifica el payload original del JWS.
+      Nunca reconstruye un DTE histórico con los builders actuales.
     - Si aún no fue aceptada: devuelve el JSON sin firmar (para diagnóstico).
     Endpoint: GET /api/ventas/{id}/generar-dte/
     """
@@ -2883,18 +2932,15 @@ def generar_dte_venta(request, pk):
         return Response({"error": "La venta debe tener una empresa asociada para generar el DTE"}, status=400)
 
     try:
-        from .utils.builders import generar_dte
-        ambiente_empresa = (venta.empresa.ambiente or '01').strip()
-        DTE_AMBIENTE = {'01': '00', '00': '01'}
-        ambiente_dte = request.query_params.get('ambiente') or DTE_AMBIENTE.get(ambiente_empresa, '00')
-        json_dte = generar_dte(venta, ambiente=ambiente_dte)
-
-        # Si la venta fue aceptada por MH, agregar firmaElectronica y selloRecibido
-        if venta.dte_firmado and venta.sello_recepcion:
-            json_dte['firmaElectronica'] = venta.dte_firmado
-            json_dte['selloRecibido'] = venta.sello_recepcion
-            mensaje = "JSON DTE aceptado por MH (con firma y sello)"
+        json_dte = obtener_dte_historico(venta)
+        if json_dte is not None:
+            mensaje = "JSON DTE histórico original aceptado por MH (con firma y sello)"
         else:
+            from .utils.builders import generar_dte
+            ambiente_empresa = (venta.empresa.ambiente or '01').strip()
+            DTE_AMBIENTE = {'01': '00', '00': '01'}
+            ambiente_dte = request.query_params.get('ambiente') or DTE_AMBIENTE.get(ambiente_empresa, '00')
+            json_dte = generar_dte(venta, ambiente=ambiente_dte)
             mensaje = "JSON DTE sin firmar (venta aún no procesada por MH)"
 
         receptor = json_dte.get('receptor', {})

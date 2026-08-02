@@ -1,10 +1,10 @@
 """
 Builder para DTE-14 (Factura de Sujeto Excluido Electrónica).
-Esquema fe-fse-v1.
+Esquema fe-fse-v2.
 
-Estructura correcta según MH:
-  emisor        = NUESTRA EMPRESA (quien genera el DTE ante MH, autenticado con nuestras credenciales)
-  sujetoExcluido = el PROVEEDOR INFORMAL (quien vendió sin poder emitir DTE propio)
+Estructura correcta según MH V2:
+  emisor   = NUESTRA EMPRESA
+  receptor = el PROVEEDOR INFORMAL (antes sujetoExcluido en v1)
 """
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -13,66 +13,59 @@ TZ_EL_SALVADOR = timezone(timedelta(hours=-6))
 
 from .documento_base import BaseDocumentoDTEBuilder, _val, _numero_a_letras
 from api.dte_generator import CorrelativoDTE, formatear_decimal, limpiar_nulos
+from api.utils.mh_direccion import armar_direccion_mh
 
 
 class DTE14Builder(BaseDocumentoDTEBuilder):
     """
-    Builder para Factura de Sujeto Excluido (DTE-14).
-    - emisor        = empresa (nuestra compañía registrada en MH)
-    - sujetoExcluido = proveedor informal (vendedor sin DTE propio)
+    Builder para Factura de Sujeto Excluido (DTE-14) — fe-fse-v2.
+    - emisor   = empresa
+    - receptor = proveedor informal
     """
 
     TIPO_DTE = '14'
-    VERSION_DTE = 1
+    VERSION_DTE = 2
 
     def _construir_emisor(self):
-        """Emisor = nuestra empresa (autenticada ante MH). NIT del emisor debe coincidir con credenciales."""
+        """Emisor = nuestra empresa (autenticada ante MH)."""
+        from api.utils.mh_documento import normalizar_nrc_mh, normalizar_telefono_mh
+
         nit = (_val(self.empresa, 'nit', None) or _val(self.empresa, 'nrc', None) or "").replace('-', '').replace(' ', '')
-        nrc = _val(self.empresa, 'nrc', None)
+        nrc = normalizar_nrc_mh(_val(self.empresa, 'nrc', None))
         cod_actividad = _val(self.empresa, 'cod_actividad', None) or "62010"
         desc_actividad = _val(self.empresa, 'desc_actividad', None) or "Servicios"
-        dept = str(_val(self.empresa, 'departamento', None) or "06").strip().zfill(2)
-        mun = str(_val(self.empresa, 'municipio', None) or "14").strip().zfill(2)
         cod_est, cod_pv = self._obtener_codigos_establecimiento()
+        correo = (_val(self.empresa, 'correo', None) or "info@empresa.com")[:100]
         return {
             "nit": nit,
             "nrc": nrc,
             "nombre": _val(self.empresa, 'nombre', "Empresa"),
             "codActividad": cod_actividad,
             "descActividad": desc_actividad,
-            "direccion": {
-                "departamento": dept,
-                "municipio": mun,
-                "complemento": (_val(self.empresa, 'direccion', None) or "San Salvador")[:200]
-            },
-            "telefono": _val(self.empresa, 'telefono', None) or "22222222",
-            "codEstableMH": cod_est,
+            "direccion": armar_direccion_mh(
+                _val(self.empresa, 'departamento', None),
+                _val(self.empresa, 'municipio', None),
+                _val(self.empresa, 'direccion', None) or "San Salvador",
+                distrito=_val(self.empresa, 'distrito', None),
+            ),
+            "telefono": normalizar_telefono_mh(_val(self.empresa, 'telefono', None) or "22222222"),
             "codEstable": cod_est,
-            "codPuntoVentaMH": cod_pv,
             "codPuntoVenta": cod_pv,
-            "correo": _val(self.empresa, 'correo', None) or "info@empresa.com",
+            "correo": correo,
         }
 
-    def _construir_sujeto_excluido(self):
-        """sujetoExcluido = proveedor informal (quien vendió sin DTE). Datos vienen del formulario.
-
-        Reglas de formato MH (fe-fse-v1):
-          tipoDocumento "13" (DUI)  → numDocumento debe ser exactamente 9 dígitos
-          tipoDocumento "36" (NIT)  → numDocumento debe ser 14 o 9 dígitos
-          Determinar tipo según longitud del número limpio.
-        """
+    def _construir_receptor(self):
+        """receptor = proveedor informal (fe-fse-v2 renombró sujetoExcluido → receptor)."""
         doc_raw = (_val(self.documento, 'nit_proveedor', None) or "")
-        # Limpiar: solo dígitos
         doc_limpio = ''.join(c for c in str(doc_raw) if c.isdigit())
 
         if len(doc_limpio) == 14:
-            tipo_doc = "36"   # NIT de 14 dígitos
+            tipo_doc = "36"
             num_doc = doc_limpio
         elif len(doc_limpio) == 9:
-            tipo_doc = "13"   # DUI de 9 dígitos
+            tipo_doc = "13"
             num_doc = doc_limpio
         elif len(doc_limpio) == 10:
-            # DUI con dígito verificador adicional — usar los primeros 9
             tipo_doc = "13"
             num_doc = doc_limpio[:9]
         else:
@@ -82,26 +75,30 @@ class DTE14Builder(BaseDocumentoDTEBuilder):
                 f"Dígitos encontrados: {len(doc_limpio)}."
             )
 
+        from api.utils.mh_documento import normalizar_telefono_mh
+
         nombre_prov = _val(self.documento, 'nombre_proveedor', None) or "Proveedor Sujeto Excluido"
-        dept = str(_val(self.documento, 'departamento_proveedor', None) or "06").zfill(2)
-        mun = str(_val(self.documento, 'municipio_proveedor', None) or "14").zfill(2)
+        correo_raw = (_val(self.documento, 'correo_proveedor', None) or '').strip()
+        correo = correo_raw[:100] if correo_raw and '@' in correo_raw else None
+        tel = normalizar_telefono_mh(_val(self.documento, 'telefono_proveedor', None))
         return {
             "tipoDocumento": tipo_doc,
             "numDocumento": num_doc,
             "nombre": nombre_prov,
             "codActividad": None,
             "descActividad": None,
-            "direccion": {
-                "departamento": dept,
-                "municipio": mun,
-                "complemento": (_val(self.documento, 'direccion_proveedor', None) or "San Salvador")[:200]
-            },
-            "telefono": None,
-            "correo": None,
+            "direccion": armar_direccion_mh(
+                _val(self.documento, 'departamento_proveedor', None),
+                _val(self.documento, 'municipio_proveedor', None),
+                _val(self.documento, 'direccion_proveedor', None) or "San Salvador",
+                distrito=_val(self.documento, 'distrito_proveedor', None),
+            ),
+            "telefono": tel,
+            "correo": correo,
         }
 
     def _construir_cuerpo_documento(self):
-        """fe-fse-v1: numItem, tipoItem, cantidad, codigo, uniMedida, descripcion, precioUni, montoDescu, compra."""
+        """fe-fse-v2: numItem, tipoItem, cantidad, codigo, uniMedida, descripcion, precioUni, montoDescu, compra."""
         items = _val(self.documento, 'items', None) or _val(self.documento, 'detalles', None)
         if items is None:
             monto_total = float(formatear_decimal(_val(self.documento, 'monto_total', None) or _val(self.documento, 'monto_gravado', 0)))
@@ -131,25 +128,27 @@ class DTE14Builder(BaseDocumentoDTEBuilder):
         return resultado
 
     def _construir_resumen(self, cuerpo):
-        total_compra = sum(i.get("compra", 0) for i in cuerpo)
-        total_descu = sum(i.get("montoDescu", 0) for i in cuerpo)
-        sub_total = round(total_compra - total_descu, 2)
-        iva_rete = float(formatear_decimal(_val(self.documento, 'iva_retenido', 0)))
+        """fe-fse-v2: compra ya viene neta de montoDescu; descu = descuento global."""
+        total_compra = round(sum(float(i.get("compra", 0) or 0) for i in cuerpo), 2)
+        total_descu_lineas = round(sum(float(i.get("montoDescu", 0) or 0) for i in cuerpo), 2)
+        descu_global = float(formatear_decimal(_val(self.documento, 'descu', 0) or 0))
+        sub_total = round(max(total_compra - descu_global, 0), 2)
         rete_renta = float(formatear_decimal(_val(self.documento, 'rete_renta', 0)))
-        total_pagar = round(sub_total - iva_rete - rete_renta, 2)
+        iva_rete_legacy = float(formatear_decimal(_val(self.documento, 'iva_retenido', 0)))
+        rete_total = round(rete_renta + iva_rete_legacy, 2)
+        total_pagar = round(max(sub_total - rete_total, 0), 2)
         pagos = _val(self.documento, 'pagos', None)
         if not pagos:
             pagos = [{"codigo": "01", "montoPago": total_pagar, "referencia": None, "plazo": None, "periodo": None}]
         return {
-            "totalCompra": round(total_compra, 2),
-            "descu": round(total_descu, 2),
-            "totalDescu": round(total_descu, 2),
+            "totalCompra": total_compra,
+            "descu": round(descu_global, 2),
+            "totalDescu": round(total_descu_lineas + descu_global, 2),
             "subTotal": sub_total,
-            "ivaRete1": round(iva_rete, 2),
-            "reteRenta": round(rete_renta, 2),
+            "reteRenta": rete_total,
             "totalPagar": total_pagar,
             "totalLetras": _numero_a_letras(total_pagar),
-            "condicionOperacion": int(_val(self.documento, 'condicion_operacion', 1)),
+            "condicionOperacion": int(_val(self.documento, 'condicion_operacion', 1) or 1),
             "pagos": pagos,
             "observaciones": _val(self.documento, 'observaciones', None),
         }
@@ -164,25 +163,33 @@ class DTE14Builder(BaseDocumentoDTEBuilder):
             codigo_gen = str(uuid.uuid4()).upper()
         numero_ctrl = _val(self.documento, 'numero_control', None)
         ahora_sv = datetime.now(TZ_EL_SALVADOR)
-        fecha_str = ahora_sv.strftime('%Y-%m-%d')
-        hora = ahora_sv.strftime('%H:%M:%S')
+        fecha_emision = _val(self.documento, 'fecha_emision', None)
+        if hasattr(fecha_emision, 'strftime'):
+            fecha_str = fecha_emision.strftime('%Y-%m-%d')
+        elif isinstance(fecha_emision, str) and len(fecha_emision) >= 10:
+            fecha_str = fecha_emision[:10]
+        else:
+            fecha_str = ahora_sv.strftime('%Y-%m-%d')
+        hora_emision = (_val(self.documento, 'hora_emision', None) or '').strip()
+        if len(hora_emision) >= 8 and hora_emision[2] == ':' and hora_emision[5] == ':':
+            hora = hora_emision[:8]
+        else:
+            hora = ahora_sv.strftime('%H:%M:%S')
 
         cuerpo = self._construir_cuerpo_documento()
         emisor = self._construir_emisor()
-        # Asegurar nrc presente (schema lo requiere aunque sea null)
         if 'nrc' not in emisor:
             emisor['nrc'] = None
 
         dte = {
             "identificacion": self._generar_identificacion(ambiente, codigo_gen, numero_ctrl, fecha_str, hora),
             "emisor": emisor,
-            "sujetoExcluido": self._construir_sujeto_excluido(),
+            "receptor": self._construir_receptor(),
             "cuerpoDocumento": cuerpo,
             "resumen": self._construir_resumen(cuerpo),
             "apendice": self._construir_apendice(),
         }
         ident = dte["identificacion"]
-        # tipoContingencia y motivoContin son requeridos por schema (pueden ser null)
         ident["tipoContingencia"] = None
         ident["motivoContin"] = None
 
@@ -192,15 +199,14 @@ class DTE14Builder(BaseDocumentoDTEBuilder):
                 empresa_id=_val(self.empresa, 'id'), tipo_dte=self.TIPO_DTE, sucursal=cod_est, punto=cod_pv
             )
 
-        # Campos requeridos por fe-fse-v1 que pueden ser null — limpiar_nulos no debe eliminarlos
         campos_requeridos = [
             "identificacion.tipoContingencia",
             "identificacion.motivoContin",
             "emisor.nrc",
-            "sujetoExcluido.codActividad",
-            "sujetoExcluido.descActividad",
-            "sujetoExcluido.telefono",
-            "sujetoExcluido.correo",
+            "receptor.codActividad",
+            "receptor.descActividad",
+            "receptor.telefono",
+            "receptor.correo",
             "resumen.totalDescu",
             "resumen.observaciones",
             "resumen.pagos.referencia",

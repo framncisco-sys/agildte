@@ -81,33 +81,53 @@ def generar_dte(venta: Venta, ambiente: str = '00', tipo_dte_override: str = Non
         raise ValueError(f"Tipo de venta no soportado para generar_dte: {tipo}. Use CF, CCF, NC, ND o FSE.")
 
     if tipo_num == '14':
-        # DTE-14: construir dict de documento con datos del proveedor (nombre_receptor/documento_receptor)
-        # y detalles de la venta para pasarlos al DTE14Builder.
-        detalles_qs = list(venta.detalleventa_set.all()) if hasattr(venta, 'detalleventa_set') else []
+        # DTE-14: proveedor informal = snapshot receptor de la venta + detalles reales.
+        detalles_qs = list(venta.detalles.select_related('producto').all())
         items_dict = []
         for i, d in enumerate(detalles_qs, 1):
             precio = float(getattr(d, 'precio_unitario', 0) or 0)
             cant = float(getattr(d, 'cantidad', 1) or 1)
-            desc = float(getattr(d, 'descuento', 0) or 0)
-            cod = getattr(d, 'codigo_libre', None) or (d.producto.codigo if getattr(d, 'producto', None) else 'ITEM')
-            descripcion = getattr(d, 'descripcion_libre', None) or (d.producto.descripcion if getattr(d, 'producto', None) else 'Compra')
+            desc = float(getattr(d, 'monto_descuento', 0) or 0)
+            producto = getattr(d, 'producto', None)
+            cod = getattr(d, 'codigo_libre', None) or (producto.codigo if producto else 'ITEM')
+            descripcion = (
+                getattr(d, 'descripcion_libre', None)
+                or (producto.descripcion if producto else None)
+                or 'Compra'
+            )
+            tipo_item = int(getattr(producto, 'tipo_item', 1) or 1) if producto else 1
             items_dict.append({
-                'numItem': i, 'tipoItem': 1, 'cantidad': cant,
+                'numItem': i,
+                'tipoItem': tipo_item,
+                'cantidad': cant,
                 'codigo': str(cod or 'ITEM')[:25],
                 'uniMedida': 59,
                 'descripcion': str(descripcion or 'Compra')[:1000],
-                'precioUni': precio, 'montoDescu': desc,
-                'compra': round(precio * cant - desc, 2),
+                'precioUni': precio,
+                'montoDescu': desc,
+                'compra': round(max(precio * cant - desc, 0), 2),
             })
         doc_dict = {
             'codigo_generacion': venta.codigo_generacion,
             'numero_control': venta.numero_control,
             'fecha_emision': venta.fecha_emision,
+            'hora_emision': getattr(venta, 'hora_emision', None),
             'nit_proveedor': (venta.documento_receptor or venta.nrc_receptor or '').replace('-', '').strip(),
             'nombre_proveedor': venta.nombre_receptor or 'Proveedor',
+            'departamento_proveedor': getattr(venta, 'departamento_receptor', None),
+            'municipio_proveedor': getattr(venta, 'municipio_receptor', None),
+            'distrito_proveedor': getattr(venta, 'distrito_receptor', None),
+            'direccion_proveedor': getattr(venta, 'direccion_receptor', None) or 'San Salvador',
+            'telefono_proveedor': None,
+            'correo_proveedor': getattr(venta, 'correo_receptor', None),
             'items': items_dict if items_dict else None,
-            'monto_total': float(venta.venta_gravada or 0),
+            'monto_total': float(
+                (venta.venta_gravada or 0)
+                + (venta.venta_exenta or 0)
+                + (venta.venta_no_sujeta or 0)
+            ),
             'condicion_operacion': int(getattr(venta, 'condicion_operacion', 1) or 1),
+            'observaciones': getattr(venta, 'observaciones', None) if hasattr(venta, 'observaciones') else None,
         }
         builder = get_builder('14', doc_dict, venta.empresa)
         return builder.generar_json(ambiente=ambiente, **kwargs)

@@ -20,11 +20,14 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import RedirectView
 
-from api.views import descargar_lote_ventas_api
+from api.views import descargar_lote_ventas_api, descargar_factura_publica
 
 urlpatterns = [
     path('framncisco/', admin.site.urls),
     path('admin/', RedirectView.as_view(url='/framncisco/', permanent=True)),
+    # Enlace público (WhatsApp) — también disponible bajo /api/descargar-factura/
+    path('descargar-factura/', descargar_factura_publica),
+    path('api/descargar-factura/', descargar_factura_publica),
     # ZIP: registrar antes de include('api.urls') por si el include no carga (despliegues viejos).
     path('api/facturas/descarga-zip/', descargar_lote_ventas_api),
     path('api/descarga-zip/', descargar_lote_ventas_api),

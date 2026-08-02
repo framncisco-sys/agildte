@@ -103,7 +103,15 @@ class Empresa(models.Model):
         default='14',
         help_text="Código de municipio de 2 dígitos (Ej: 14 para San Salvador)"
     )
-    
+
+    # CAT-008 Distrito (schemas MH V2+): obligatorio en direccion junto a municipio
+    distrito = models.CharField(
+        max_length=2,
+        default='14',
+        blank=True,
+        help_text="Código de distrito CAT-008 (2 dígitos). Obligatorio en JSON MH v2/v4.",
+    )
+
     telefono = models.CharField(
         max_length=20,
         blank=True,
@@ -174,26 +182,30 @@ class Empresa(models.Model):
         help_text="Plantilla HTML del cuerpo. Variables: {{cliente}}, {{numero_control}}, {{codigo_generacion}}, {{nombre_empresa}}, {{fecha}}, {{total}}"
     )
 
-    # --- WhatsApp Cloud API (Meta) — función premium por empresa ---
+    # --- WhatsApp Cloud API (Meta) — módulo premium (envío con número central AgilDTE) ---
     whatsapp_premium_enabled = models.BooleanField(
         default=False,
-        help_text="Si está activo, la empresa puede enviar facturas por WhatsApp Cloud API (Meta).",
+        help_text=(
+            "Si está activo, la empresa puede usar el módulo de WhatsApp. "
+            "Los envíos usan el número único AgilDTE (credenciales del servidor)."
+        ),
     )
     dashboard_compras_premium_enabled = models.BooleanField(
         default=False,
         help_text="Si está activo, el dashboard AgilDTE muestra el cuadro «Compras del mes» (IVA débito/crédito).",
     )
+    # Legacy: ya no se usan para el envío (credenciales centralizadas en env). Se conservan por compatibilidad.
     whatsapp_phone_number_id = models.CharField(
         max_length=32,
         blank=True,
         null=True,
-        help_text="ID del número de teléfono en Meta Business (WhatsApp Cloud API).",
+        help_text="Obsoleto: el Phone ID central está en WHATSAPP_PHONE_NUMBER_ID del servidor.",
     )
     whatsapp_access_token = EncryptedCharField(
         max_length=2000,
         blank=True,
         null=True,
-        help_text="Token de acceso permanente de la app Meta (cifrado en BD).",
+        help_text="Obsoleto: el token central está en WHATSAPP_ACCESS_TOKEN del servidor.",
     )
     whatsapp_business_account_id = models.CharField(
         max_length=64,
@@ -324,7 +336,13 @@ class Cliente(models.Model):
         default='14',
         help_text='Código de municipio de 2 dígitos (Ej: 14 para San Salvador)'
     )
-    
+    distrito = models.CharField(
+        max_length=2,
+        default='14',
+        blank=True,
+        help_text='Código de distrito CAT-008 (2 dígitos). Obligatorio en JSON MH v2/v4.',
+    )
+
     giro = models.CharField(max_length=200, blank=True, null=True,
                            help_text="Giro o actividad económica (útil para el Excel)")
     
@@ -492,6 +510,22 @@ class Venta(models.Model):
     tipo_doc_receptor = models.CharField(max_length=10, blank=True, null=True)  # 'NIT' o 'DUI'
     direccion_receptor = models.CharField(max_length=500, blank=True, null=True)
     correo_receptor = models.CharField(max_length=200, blank=True, null=True)
+    nombre_comercial_receptor = models.CharField(
+        max_length=200, blank=True, null=True,
+        help_text='Nombre comercial del receptor (snapshot al emitir)',
+    )
+    departamento_receptor = models.CharField(
+        max_length=2, blank=True, null=True,
+        help_text='CAT-012 departamento del receptor (snapshot MH V2)',
+    )
+    municipio_receptor = models.CharField(
+        max_length=2, blank=True, null=True,
+        help_text='CAT-013 municipio nuevo del receptor (snapshot MH V2)',
+    )
+    distrito_receptor = models.CharField(
+        max_length=2, blank=True, null=True,
+        help_text='CAT-008 distrito del receptor (snapshot MH V2)',
+    )
     cod_actividad_receptor = models.CharField(max_length=20, blank=True, null=True, help_text="Código actividad económica del receptor (para CCF)")
     desc_actividad_receptor = models.CharField(max_length=250, blank=True, null=True, help_text="Descripción actividad económica del receptor (para CCF)")
     

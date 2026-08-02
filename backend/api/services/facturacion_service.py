@@ -15,8 +15,12 @@ from django.conf import settings
 from ..firmador_interno import firmar_dte_interno
 from ..models import Empresa, Venta
 from ..utils.builders import generar_dte
+from ..utils.mh_schema_validator import MhSchemaValidationError, validar_dte_contra_schema
 
 logger = logging.getLogger(__name__)
+
+# Tipos con builders alineados a schemas oficiales locales (validar antes de firmar).
+TIPOS_DTE_SCHEMA_STRICT = frozenset({'01', '03', '05', '06', '14'})
 
 
 def _decode_jws_payload(jws: str) -> Optional[Dict[str, Any]]:
@@ -425,9 +429,14 @@ class FacturacionService:
         if not token:
             raise EnvioMHError("No se pudo obtener el token de autenticación")
         
-        # Estructura de envío: version del envelope según tipo DTE
-        # DTE-01 (Factura CF) -> version 1 | DTE-14 (FSE) -> version 1 | resto -> version 3
-        version_envio = 1 if tipo_dte in ('01', '14') else 3
+        # Estructura de envío: version del envelope = VERSION_DTE del builder correspondiente
+        # Versiones efectivas de identificación y envelope MH.
+        _version_por_tipo = {
+            '01': 2, '14': 2, '15': 2, '07': 2, '08': 2, '09': 2,
+            '03': 4, '05': 4, '06': 4, '04': 4,
+            '11': 3,
+        }
+        version_envio = _version_por_tipo.get(str(tipo_dte), 2)
         # MH exige codigoGeneracion en MAYÚSCULAS
         codigo_upper = (codigo_generacion or "").upper()
         # DTE_AMBIENTE_CODE invierte: empresa='01'(Pruebas)→envelope='00' | empresa='00'(Prod)→'01'
@@ -516,6 +525,10 @@ class FacturacionService:
             error_msg = f"Error de conexión enviando a MH: {str(e)}"
             logger.error("❌ Error Conexión MH: %s", error_msg, exc_info=True)
             raise EnvioMHTransitorioError(error_msg) from e
+        except EnvioMHError:
+            raise
+        except EnvioMHTransitorioError:
+            raise
         except Exception as e:
             error_msg = f"Error inesperado enviando a MH: {str(e)}"
             logger.error("❌ Error inesperado enviando a MH: %s", error_msg, exc_info=True)
@@ -572,6 +585,32 @@ class FacturacionService:
             ambiente_dte = self.DTE_AMBIENTE_CODE.get(self.codigo_ambiente_mh, self.codigo_ambiente_mh)
             json_dte = generar_dte(venta, ambiente=ambiente_dte)
             logger.info(f"   🌐 empresa.ambiente={self.codigo_ambiente_mh} → DTE ambiente={ambiente_dte}")
+
+            tmap = {'CF': '01', 'CCF': '03', 'NC': '05', 'ND': '06', 'FSE': '14'}
+            tipo_dte = tmap.get(venta.tipo_venta, '03')
+            if tipo_dte in TIPOS_DTE_SCHEMA_STRICT:
+                try:
+                    from jsonschema import Draft7Validator  # noqa: F401
+                    schema_disponible = True
+                except ImportError:
+                    schema_disponible = False
+                    logger.warning(
+                        'jsonschema no instalado: se omite validación local del DTE %s',
+                        tipo_dte,
+                    )
+                if schema_disponible:
+                    errores_schema = validar_dte_contra_schema(
+                        json_dte, tipo_dte=tipo_dte, strict=False,
+                    )
+                    if errores_schema:
+                        logger.warning(
+                            'DTE %s venta #%s no cumple schema MH local: %s',
+                            tipo_dte, venta.id, errores_schema[:5],
+                        )
+                        raise MhSchemaValidationError(
+                            f'DTE {tipo_dte} inválido según schema MH: {errores_schema[0]}',
+                            errores=errores_schema,
+                        )
             
             # Obtener código de generación y número de control (MH exige MAYÚSCULAS)
             codigo_generacion = (venta.codigo_generacion or json_dte['identificacion']['codigoGeneracion'] or '').upper()
@@ -593,8 +632,6 @@ class FacturacionService:
             
             # PASO 3: Enviar a MH
             logger.info("3. Enviando a Ministerio de Hacienda...")
-            tmap = {'CF': '01', 'CCF': '03', 'NC': '05', 'ND': '06', 'FSE': '14'}
-            tipo_dte = tmap.get(venta.tipo_venta, '03')
             respuesta_mh = self.enviar_dte(dte_firmado, codigo_generacion, tipo_dte)
             
             # Actualizar resultado con la respuesta de MH
@@ -621,7 +658,6 @@ class FacturacionService:
                 logger.info(f"🎉🎉🎉 ¡ÉXITO TOTAL! FACTURA #{venta.id} ACEPTADA 🎉🎉🎉")
             else:
                 venta.estado_dte = 'RechazadoMH'
-                import json
                 datos = respuesta_mh.get('datos_completos') or {}
                 codigo = datos.get('codigoMsg', datos.get('codigo'))
                 desc = respuesta_mh.get('mensaje', datos.get('descripcionMsg', ''))
@@ -640,6 +676,16 @@ class FacturacionService:
             
             return resultado
             
+        except MhSchemaValidationError as e:
+            error_msg = f"JSON DTE inválido (schema MH): {str(e)}"
+            logger.error(error_msg)
+            resultado["errores"].extend(e.errores or [error_msg])
+            resultado["mensaje"] = error_msg
+            venta.estado_dte = 'Borrador'
+            venta.observaciones_mh = json.dumps({'schema_mh': e.errores[:20]}, ensure_ascii=False)[:4000]
+            venta.save(update_fields=['estado_dte', 'observaciones_mh'])
+            raise FacturacionServiceError(error_msg) from e
+
         except AutenticacionMHError as e:
             error_msg = f"Error de autenticación: {str(e)}"
             logger.error(error_msg)
@@ -805,6 +851,25 @@ class FacturacionService:
         if len(nombre_recep) < 5:
             nombre_recep = 'Consumidor Final'
 
+        # invalidacion-schema: documento.telefono y documento.correo son required
+        # (pueden ser null en schema, pero MH pruebas exige las claves; CF sin datos → fallback).
+        from api.utils.mh_documento import normalizar_telefono_mh
+        cliente = venta.cliente
+        tel_recep_raw = (
+            getattr(venta, 'telefono_receptor', None)
+            or (getattr(cliente, 'telefono', None) if cliente else None)
+            or tel_emp
+        )
+        tel_recep = normalizar_telefono_mh(tel_recep_raw, default=tel_emp or '22222222')
+        correo_recep = (
+            str(getattr(venta, 'correo_receptor', None) or '').strip()
+            or (str(getattr(cliente, 'email_contacto', None) or getattr(cliente, 'correo', None) or '').strip() if cliente else '')
+            or correo_emp
+        )
+        if not correo_recep or '@' not in correo_recep:
+            correo_recep = correo_emp or 'consumidorfinal@correo.sv'
+        correo_recep = correo_recep[:100]
+
         # tipoAnulacion: 1=?, 2=Rescisión (codigoGeneracionR null), 3=Nulidad
         tipo_anulacion = 2 if tipo_inv_str == 'Rescisión' else (3 if tipo_inv_str == 'Nulidad' else 2)
         if tipo_anulacion == 2:
@@ -861,6 +926,8 @@ class FacturacionService:
                 "tipoDocumento": tipo_doc_recep,
                 "numDocumento": num_doc_recep,
                 "nombre": nombre_recep[:200],
+                "telefono": tel_recep,
+                "correo": correo_recep,
             },
             "motivo": {
                 "tipoAnulacion": tipo_anulacion,
