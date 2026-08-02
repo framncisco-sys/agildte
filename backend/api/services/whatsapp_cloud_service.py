@@ -102,7 +102,7 @@ def _template_config() -> tuple[str, str, int]:
     language = (
         getattr(settings, 'WHATSAPP_TEMPLATE_LANGUAGE', None) or DEFAULT_TEMPLATE_LANGUAGE
     ).strip()
-    # hello_world (prueba Meta) no lleva parámetros; agildte_factura usa 2 (nombre + enlace).
+    # hello_world: 0 params. agildte_factura: 2 (nombre+enlace) o 3 (nombre+empresa+enlace).
     raw_params = getattr(settings, 'WHATSAPP_TEMPLATE_BODY_PARAMS', None)
     if raw_params is None or str(raw_params).strip() == '':
         body_params = 0 if name.lower() == 'hello_world' else 2
@@ -189,18 +189,22 @@ def enviar_plantilla_factura_agildte(
     telefono: str,
     nombre_cliente: str,
     codigo_generacion: str,
+    nombre_empresa: str = '',
 ) -> dict[str, Any]:
     """
     Dispara la plantilla oficial de AgilDTE con el número centralizado.
 
     Solo recibe datos de destino:
       - telefono: celular del cliente
-      - nombre_cliente: nombre para {{1}} de la plantilla
-      - codigo_generacion: nis / enlace de descarga ({{2}})
+      - nombre_cliente: nombre para {{1}}
+      - nombre_empresa: razón social emisora ({{2}} si body_params>=3)
+      - codigo_generacion: nis / enlace de descarga
 
-    Plantilla Meta esperada (body):
+    Plantilla Meta esperada (body, 3 params):
       {{1}} = nombre del cliente
-      {{2}} = URL de descarga de la factura
+      {{2}} = nombre de la empresa
+      {{3}} = URL de descarga
+    Con 2 params: {{1}}=nombre, {{2}}=enlace.
     """
     phone_number_id, access_token = _credenciales_agildte()
     to = normalizar_telefono_meta(telefono)
@@ -208,6 +212,7 @@ def enviar_plantilla_factura_agildte(
         raise WhatsAppCloudError('Número de teléfono inválido para WhatsApp.', status_code=400)
 
     nombre = (nombre_cliente or 'cliente').strip() or 'cliente'
+    empresa = (nombre_empresa or '').strip() or 'la empresa'
     nis = (codigo_generacion or '').strip()
     if not nis:
         raise WhatsAppCloudError('Falta el código de generación / enlace de descarga.', status_code=400)
@@ -219,7 +224,18 @@ def enviar_plantilla_factura_agildte(
         'name': template_name,
         'language': {'code': language_code},
     }
-    if body_params >= 2:
+    if body_params >= 3:
+        template_body['components'] = [
+            {
+                'type': 'body',
+                'parameters': [
+                    {'type': 'text', 'text': nombre[:1024]},
+                    {'type': 'text', 'text': empresa[:1024]},
+                    {'type': 'text', 'text': enlace[:1024]},
+                ],
+            },
+        ]
+    elif body_params >= 2:
         template_body['components'] = [
             {
                 'type': 'body',
@@ -266,7 +282,7 @@ def enviar_factura_whatsapp(
     nombre_cliente: str | None = None,
 ) -> dict[str, Any]:
     """
-    Wrapper sobre venta: extrae nombre y código de generación y envía la plantilla AgilDTE.
+    Wrapper sobre venta: extrae nombre, empresa y código de generación y envía la plantilla.
     No valida el flag premium (eso lo hacen las vistas / post_factura).
     """
     if venta.empresa_id is None and getattr(venta, 'empresa', None) is None:
@@ -279,8 +295,17 @@ def enviar_factura_whatsapp(
         else:
             nombre = venta.nombre_receptor or 'cliente'
 
+    empresa_obj = getattr(venta, 'empresa', None)
+    nombre_empresa = ''
+    if empresa_obj is not None:
+        nombre_empresa = (
+            (getattr(empresa_obj, 'nombre_comercial', None) or '').strip()
+            or (getattr(empresa_obj, 'nombre', None) or '').strip()
+        )
+
     return enviar_plantilla_factura_agildte(
         telefono=telefono,
         nombre_cliente=nombre or 'cliente',
         codigo_generacion=resolver_nis_factura(venta),
+        nombre_empresa=nombre_empresa,
     )

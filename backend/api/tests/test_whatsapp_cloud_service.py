@@ -69,6 +69,7 @@ class CredencialesCentralizadasTests(SimpleTestCase):
         WHATSAPP_ACCESS_TOKEN='token-test',
         WHATSAPP_TEMPLATE_NAME='agildte_factura',
         WHATSAPP_TEMPLATE_LANGUAGE='es',
+        WHATSAPP_TEMPLATE_BODY_PARAMS=2,
         WHATSAPP_GRAPH_API_VERSION='v18.0',
         WHATSAPP_FACTURA_DOWNLOAD_URL='https://example.com/d?nis={nis}',
     )
@@ -91,3 +92,27 @@ class CredencialesCentralizadasTests(SimpleTestCase):
         params = payload['template']['components'][0]['parameters']
         self.assertEqual(params[0]['text'], 'Ana')
         self.assertIn('CG-99', params[1]['text'])
+
+    @override_settings(
+        WHATSAPP_PHONE_NUMBER_ID='123456',
+        WHATSAPP_ACCESS_TOKEN='token-test',
+        WHATSAPP_TEMPLATE_NAME='agildte_factura',
+        WHATSAPP_TEMPLATE_LANGUAGE='en',
+        WHATSAPP_TEMPLATE_BODY_PARAMS=3,
+        WHATSAPP_GRAPH_API_VERSION='v18.0',
+        WHATSAPP_FACTURA_DOWNLOAD_URL='https://example.com/d?nis={nis}',
+    )
+    @patch('api.services.whatsapp_cloud_service._post_meta_messages')
+    def test_plantilla_tres_params_nombre_empresa_enlace(self, mock_post):
+        mock_post.return_value = {'messages': [{'id': 'wamid.T3'}]}
+        out = enviar_plantilla_factura_agildte(
+            telefono='71234567',
+            nombre_cliente='Juan Perez',
+            codigo_generacion='CG-100',
+            nombre_empresa='Termim SA',
+        )
+        self.assertTrue(out['ok'])
+        params = mock_post.call_args[0][2]['template']['components'][0]['parameters']
+        self.assertEqual(params[0]['text'], 'Juan Perez')
+        self.assertEqual(params[1]['text'], 'Termim SA')
+        self.assertIn('CG-100', params[2]['text'])
