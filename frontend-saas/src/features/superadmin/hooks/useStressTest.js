@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import {
   STRESS_CONFIG,
+  STRESS_CLIENTE_FSE,
   emitirDocumentoStressConSello,
   invalidarDocumentoStress,
   emitirNotaCreditoStress,
@@ -15,16 +16,25 @@ const INITIAL_PROGRESS = {
   phase: null,
   fe: { current: 0, total: STRESS_CONFIG.FE_COUNT },
   ccf: { current: 0, total: STRESS_CONFIG.CCF_COUNT },
+  fse: { current: 0, total: STRESS_CONFIG.FSE_COUNT },
   invalidaciones: { current: 0, total: STRESS_CONFIG.INVALIDATION_COUNT },
   notasCredito: { current: 0, total: STRESS_CONFIG.NC_COUNT },
   contingencia: { cycle: 0, totalCycles: STRESS_CONFIG.CONTINGENCY_CYCLES, step: 'idle' },
 }
 
-const PHASE_ORDER = ['emision_fe', 'emision_ccf', 'invalidacion', 'notas_credito', 'contingencia']
+const PHASE_ORDER = [
+  'emision_fe',
+  'emision_ccf',
+  'emision_fse',
+  'invalidacion',
+  'notas_credito',
+  'contingencia',
+]
 
 const PAUSE_AFTER_PHASE = {
   emision_fe: '100 CF completadas — inicio 100 CCF',
-  emision_ccf: 'Fin emisión CCF — inicio invalidaciones',
+  emision_ccf: 'Fin emisión CCF — inicio 100 FSE (Sujeto Excluido)',
+  emision_fse: 'Fin emisión FSE — inicio invalidaciones',
   invalidacion: 'Fin invalidaciones — inicio notas de crédito',
   notas_credito: 'Fin notas de crédito — inicio contingencia',
 }
@@ -49,6 +59,7 @@ export function useStressTest() {
   const sessionRef = useRef({
     feVentas: [],
     ccfVentas: [],
+    fseVentas: [],
     clienteStress: null,
     completedPhases: [],
   })
@@ -75,6 +86,7 @@ export function useStressTest() {
     sessionRef.current = {
       feVentas: [],
       ccfVentas: [],
+      fseVentas: [],
       clienteStress: null,
       completedPhases: [],
     }
@@ -161,13 +173,47 @@ export function useStressTest() {
       session.completedPhases.push('emision_ccf')
     }
 
+    const runEmisionFse = async () => {
+      if (!Array.isArray(session.fseVentas)) session.fseVentas = []
+      setProgress((p) => ({ ...p, phase: 'emision_fse' }))
+      appendLog(
+        'info',
+        'Fase 3: 100 FSE (Sujeto Excluido) — emitir → selloRecibido → siguiente'
+      )
+      appendLog(
+        'ok',
+        `Proveedor FSE: ${STRESS_CLIENTE_FSE.nombre} · DUI ${STRESS_CLIENTE_FSE.dui}`
+      )
+
+      for (let i = 0; i < STRESS_CONFIG.FSE_COUNT; i++) {
+        checkAbort()
+        const data = await emitirDocumentoStressConSello(
+          empresaId,
+          {
+            tipoDte: '14',
+            cliente: STRESS_CLIENTE_FSE,
+            index: i,
+          },
+          { ...dteOptions, selloLabel: `FSE ${String(i + 1).padStart(4, '0')}` }
+        )
+        session.fseVentas.push(data)
+        setProgress((p) => ({ ...p, fse: { ...p.fse, current: i + 1 } }))
+        appendLog(
+          'ok',
+          `[OK] FSE ${String(i + 1).padStart(4, '0')} — sello: ${data.sello_recepcion || '—'}`
+        )
+      }
+
+      session.completedPhases.push('emision_fse')
+    }
+
     const runInvalidacion = async () => {
       if (!session.feVentas.length) {
         throw new Error('Ejecute primero la Fase 1 (100 CF) antes de invalidar.')
       }
 
       setProgress((p) => ({ ...p, phase: 'invalidacion' }))
-      appendLog('info', 'Fase 3: Invalidación — 10 CF con sello MH')
+      appendLog('info', 'Fase 4: Invalidación — 10 CF con sello MH')
 
       const feConSello = session.feVentas.filter(ventaProcesadaPorMH)
       if (feConSello.length < STRESS_CONFIG.INVALIDATION_COUNT) {
@@ -197,7 +243,7 @@ export function useStressTest() {
       }
 
       setProgress((p) => ({ ...p, phase: 'notas_credito' }))
-      appendLog('info', 'Fase 4: 50 NC — emitir → selloRecibido → siguiente')
+      appendLog('info', 'Fase 5: 50 NC — emitir → selloRecibido → siguiente')
 
       const ccfConSello = session.ccfVentas.filter(ventaProcesadaPorMH)
       if (ccfConSello.length < STRESS_CONFIG.NC_COUNT) {
@@ -223,7 +269,7 @@ export function useStressTest() {
 
     const runContingencia = async () => {
       setProgress((p) => ({ ...p, phase: 'contingencia' }))
-      appendLog('info', 'Fase 5: Ciclo de contingencia — 5 iteraciones')
+      appendLog('info', 'Fase 6: Ciclo de contingencia — 5 iteraciones')
 
       for (let ciclo = 0; ciclo < STRESS_CONFIG.CONTINGENCY_CYCLES; ciclo++) {
         checkAbort()
@@ -284,6 +330,7 @@ export function useStressTest() {
     const phaseRunners = {
       emision_fe: runEmisionFe,
       emision_ccf: runEmisionCcf,
+      emision_fse: runEmisionFse,
       invalidacion: runInvalidacion,
       notas_credito: runNotasCredito,
       contingencia: runContingencia,
@@ -315,6 +362,7 @@ export function useStressTest() {
     sessionRef.current = {
       feVentas: [],
       ccfVentas: [],
+      fseVentas: [],
       clienteStress: null,
       completedPhases: [],
     }
@@ -352,6 +400,13 @@ export function useStressTest() {
         ...p,
         phase: 'emision_ccf',
         ccf: { ...p.ccf, current: 0 },
+      }))
+    } else if (phaseKey === 'emision_fse') {
+      sessionRef.current.fseVentas = []
+      setProgress((p) => ({
+        ...p,
+        phase: 'emision_fse',
+        fse: { ...p.fse, current: 0 },
       }))
     } else {
       setProgress((p) => ({ ...p, phase: phaseKey }))

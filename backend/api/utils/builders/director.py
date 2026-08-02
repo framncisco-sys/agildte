@@ -118,7 +118,7 @@ def generar_dte(venta: Venta, ambiente: str = '00', tipo_dte_override: str = Non
             'municipio_proveedor': getattr(venta, 'municipio_receptor', None),
             'distrito_proveedor': getattr(venta, 'distrito_receptor', None),
             'direccion_proveedor': getattr(venta, 'direccion_receptor', None) or 'San Salvador',
-            'telefono_proveedor': None,
+            'telefono_proveedor': getattr(venta, 'telefono_receptor', None),
             'correo_proveedor': getattr(venta, 'correo_receptor', None),
             'items': items_dict if items_dict else None,
             'monto_total': float(

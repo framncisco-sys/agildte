@@ -6,11 +6,12 @@ import { getClientes } from './clientes'
 export const STRESS_CONFIG = {
   FE_COUNT: 100,
   CCF_COUNT: 100,
+  FSE_COUNT: 100,
   INVALIDATION_COUNT: 10,
   NC_COUNT: 50,
   CONTINGENCY_CYCLES: 5,
   CF_PER_CONTINGENCY: 2,
-  /** Pausa entre bloques (FE → CCF → invalidaciones → NC). */
+  /** Pausa entre bloques (FE → CCF → FSE → invalidaciones → NC). */
   PHASE_PAUSE_MS: 10000,
   /** Consulta estado MH (solo si quedó en cola async). */
   SELLO_POLL_INTERVAL_MS: 2000,
@@ -41,6 +42,24 @@ export const STRESS_CLIENTE_CCF = {
   direccion: '8 calle poniente poligono B10c casa 31, ciudada pacifica san miguel',
   cod_actividad: '70200',
   desc_actividad: 'Actividades de consultoría en gestión empresarial',
+}
+
+/**
+ * Proveedor fijo para FSE (DTE-14). MH exige DUI (9) o NIT (14); sin NRC.
+ */
+export const STRESS_CLIENTE_FSE = {
+  nombre: 'Proveedor Stress Sujeto Excluido',
+  tipo_documento: 'DUI',
+  documento_identidad: '048261573',
+  dui: '048261573',
+  nit: null,
+  nrc: null,
+  correo: 'proveedor.stress@agildte.com',
+  telefono: '78966925',
+  departamento: '06',
+  municipio: '23',
+  distrito: '14',
+  direccion: 'Colonia Escalón, San Salvador',
 }
 
 function companyHeaders(empresaId) {
@@ -127,7 +146,7 @@ function matchClienteStress(c) {
   )
 }
 
-function buildDetalle(cantidad, precioUnitario, esCF, docNumero) {
+function buildDetalle(cantidad, precioUnitario, esCF, docNumero, { esFSE = false } = {}) {
   const cant = Number(cantidad) || 1
   const prec = Number(precioUnitario) || 0
   const totalLinea = cant * prec
@@ -136,6 +155,11 @@ function buildDetalle(cantidad, precioUnitario, esCF, docNumero) {
     gravadaItem = Math.round((totalLinea / 1.13) * 100) / 100
     ivaItem = Math.round((totalLinea - gravadaItem) * 100) / 100
     precioUnit = cant > 0 ? Math.round((gravadaItem / cant) * 100) / 100 : 0
+  } else if (esFSE) {
+    // FSE: monto de compra sin IVA
+    gravadaItem = Math.round(totalLinea * 100) / 100
+    ivaItem = 0
+    precioUnit = prec
   } else {
     gravadaItem = totalLinea
     ivaItem = Math.round(gravadaItem * 0.13 * 100) / 100
@@ -143,7 +167,9 @@ function buildDetalle(cantidad, precioUnitario, esCF, docNumero) {
   }
   return {
     cantidad: cant,
-    descripcion_libre: `Ítem stress test #${docNumero}`,
+    descripcion_libre: esFSE
+      ? `Compra sujeto excluido stress #${docNumero}`
+      : `Ítem stress test #${docNumero}`,
     codigo_libre: null,
     precio_unitario: precioUnit,
     monto_descuento: 0,
@@ -159,26 +185,36 @@ function buildDetalle(cantidad, precioUnitario, esCF, docNumero) {
 function buildVentaBody({ empresaId, tipoDte, cliente, index, documentoRelacionadoId }) {
   const hoy = fechaHoyElSalvadorISO()
   const esCF = tipoDte === '01'
-  const tipoVenta = esCF ? 'CF' : tipoDte === '03' ? 'CCF' : 'NC'
-  const det = buildDetalle(1, esCF ? 11.3 : 10, esCF, index + 1)
+  const esFSE = tipoDte === '14'
+  const tipoVenta = esCF ? 'CF' : tipoDte === '03' ? 'CCF' : tipoDte === '14' ? 'FSE' : 'NC'
+  const det = buildDetalle(1, esCF ? 11.3 : 10, esCF, index + 1, { esFSE })
   const ventaGravada = det.venta_gravada
   const debitoFiscal = det.iva_item
 
-  const nrcDigits = esCF ? '' : soloDigitos(cliente?.nrc)
-  const docDigits = esCF ? '' : soloDigitos(cliente?.documento_identidad || cliente?.nit || cliente?.dui)
+  const nrcDigits = esCF || esFSE ? '' : soloDigitos(cliente?.nrc)
+  const docDigits = esCF
+    ? ''
+    : soloDigitos(
+        cliente?.documento_identidad ||
+          cliente?.dui ||
+          cliente?.nit ||
+          (esFSE ? STRESS_CLIENTE_FSE.documento_identidad : '')
+      )
 
   const body = {
     empresa: empresaId,
     tipo_dte: tipoDte,
-    cliente_id: cliente?.id ?? null,
-    cliente: esCF ? null : nrcDigits,
+    cliente_id: esFSE ? null : (cliente?.id ?? null),
+    cliente: esCF || esFSE ? null : nrcDigits,
     nombre_receptor: esCF
       ? `Consumidor Final Stress ${index + 1}`
-      : (cliente?.nombre || `Cliente Stress ${index + 1}`),
+      : esFSE
+        ? (cliente?.nombre || STRESS_CLIENTE_FSE.nombre)
+        : (cliente?.nombre || `Cliente Stress ${index + 1}`),
     fecha_emision: hoy,
     periodo_aplicado: hoy.slice(0, 7),
     tipo_venta: tipoVenta,
-    nrc_receptor: esCF ? null : nrcDigits,
+    nrc_receptor: esCF || esFSE ? null : nrcDigits,
     venta_gravada: ventaGravada,
     venta_exenta: 0,
     venta_no_sujeta: 0,
@@ -197,6 +233,27 @@ function buildVentaBody({ empresaId, tipoDte, cliente, index, documentoRelaciona
     // CharField del backend: allow_blank sí, allow_null no — nunca enviar null en CF.
     body.receptor_correo = ''
     body.receptor_direccion = ''
+  } else if (esFSE) {
+    const fse = { ...STRESS_CLIENTE_FSE, ...(cliente || {}) }
+    const doc = soloDigitos(fse.documento_identidad || fse.dui || docDigits)
+    body.documento_receptor = doc
+    body.tipo_doc_receptor = doc.length === 14 ? 'NIT' : 'DUI'
+    body.nit_receptor = null
+    body.nombre_comercial_receptor = null
+    body.receptor_direccion = fse.direccion || STRESS_CLIENTE_FSE.direccion
+    body.receptor_correo = resolveReceptorCorreo(fse) || STRESS_CLIENTE_FSE.correo
+    body.receptor_departamento = String(fse.departamento || STRESS_CLIENTE_FSE.departamento)
+      .padStart(2, '0')
+      .slice(-2)
+    body.receptor_municipio = String(fse.municipio || STRESS_CLIENTE_FSE.municipio)
+      .padStart(2, '0')
+      .slice(-2)
+    body.receptor_distrito = String(fse.distrito || STRESS_CLIENTE_FSE.distrito || fse.municipio || '14')
+      .padStart(2, '0')
+      .slice(-2)
+    body.receptor_telefono = fse.telefono || STRESS_CLIENTE_FSE.telefono
+    body.cod_actividad_receptor = null
+    body.desc_actividad_receptor = null
   } else {
     body.nombre_comercial_receptor = cliente?.nombre_comercial || cliente?.nombre || null
     body.nit_receptor = cliente?.nit || docDigits || null

@@ -3,9 +3,10 @@ import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
 const PHASES = [
   { key: 'emision_fe', label: 'Fase 1 — Consumidor Final (CF)' },
   { key: 'emision_ccf', label: 'Fase 2 — Crédito Fiscal (CCF)' },
-  { key: 'invalidacion', label: 'Fase 3 — Invalidación' },
-  { key: 'notas_credito', label: 'Fase 4 — Notas de crédito' },
-  { key: 'contingencia', label: 'Fase 5 — Contingencia' },
+  { key: 'emision_fse', label: 'Fase 3 — Sujeto Excluido (FSE)' },
+  { key: 'invalidacion', label: 'Fase 4 — Invalidación' },
+  { key: 'notas_credito', label: 'Fase 5 — Notas de crédito' },
+  { key: 'contingencia', label: 'Fase 6 — Contingencia' },
 ]
 
 function PhaseBar({ label, current, total, active, done }) {
@@ -27,9 +28,10 @@ function PhaseBar({ label, current, total, active, done }) {
 }
 
 export function StressTestStepper({ progress, status }) {
-  const { phase, fe, ccf, invalidaciones, notasCredito, contingencia } = progress
+  const { phase, fe, ccf, fse, invalidaciones, notasCredito, contingencia } = progress
   const phaseOrder = PHASES.map((p) => p.key)
   const currentIdx = phaseOrder.indexOf(phase)
+  const fseSafe = fse || { current: 0, total: 100 }
 
   return (
     <div className="space-y-4">
@@ -70,6 +72,13 @@ export function StressTestStepper({ progress, status }) {
           total={ccf.total}
           active={phase === 'emision_ccf'}
           done={ccf.current >= ccf.total}
+        />
+        <PhaseBar
+          label="Facturas Sujeto Excluido (FSE)"
+          current={fseSafe.current}
+          total={fseSafe.total}
+          active={phase === 'emision_fse'}
+          done={fseSafe.current >= fseSafe.total}
         />
         <PhaseBar
           label="Invalidaciones"

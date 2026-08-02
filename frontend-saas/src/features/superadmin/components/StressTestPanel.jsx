@@ -23,9 +23,10 @@ export function StressTestPanel({ empresaId, empresa }) {
   const phaseButtons = [
     { key: 'emision_fe', label: 'Solo Fase 1', hint: '100 CF (Consumidor Final)' },
     { key: 'emision_ccf', label: 'Solo Fase 2', hint: '100 CCF (Crédito Fiscal)' },
-    { key: 'invalidacion', label: 'Solo Fase 3', hint: 'Requiere Fase 1 previa', needsFe: true },
-    { key: 'notas_credito', label: 'Solo Fase 4', hint: 'Requiere Fase 2 previa', needsCcf: true },
-    { key: 'contingencia', label: 'Solo Fase 5', hint: '5 ciclos contingencia' },
+    { key: 'emision_fse', label: 'Solo Fase 3', hint: '100 FSE (Sujeto Excluido)' },
+    { key: 'invalidacion', label: 'Solo Fase 4', hint: 'Requiere Fase 1 previa', needsFe: true },
+    { key: 'notas_credito', label: 'Solo Fase 5', hint: 'Requiere Fase 2 previa', needsCcf: true },
+    { key: 'contingencia', label: 'Solo Fase 6', hint: '5 ciclos contingencia' },
   ]
 
   const handleStartClick = () => {
