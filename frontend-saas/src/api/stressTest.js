@@ -182,14 +182,52 @@ function buildDetalle(cantidad, precioUnitario, esCF, docNumero, { esFSE = false
   }
 }
 
-function buildVentaBody({ empresaId, tipoDte, cliente, index, documentoRelacionadoId }) {
+function buildVentaBody({
+  empresaId,
+  tipoDte,
+  cliente,
+  index,
+  documentoRelacionadoId,
+  montosDesdeRelacionado = null,
+}) {
   const hoy = fechaHoyElSalvadorISO()
   const esCF = tipoDte === '01'
   const esFSE = tipoDte === '14'
+  const esNC = tipoDte === '05'
   const tipoVenta = esCF ? 'CF' : tipoDte === '03' ? 'CCF' : tipoDte === '14' ? 'FSE' : 'NC'
-  const det = buildDetalle(1, esCF ? 11.3 : 10, esCF, index + 1, { esFSE })
-  const ventaGravada = det.venta_gravada
-  const debitoFiscal = det.iva_item
+
+  let det
+  let ventaGravada
+  let debitoFiscal
+  if (esNC && montosDesdeRelacionado) {
+    const grav = Math.round(Number(montosDesdeRelacionado.venta_gravada || 0) * 100) / 100
+    const iva =
+      montosDesdeRelacionado.debito_fiscal != null
+        ? Math.round(Number(montosDesdeRelacionado.debito_fiscal) * 100) / 100
+        : Math.round(grav * 0.13 * 100) / 100
+    const precio =
+      montosDesdeRelacionado.precio_unitario != null
+        ? Math.round(Number(montosDesdeRelacionado.precio_unitario) * 100) / 100
+        : grav
+    det = {
+      cantidad: 1,
+      descripcion_libre: `Nota crédito stress #${index + 1}`,
+      codigo_libre: null,
+      precio_unitario: precio,
+      monto_descuento: 0,
+      venta_no_sujeta: 0,
+      venta_exenta: 0,
+      venta_gravada: grav,
+      iva_item: iva,
+      numero_item: 1,
+    }
+    ventaGravada = grav
+    debitoFiscal = iva
+  } else {
+    det = buildDetalle(1, esCF ? 11.3 : 10, esCF, index + 1, { esFSE })
+    ventaGravada = det.venta_gravada
+    debitoFiscal = det.iva_item
+  }
 
   const nrcDigits = esCF || esFSE ? '' : soloDigitos(cliente?.nrc)
   const docDigits = esCF
@@ -620,10 +658,21 @@ export async function esperarSellosVentas(empresaId, ventas, options = {}) {
 /**
  * Emite y firma un DTE (FE, CCF o NC) para la empresa indicada.
  */
-export async function emitirDocumentoStress(empresaId, { tipoDte, cliente, index, documentoRelacionadoId }, options = {}) {
+export async function emitirDocumentoStress(
+  empresaId,
+  { tipoDte, cliente, index, documentoRelacionadoId, montosDesdeRelacionado },
+  options = {}
+) {
   const { onWait } = options
   return withThrottleRetry(async () => {
-    const body = buildVentaBody({ empresaId, tipoDte, cliente, index, documentoRelacionadoId })
+    const body = buildVentaBody({
+      empresaId,
+      tipoDte,
+      cliente,
+      index,
+      documentoRelacionadoId,
+      montosDesdeRelacionado,
+    })
     const { data } = await apiClient.post('/ventas/crear-con-detalles/', body, {
       headers: {
         ...companyHeaders(empresaId),
@@ -664,10 +713,29 @@ export async function invalidarDocumentoStress(empresaId, venta, empresa, option
 
 /**
  * Emite NC referenciando un CCF emitido.
+ * Usa los montos del CCF relacionado para que MH no rechace
+ * «totalGravada MAYOR AL DOCUMENTO RELACIONADO».
  */
 export async function emitirNotaCreditoStress(empresaId, ccfVenta, cliente, index, options = {}) {
   const codigo = ccfVenta.codigo_generacion
   if (!codigo) throw new Error('CCF sin código de generación para NC')
+
+  let ccf = ccfVenta
+  if (ccf?.id && (ccf.venta_gravada == null || Number(ccf.venta_gravada) <= 0)) {
+    ccf = (await getVentaStress(empresaId, ccf.id).catch(() => null)) || ccfVenta
+  }
+
+  const gravadaRaw = Number(ccf.venta_gravada)
+  const gravada =
+    Number.isFinite(gravadaRaw) && gravadaRaw > 0
+      ? Math.round(gravadaRaw * 100) / 100
+      : 10
+  const ivaRaw = Number(ccf.debito_fiscal)
+  const iva =
+    Number.isFinite(ivaRaw) && ivaRaw >= 0
+      ? Math.round(ivaRaw * 100) / 100
+      : Math.round(gravada * 0.13 * 100) / 100
+
   return emitirDocumentoStressConSello(
     empresaId,
     {
@@ -675,10 +743,15 @@ export async function emitirNotaCreditoStress(empresaId, ccfVenta, cliente, inde
       cliente,
       index,
       documentoRelacionadoId: codigo,
+      montosDesdeRelacionado: {
+        venta_gravada: gravada,
+        debito_fiscal: iva,
+        precio_unitario: gravada,
+      },
     },
     {
       ...options,
-      selloLabel: `NC #${String(index + 1).padStart(2, '0')} sobre CCF ${ccfVenta.numero_control || ccfVenta.id}`,
+      selloLabel: `NC #${String(index + 1).padStart(2, '0')} sobre CCF ${ccf.numero_control || ccf.id} ($${gravada})`,
     }
   )
 }
