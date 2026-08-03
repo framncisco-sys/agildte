@@ -158,6 +158,9 @@ WHATSAPP_TEMPLATE_LANGUAGE = (os.environ.get('WHATSAPP_TEMPLATE_LANGUAGE') or 'e
 # Cantidad de variables del body (0 = hello_world; 2 = nombre+enlace). Vacío = auto.
 _raw_wa_body = (os.environ.get('WHATSAPP_TEMPLATE_BODY_PARAMS') or '').strip()
 WHATSAPP_TEMPLATE_BODY_PARAMS = int(_raw_wa_body) if _raw_wa_body.isdigit() else None
+# Plantilla con header DOCUMENT (PDF). 1/true = subir PDF al enviar.
+_raw_wa_header_doc = (os.environ.get('WHATSAPP_TEMPLATE_HEADER_DOCUMENT') or '1').strip().lower()
+WHATSAPP_TEMPLATE_HEADER_DOCUMENT = _raw_wa_header_doc in ('1', 'true', 'yes', 'on')
 
 # --- Facturación Asíncrona ---
 # Si False (default), la transmisión al Firmador y MH es síncrona: el usuario espera y ve RECIBIDO/RECHAZADO al instante.

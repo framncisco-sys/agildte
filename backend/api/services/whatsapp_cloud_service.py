@@ -3,6 +3,10 @@ Envío de facturas por WhatsApp Cloud API (Meta) — número único centralizado
 
 Credenciales maestras: WHATSAPP_PHONE_NUMBER_ID + WHATSAPP_ACCESS_TOKEN (env/settings).
 El flag premium por empresa se valida en la capa de vistas/API, no aquí.
+
+Plantilla tipica (agildte_factura / en):
+  - Header: DOCUMENT (PDF de la factura)
+  - Body: {{1}} nombre, {{2}} empresa, {{3}} enlace
 """
 from __future__ import annotations
 
@@ -114,6 +118,16 @@ def _template_config() -> tuple[str, str, int]:
     return name, language, body_params
 
 
+def _header_document_enabled() -> bool:
+    """Si la plantilla Meta tiene header DOCUMENT, hay que subir el PDF."""
+    raw = getattr(settings, 'WHATSAPP_TEMPLATE_HEADER_DOCUMENT', None)
+    if raw is None:
+        return True
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
 def _mensaje_error_meta_amigable(data: Any, raw_message: str) -> str:
     """Traduce códigos frecuentes de Meta a instrucciones operativas."""
     msg = (raw_message or '').strip()
@@ -138,6 +152,11 @@ def _mensaje_error_meta_amigable(data: Any, raw_message: str) -> str:
             f'La plantilla «{name}» (idioma {lang}) no existe o no está aprobada en Meta. '
             'Créala en Meta Business → WhatsApp → Plantillas de mensaje, o usa '
             'WHATSAPP_TEMPLATE_NAME=hello_world y WHATSAPP_TEMPLATE_LANGUAGE=en_US para pruebas.'
+        )
+    if '132012' in texto or ('header' in msg.lower() and 'media' in msg.lower()):
+        return (
+            'La plantilla exige un PDF en el encabezado y no se pudo adjuntar. '
+            'Verifique generación del PDF y permisos del token de WhatsApp.'
         )
     return msg[:500] if msg else 'Error al enviar mensaje por WhatsApp (Meta).'
 
@@ -184,27 +203,150 @@ def _message_id_desde_meta(meta_resp: dict[str, Any]) -> str | None:
     return None
 
 
+def _sanitizar_nombre_pdf(nombre: str) -> str:
+    base = re.sub(r'[^\w.\-]+', '_', (nombre or 'factura').strip())[:80] or 'factura'
+    if not base.lower().endswith('.pdf'):
+        base = f'{base}.pdf'
+    return base
+
+
+def subir_pdf_media_whatsapp(
+    *,
+    phone_number_id: str,
+    access_token: str,
+    pdf_bytes: bytes,
+    filename: str = 'factura.pdf',
+) -> str:
+    """
+    Sube un PDF a Graph API y devuelve el media id para el header DOCUMENT de la plantilla.
+    POST /{phone-number-id}/media
+    """
+    if not pdf_bytes:
+        raise WhatsAppCloudError('PDF vacío: no se puede subir a WhatsApp.', status_code=400)
+
+    url = f'https://graph.facebook.com/{_graph_version()}/{phone_number_id}/media'
+    headers = {'Authorization': f'Bearer {access_token}'}
+    files = {
+        'file': (_sanitizar_nombre_pdf(filename), pdf_bytes, 'application/pdf'),
+    }
+    data = {
+        'messaging_product': 'whatsapp',
+        'type': 'application/pdf',
+    }
+    try:
+        r = requests.post(url, headers=headers, data=data, files=files, timeout=60)
+    except requests.RequestException as exc:
+        logger.warning('WhatsApp media upload error: %s', exc)
+        raise WhatsAppCloudError(f'Error de red al subir PDF a Meta: {exc}', status_code=502) from exc
+
+    try:
+        body = r.json() if r.content else {}
+    except ValueError:
+        body = {'raw': (r.text or '')[:500]}
+
+    if r.status_code >= 400:
+        err_msg = _extraer_error_meta(body) or f'Error Meta al subir PDF HTTP {r.status_code}'
+        raise WhatsAppCloudError(err_msg, status_code=r.status_code, body=body)
+
+    media_id = body.get('id') if isinstance(body, dict) else None
+    if not media_id:
+        raise WhatsAppCloudError(
+            'Meta no devolvió media id al subir el PDF.',
+            status_code=502,
+            body=body,
+        )
+    return str(media_id)
+
+
+def _generar_pdf_bytes_venta(venta: Venta) -> bytes:
+    from api.utils.pdf_generator import generar_pdf_venta
+
+    buffer = generar_pdf_venta(venta)
+    if hasattr(buffer, 'getvalue'):
+        return buffer.getvalue()
+    if hasattr(buffer, 'read'):
+        return buffer.read()
+    if isinstance(buffer, (bytes, bytearray)):
+        return bytes(buffer)
+    raise WhatsAppCloudError('No se pudo generar el PDF de la factura.', status_code=500)
+
+
+def _componentes_plantilla(
+    *,
+    body_params: int,
+    nombre: str,
+    empresa: str,
+    enlace: str,
+    media_id: str | None = None,
+    pdf_filename: str = 'factura.pdf',
+) -> list[dict[str, Any]]:
+    components: list[dict[str, Any]] = []
+    if media_id:
+        components.append(
+            {
+                'type': 'header',
+                'parameters': [
+                    {
+                        'type': 'document',
+                        'document': {
+                            'id': media_id,
+                            'filename': _sanitizar_nombre_pdf(pdf_filename),
+                        },
+                    }
+                ],
+            }
+        )
+
+    if body_params >= 3:
+        components.append(
+            {
+                'type': 'body',
+                'parameters': [
+                    {'type': 'text', 'text': nombre[:1024]},
+                    {'type': 'text', 'text': empresa[:1024]},
+                    {'type': 'text', 'text': enlace[:1024]},
+                ],
+            }
+        )
+    elif body_params >= 2:
+        components.append(
+            {
+                'type': 'body',
+                'parameters': [
+                    {'type': 'text', 'text': nombre[:1024]},
+                    {'type': 'text', 'text': enlace[:1024]},
+                ],
+            }
+        )
+    elif body_params == 1:
+        components.append(
+            {
+                'type': 'body',
+                'parameters': [
+                    {'type': 'text', 'text': nombre[:1024]},
+                ],
+            }
+        )
+    return components
+
+
 def enviar_plantilla_factura_agildte(
     *,
     telefono: str,
     nombre_cliente: str,
     codigo_generacion: str,
     nombre_empresa: str = '',
+    pdf_bytes: bytes | None = None,
+    pdf_filename: str = 'factura.pdf',
 ) -> dict[str, Any]:
     """
     Dispara la plantilla oficial de AgilDTE con el número centralizado.
 
-    Solo recibe datos de destino:
       - telefono: celular del cliente
-      - nombre_cliente: nombre para {{1}}
-      - nombre_empresa: razón social emisora ({{2}} si body_params>=3)
-      - codigo_generacion: nis / enlace de descarga
-
-    Plantilla Meta esperada (body, 3 params):
-      {{1}} = nombre del cliente
-      {{2}} = nombre de la empresa
-      {{3}} = URL de descarga
-    Con 2 params: {{1}}=nombre, {{2}}=enlace.
+      - nombre_cliente: {{1}}
+      - nombre_empresa: {{2}} si body_params>=3
+      - codigo_generacion: nis / enlace ({{3}} o {{2}})
+      - pdf_bytes: PDF para header DOCUMENT (requerido si la plantilla lo exige)
     """
     phone_number_id, access_token = _credenciales_agildte()
     to = normalizar_telefono_meta(telefono)
@@ -220,40 +362,35 @@ def enviar_plantilla_factura_agildte(
     enlace = construir_enlace_descarga(nis)
     template_name, language_code, body_params = _template_config()
 
+    media_id = None
+    if _header_document_enabled():
+        if not pdf_bytes:
+            raise WhatsAppCloudError(
+                'La plantilla WhatsApp exige PDF en el encabezado y no se generó el archivo.',
+                status_code=500,
+            )
+        media_id = subir_pdf_media_whatsapp(
+            phone_number_id=phone_number_id,
+            access_token=access_token,
+            pdf_bytes=pdf_bytes,
+            filename=pdf_filename or f'factura_{nis[:20]}.pdf',
+        )
+
+    components = _componentes_plantilla(
+        body_params=body_params,
+        nombre=nombre,
+        empresa=empresa,
+        enlace=enlace,
+        media_id=media_id,
+        pdf_filename=pdf_filename or f'factura_{nis[:20]}.pdf',
+    )
+
     template_body: dict[str, Any] = {
         'name': template_name,
         'language': {'code': language_code},
     }
-    if body_params >= 3:
-        template_body['components'] = [
-            {
-                'type': 'body',
-                'parameters': [
-                    {'type': 'text', 'text': nombre[:1024]},
-                    {'type': 'text', 'text': empresa[:1024]},
-                    {'type': 'text', 'text': enlace[:1024]},
-                ],
-            },
-        ]
-    elif body_params >= 2:
-        template_body['components'] = [
-            {
-                'type': 'body',
-                'parameters': [
-                    {'type': 'text', 'text': nombre[:1024]},
-                    {'type': 'text', 'text': enlace[:1024]},
-                ],
-            },
-        ]
-    elif body_params == 1:
-        template_body['components'] = [
-            {
-                'type': 'body',
-                'parameters': [
-                    {'type': 'text', 'text': nombre[:1024]},
-                ],
-            },
-        ]
+    if components:
+        template_body['components'] = components
 
     payload: dict[str, Any] = {
         'messaging_product': 'whatsapp',
@@ -271,6 +408,7 @@ def enviar_plantilla_factura_agildte(
         'mensaje': 'Mensaje enviado por WhatsApp.',
         'whatsapp_message_id': message_id,
         'enlace': enlace,
+        'media_id': media_id,
         'meta': meta_resp,
     }
 
@@ -282,7 +420,7 @@ def enviar_factura_whatsapp(
     nombre_cliente: str | None = None,
 ) -> dict[str, Any]:
     """
-    Wrapper sobre venta: extrae nombre, empresa y código de generación y envía la plantilla.
+    Wrapper sobre venta: genera PDF, extrae nombre/empresa/código y envía la plantilla.
     No valida el flag premium (eso lo hacen las vistas / post_factura).
     """
     if venta.empresa_id is None and getattr(venta, 'empresa', None) is None:
@@ -303,9 +441,26 @@ def enviar_factura_whatsapp(
             or (getattr(empresa_obj, 'nombre', None) or '').strip()
         )
 
+    nis = resolver_nis_factura(venta)
+    pdf_bytes = None
+    pdf_filename = f'factura_{nis[:32]}.pdf'
+    if _header_document_enabled():
+        try:
+            pdf_bytes = _generar_pdf_bytes_venta(venta)
+        except WhatsAppCloudError:
+            raise
+        except Exception as exc:
+            logger.exception('Error generando PDF para WhatsApp venta_id=%s', getattr(venta, 'pk', None))
+            raise WhatsAppCloudError(
+                f'No se pudo generar el PDF de la factura para WhatsApp: {exc}',
+                status_code=500,
+            ) from exc
+
     return enviar_plantilla_factura_agildte(
         telefono=telefono,
         nombre_cliente=nombre or 'cliente',
-        codigo_generacion=resolver_nis_factura(venta),
+        codigo_generacion=nis,
         nombre_empresa=nombre_empresa,
+        pdf_bytes=pdf_bytes,
+        pdf_filename=pdf_filename,
     )

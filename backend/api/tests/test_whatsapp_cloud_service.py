@@ -54,7 +54,11 @@ class CredencialesCentralizadasTests(SimpleTestCase):
     def test_mensaje_modulo_no_habilitado(self):
         self.assertEqual(MSG_WHATSAPP_NO_HABILITADO, 'Módulo de WhatsApp no habilitado')
 
-    @override_settings(WHATSAPP_PHONE_NUMBER_ID='', WHATSAPP_ACCESS_TOKEN='')
+    @override_settings(
+        WHATSAPP_PHONE_NUMBER_ID='',
+        WHATSAPP_ACCESS_TOKEN='',
+        WHATSAPP_TEMPLATE_HEADER_DOCUMENT=False,
+    )
     def test_sin_credenciales_servidor(self):
         with self.assertRaises(WhatsAppCloudError) as ctx:
             enviar_plantilla_factura_agildte(
@@ -70,6 +74,7 @@ class CredencialesCentralizadasTests(SimpleTestCase):
         WHATSAPP_TEMPLATE_NAME='agildte_factura',
         WHATSAPP_TEMPLATE_LANGUAGE='es',
         WHATSAPP_TEMPLATE_BODY_PARAMS=2,
+        WHATSAPP_TEMPLATE_HEADER_DOCUMENT=False,
         WHATSAPP_GRAPH_API_VERSION='v18.0',
         WHATSAPP_FACTURA_DOWNLOAD_URL='https://example.com/d?nis={nis}',
     )
@@ -99,6 +104,7 @@ class CredencialesCentralizadasTests(SimpleTestCase):
         WHATSAPP_TEMPLATE_NAME='agildte_factura',
         WHATSAPP_TEMPLATE_LANGUAGE='en',
         WHATSAPP_TEMPLATE_BODY_PARAMS=3,
+        WHATSAPP_TEMPLATE_HEADER_DOCUMENT=False,
         WHATSAPP_GRAPH_API_VERSION='v18.0',
         WHATSAPP_FACTURA_DOWNLOAD_URL='https://example.com/d?nis={nis}',
     )
@@ -116,3 +122,50 @@ class CredencialesCentralizadasTests(SimpleTestCase):
         self.assertEqual(params[0]['text'], 'Juan Perez')
         self.assertEqual(params[1]['text'], 'Termim SA')
         self.assertIn('CG-100', params[2]['text'])
+
+    @override_settings(
+        WHATSAPP_PHONE_NUMBER_ID='123456',
+        WHATSAPP_ACCESS_TOKEN='token-test',
+        WHATSAPP_TEMPLATE_NAME='agildte_factura',
+        WHATSAPP_TEMPLATE_LANGUAGE='en',
+        WHATSAPP_TEMPLATE_BODY_PARAMS=3,
+        WHATSAPP_TEMPLATE_HEADER_DOCUMENT=True,
+        WHATSAPP_GRAPH_API_VERSION='v18.0',
+        WHATSAPP_FACTURA_DOWNLOAD_URL='https://example.com/d?nis={nis}',
+    )
+    @patch('api.services.whatsapp_cloud_service._post_meta_messages')
+    @patch('api.services.whatsapp_cloud_service.subir_pdf_media_whatsapp')
+    def test_plantilla_con_header_pdf(self, mock_upload, mock_post):
+        mock_upload.return_value = 'media-999'
+        mock_post.return_value = {'messages': [{'id': 'wamid.PDF'}]}
+        out = enviar_plantilla_factura_agildte(
+            telefono='71234567',
+            nombre_cliente='Ana',
+            codigo_generacion='CG-PDF',
+            nombre_empresa='AgilDTE Demo',
+            pdf_bytes=b'%PDF-1.4 fake',
+            pdf_filename='factura_CG-PDF.pdf',
+        )
+        self.assertTrue(out['ok'])
+        self.assertEqual(out['media_id'], 'media-999')
+        mock_upload.assert_called_once()
+        components = mock_post.call_args[0][2]['template']['components']
+        self.assertEqual(components[0]['type'], 'header')
+        self.assertEqual(components[0]['parameters'][0]['type'], 'document')
+        self.assertEqual(components[0]['parameters'][0]['document']['id'], 'media-999')
+        self.assertEqual(components[1]['type'], 'body')
+        self.assertEqual(len(components[1]['parameters']), 3)
+
+    @override_settings(
+        WHATSAPP_PHONE_NUMBER_ID='123456',
+        WHATSAPP_ACCESS_TOKEN='token-test',
+        WHATSAPP_TEMPLATE_HEADER_DOCUMENT=True,
+    )
+    def test_header_pdf_sin_bytes_falla(self):
+        with self.assertRaises(WhatsAppCloudError) as ctx:
+            enviar_plantilla_factura_agildte(
+                telefono='71234567',
+                nombre_cliente='Ana',
+                codigo_generacion='CG-1',
+            )
+        self.assertIn('PDF', str(ctx.exception))
