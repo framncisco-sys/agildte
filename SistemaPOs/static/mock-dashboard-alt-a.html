@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Alt A · Denso ejecutivo</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root { --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --blue:#1d4ed8; --green:#059669; --bg:#f3f4f6; }
+  *{box-sizing:border-box} body{margin:0;font-family:"Source Sans 3",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+  .tag{background:#111;color:#fbbf24;text-align:center;padding:.5rem;font-weight:800;font-size:.85rem;letter-spacing:.04em}
+  .w{max-width:1180px;margin:0 auto;padding:1rem 1.1rem 2.5rem}
+  h1{font-size:1.45rem;margin:0;font-weight:800} .sub{color:var(--muted);font-weight:600;margin:.2rem 0 0;font-size:.95rem}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:.85rem;flex-wrap:wrap}
+  .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:.55rem;margin-bottom:.75rem}
+  @media(max-width:900px){.grid{grid-template-columns:repeat(3,1fr)}}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem}
+  .kpi b{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:800}
+  .kpi strong{font-size:1.28rem;font-weight:800;letter-spacing:-.02em}
+  .kpi span{font-size:.8rem;color:var(--muted);font-weight:600}
+  .main{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:.65rem}
+  @media(max-width:960px){.main{grid-template-columns:1fr}}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:.85rem}
+  .card h2{font-size:.95rem;margin:0 0 .65rem;font-weight:800;display:flex;justify-content:space-between}
+  .bars{display:flex;align-items:flex-end;gap:6px;height:140px}
+  .bars i{flex:1;background:#3b82f6;border-radius:4px 4px 0 0;display:block;min-height:4px}
+  table{width:100%;border-collapse:collapse;font-size:.88rem}
+  th{text-align:left;color:var(--muted);font-size:.7rem;text-transform:uppercase;padding:.35rem 0;border-bottom:1px solid var(--line)}
+  td{padding:.4rem 0;border-bottom:1px solid #f3f4f6;font-weight:600}
+  .row{display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid #f3f4f6;font-size:.9rem;font-weight:600}
+  .fav{margin-top:.5rem;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:.55rem .7rem;display:flex;justify-content:space-between;font-weight:800;color:#047857}
+  .stock{display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;font-size:.86rem;font-weight:600;border-bottom:1px solid #f3f4f6}
+  .badge{background:#fee2e2;color:#b91c1c;padding:.15rem .45rem;border-radius:999px;font-size:.75rem;font-weight:800}
+  .links{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.75rem}
+  .links a{background:#fff;border:1px solid var(--line);padding:.4rem .7rem;border-radius:8px;text-decoration:none;color:var(--ink);font-weight:700;font-size:.85rem}
+  .links a.p{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .note{margin-top:1rem;font-size:.85rem;color:var(--muted);font-weight:600;text-align:center}
+</style>
+</head>
+<body>
+<div class="tag">ALTERNATIVA A — DENSO EJECUTIVO · Todo visible sin pestañas (estilo “centro de mando”)</div>
+<div class="w">
+  <div class="top">
+    <div>
+      <h1>Panel de Control · Jackheline</h1>
+      <p class="sub">14/06/2026 · AgilDTE online · Suscripción vigente</p>
+    </div>
+    <div class="links">
+      <a class="p" href="#">Caja</a>
+      <a href="#">Reportes</a>
+      <a href="#">Inventario</a>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="kpi"><b>Hoy</b><strong>$0.00</strong><span>0 ventas</span></div>
+    <div class="kpi"><b>Mes</b><strong>$47.33</strong><span>8 ventas</span></div>
+    <div class="kpi"><b>Prom. diario</b><strong>$2.63</strong><span>18 días</span></div>
+    <div class="kpi"><b>Proyección</b><strong>$79.00</strong><span>cierre mes</span></div>
+    <div class="kpi"><b>IVA est.</b><strong style="color:#059669">+$3.19</strong><span>a favor</span></div>
+    <div class="kpi"><b>Stock &lt;5</b><strong style="color:#b91c1c">163</strong><span>productos</span></div>
+  </div>
+
+  <div class="main">
+    <div class="card">
+      <h2>Ingresos del mes <span style="color:#6b7280;font-weight:600">barras por día con venta</span></h2>
+      <div class="bars">
+        <i style="height:65%" title="04 jun $18.65"></i>
+        <i style="height:100%" title="08 jun $28.68"></i>
+        <i style="height:8%;background:#d1d5db" title="hoy $0"></i>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:.4rem;font-size:.75rem;font-weight:700;color:#6b7280">
+        <span style="flex:1;text-align:center">04/06</span>
+        <span style="flex:1;text-align:center">08/06</span>
+        <span style="flex:1;text-align:center">Hoy</span>
+      </div>
+      <h2 style="margin-top:1rem">Últimas ventas</h2>
+      <table>
+        <thead><tr><th>ID</th><th>Fecha</th><th>Total</th></tr></thead>
+        <tbody>
+          <tr><td>#10</td><td>08/06</td><td>$0.60</td></tr>
+          <tr><td>#9</td><td>08/06</td><td>$8.46</td></tr>
+          <tr><td>#8</td><td>08/06</td><td>$15.12</td></tr>
+          <tr><td>#5</td><td>04/06</td><td>$10.30</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Fiscal (estimado)</h2>
+      <div class="row"><span>Débito ventas</span><span>$5.44</span></div>
+      <div class="row"><span>Crédito compras</span><span>$8.63</span></div>
+      <div class="row"><span>Retenciones</span><span>$0.00</span></div>
+      <div class="fav"><span>Saldo a favor</span><span>+$3.19</span></div>
+      <h2 style="margin-top:1rem">Top productos mes</h2>
+      <div class="row"><span>1. Tornillo</span><span>42</span></div>
+      <div class="row"><span>2. Cinta</span><span>28</span></div>
+      <div class="row"><span>3. Clavos</span><span>19</span></div>
+    </div>
+    <div class="card">
+      <h2>Operaciones</h2>
+      <div class="stock"><span>Arco segueta PRETUL</span><span class="badge">0</span></div>
+      <div class="stock"><span>Derivador EAGLE</span><span class="badge">1</span></div>
+      <div class="stock"><span>Barra multicontacto</span><span class="badge">1</span></div>
+      <div class="stock"><span>Cincel Imacasa</span><span class="badge">1</span></div>
+      <p style="margin:.75rem 0 0;font-size:.8rem;color:#6b7280;font-weight:600">DTE pendientes: <strong>2</strong> · Efectivo 100% del mes</p>
+      <div class="links" style="margin-top:.6rem"><a class="p" href="#">Lista compras</a><div>
+    </div>
+  </div>
+  <p class="note">A · Mucha información de un vistazo · Sin pestañas · Ideal si quieres “ver todo” como ahora, pero más ordenado</p>
+</div>
+</body>
+</html>

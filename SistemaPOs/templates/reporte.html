@@ -286,6 +286,11 @@
             <a href="{{ url_for('admin.reporte', inicio=primera_fecha_ventas|default(ultima_fecha_ventas), fin=ultima_fecha_ventas) }}">Ver ese período</a>.
         </span>
     </div>
+    {% elif n_ventas > 0 and total_periodo < 5 %}
+    <div class="rv-alert rv-alert--info"><i class="bi bi-info-circle-fill"></i>
+        <span>Período con <strong>{{ n_ventas }} venta{{ 's' if n_ventas != 1 else '' }}</strong> por <strong>$ {{ "{:,.2f}".format(total_periodo) }}</strong>.
+            Son datos reales de prueba; el gráfico muestra ingresos por día (incluye centavos).</span>
+    </div>
     {% elif total_ventas_empresa == 0 %}
     <div class="rv-alert rv-alert--warn"><i class="bi bi-building-exclamation"></i>
         <span>No hay ventas registradas para esta empresa. Si esperaba ver datos, confirme que inició sesión con la empresa correcta (Jackheline).</span>
@@ -519,6 +524,16 @@
     function fmtMoney(n) {
         return '$ ' + Number(n || 0).toLocaleString('es-SV', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
+    function fmtAxisMoney(v, maxVal) {
+        var n = Number(v || 0);
+        if (maxVal < 1) {
+            return '$' + n.toLocaleString('es-SV', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        if (maxVal < 50) {
+            return '$' + n.toLocaleString('es-SV', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        }
+        return '$' + n.toLocaleString('es-SV', { maximumFractionDigits: 0 });
+    }
 
     var labels = {{ (labels_barras or []) | tojson }};
     var valores = {{ (valores_barras or []) | tojson }};
@@ -577,6 +592,7 @@
         }
 
         var barCols = coloresBarras(lbls.length);
+        var maxValEvol = vals.length ? Math.max.apply(null, vals.map(function(x) { return Number(x) || 0; })) : 0;
 
         chartEvol = new Chart(ctxE.getContext('2d'), {
             type: 'bar',
@@ -647,10 +663,10 @@
                             font: { size: 13, weight: '600' },
                             color: '#64748b',
                             padding: 10,
-                            callback: function(v) {
-                                return '$' + Number(v).toLocaleString('es-SV', { maximumFractionDigits: 0 });
-                            }
-                        }
+                            maxTicksLimit: maxValEvol < 1 ? 6 : 8,
+                            callback: function(v) { return fmtAxisMoney(v, maxValEvol); }
+                        },
+                        suggestedMax: maxValEvol > 0 && maxValEvol < 1 ? Math.max(maxValEvol * 1.25, 0.1) : undefined
                     }
                 },
                 animation: { duration: 700, easing: 'easeOutQuart' }

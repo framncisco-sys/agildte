@@ -328,6 +328,13 @@ def _render_dashboard():
         ventas_mes=ventas_mes_val,
         proyeccion_mes=proyeccion_mes,
         ventas_mes_anterior=ventas_mes_anterior,
+        meta_mensual=ventas_mes_anterior,
+        meta_lograda=bool(ventas_mes_anterior > 0 and ventas_mes_val >= ventas_mes_anterior),
+        meta_estimada=bool(
+            ventas_mes_anterior > 0
+            and proyeccion_mes >= ventas_mes_anterior
+            and ventas_mes_val < ventas_mes_anterior
+        ),
         dias_transcurridos=dias_transcurridos,
         dias_en_mes=dias_en_mes,
         mes_corto=mes_corto,

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Propuesta · Panel de Control POS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,500&family=IBM+Plex+Sans:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --blue: #2563eb;
+      --blue-dark: #1d4ed8;
+      --blue-soft: #eff6ff;
+      --green: #16a34a;
+      --green-soft: #dcfce7;
+      --red: #dc2626;
+      --red-soft: #fef2f2;
+      --amber: #d97706;
+      --amber-soft: #fffbeb;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --radius: 14px;
+      --font: "DM Sans", "IBM Plex Sans", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #dbeafe 0%, transparent 55%),
+        radial-gradient(900px 400px at 100% 0%, #e0f2fe 0%, transparent 50%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    .badge-mock {
+      position: sticky; top: 0; z-index: 50;
+      background: #0f172a; color: #e2e8f0;
+      text-align: center; padding: 0.55rem 1rem;
+      font-size: 0.9rem; font-weight: 700;
+    }
+    .badge-mock strong { color: #93c5fd; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 1.25rem 1.25rem 3rem; }
+
+    /* —— HERO —— */
+    .hero {
+      display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end;
+      gap: 1rem; margin-bottom: 1.15rem;
+    }
+    .hero-eyebrow {
+      font-size: 0.82rem; font-weight: 800; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--blue); margin: 0 0 0.25rem;
+    }
+    .hero h1 {
+      font-size: clamp(1.55rem, 3vw, 1.85rem); font-weight: 800;
+      letter-spacing: -0.03em; margin: 0 0 0.35rem; line-height: 1.15;
+    }
+    .hero-sub {
+      margin: 0; font-size: 1.02rem; font-weight: 600; color: var(--muted);
+    }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+    .status {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.45rem 0.75rem; border-radius: 999px;
+      background: var(--green-soft); color: #15803d;
+      font-size: 0.9rem; font-weight: 800; border: 1px solid #bbf7d0;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+      box-shadow: 0 0 0 3px rgba(22,163,74,0.25);
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.65rem 1.1rem; border-radius: 10px;
+      font-size: 1rem; font-weight: 800; text-decoration: none; border: none; cursor: pointer;
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: var(--blue-dark); }
+    .btn-ghost {
+      background: #fff; color: #334155; border: 1px solid var(--line);
+    }
+
+    /* —— KPI —— */
+    .kpis {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem;
+      margin-bottom: 0.85rem;
+    }
+    @media (max-width: 900px) { .kpis { grid-template-columns: 1fr 1fr; } }
+    .kpi {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 1rem 1.1rem; transition: border-color 0.2s, transform 0.2s;
+    }
+    .kpi:hover { border-color: #93c5fd; transform: translateY(-2px); }
+    .kpi-label {
+      font-size: 0.78rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--muted); margin: 0 0 0.35rem;
+    }
+    .kpi-val {
+      font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em;
+      margin: 0; font-variant-numeric: tabular-nums; line-height: 1.1;
+    }
+    .kpi-sub { margin: 0.3rem 0 0; font-size: 0.92rem; font-weight: 600; color: var(--muted); }
+    .kpi-val--up { color: var(--green); }
+    .kpi-val--warn { color: var(--amber); }
+    .kpi-val--blue { color: var(--blue); }
+
+    /* —— ALERT —— */
+    .alert {
+      display: flex; align-items: flex-start; gap: 0.75rem;
+      padding: 0.85rem 1rem; border-radius: 12px; margin-bottom: 1rem;
+      background: var(--amber-soft); border: 1px solid #fde68a; color: #92400e;
+      font-size: 0.98rem; font-weight: 600; line-height: 1.4;
+    }
+    .alert strong { font-weight: 800; }
+    .alert a { color: var(--blue-dark); font-weight: 800; }
+
+    /* —— CHART —— */
+    .panel {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 1.1rem 1.2rem; margin-bottom: 1rem;
+    }
+    .panel-head {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 0.75rem; margin-bottom: 0.85rem; flex-wrap: wrap;
+    }
+    .panel-head h2 {
+      margin: 0; font-size: 1.15rem; font-weight: 800; letter-spacing: -0.02em;
+    }
+    .panel-meta { font-size: 0.9rem; font-weight: 700; color: var(--muted); }
+    .chart {
+      height: 220px; display: flex; align-items: flex-end; gap: 0.65rem;
+      padding: 0.5rem 0.25rem 0; border-bottom: 1px solid var(--line);
+    }
+    .bar-col {
+      flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
+      height: 100%; justify-content: flex-end;
+    }
+    .bar {
+      width: 100%; max-width: 48px; border-radius: 8px 8px 4px 4px;
+      background: linear-gradient(180deg, #60a5fa 0%, var(--blue) 100%);
+      transition: filter 0.15s;
+      cursor: pointer;
+    }
+    .bar:hover { filter: brightness(1.08); }
+    .bar-lbl { font-size: 0.78rem; font-weight: 700; color: var(--muted); }
+    .bar-amt { font-size: 0.72rem; font-weight: 800; color: var(--ink); opacity: 0; transition: opacity 0.15s; }
+    .bar-col:hover .bar-amt { opacity: 1; }
+    .chart-hint {
+      margin: 0.65rem 0 0; font-size: 0.88rem; font-weight: 600; color: var(--muted);
+    }
+
+    /* —— TABS —— */
+    .tabs {
+      display: flex; gap: 0.35rem; margin-bottom: 0.85rem;
+      background: #fff; padding: 0.35rem; border-radius: 12px; border: 1px solid var(--line);
+      width: fit-content; max-width: 100%; flex-wrap: wrap;
+    }
+    .tab {
+      padding: 0.5rem 1rem; border-radius: 9px; border: none;
+      font-family: inherit; font-size: 0.95rem; font-weight: 800;
+      color: var(--muted); background: transparent; cursor: pointer;
+    }
+    .tab.is-active { background: var(--blue-soft); color: var(--blue-dark); }
+    .tab-panel { display: none; }
+    .tab-panel.is-active { display: block; animation: fade 0.25s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+    .grid-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 0.85rem; }
+    @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .list { list-style: none; margin: 0; padding: 0; }
+    .list li {
+      display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;
+      padding: 0.65rem 0; border-bottom: 1px solid #f1f5f9;
+      font-size: 0.98rem; font-weight: 600;
+    }
+    .list li:last-child { border-bottom: none; }
+    .rank {
+      display: inline-flex; width: 1.5rem; height: 1.5rem; align-items: center; justify-content: center;
+      border-radius: 6px; background: var(--blue-soft); color: var(--blue-dark);
+      font-size: 0.78rem; font-weight: 800; margin-right: 0.45rem;
+    }
+    .qty { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink); }
+
+    .iva-row {
+      display: flex; justify-content: space-between; padding: 0.55rem 0;
+      font-size: 1rem; font-weight: 700; border-bottom: 1px solid #f1f5f9;
+    }
+    .iva-total {
+      margin-top: 0.75rem; padding: 0.9rem 1rem; border-radius: 12px;
+      background: var(--green-soft); border: 1px solid #bbf7d0;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .iva-total span { font-weight: 800; font-size: 1rem; color: #166534; }
+    .iva-total strong { font-size: 1.45rem; color: var(--green); font-variant-numeric: tabular-nums; }
+
+    .stock-item {
+      display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+      padding: 0.6rem 0.7rem; margin-bottom: 0.4rem; border-radius: 10px;
+      border: 1px solid #fecaca; background: #fff; border-left: 4px solid var(--red);
+      font-size: 0.95rem; font-weight: 700;
+    }
+    .stock-qty {
+      background: var(--red); color: #fff; padding: 0.2rem 0.55rem;
+      border-radius: 999px; font-size: 0.85rem; font-weight: 800;
+    }
+
+    .footnote {
+      margin-top: 1.5rem; text-align: center;
+      font-size: 0.88rem; font-weight: 600; color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="badge-mock">
+    <strong>MOCK DE PROPUESTA</strong> — no es producción · Datos de ejemplo (Jackheline · jun 2026)
+  </div>
+
+  <div class="wrap">
+    <!-- VIEWPORT 1: una composición -->
+    <header class="hero">
+      <div>
+        <p class="hero-eyebrow">Agil · Panel gerente</p>
+        <h1>Jackheline Margarita Portillo</h1>
+        <p class="hero-sub">Sábado 14 jun 2026 · El Salvador</p>
+      </div>
+      <div class="hero-actions">
+        <span class="status"><span class="status-dot"></span> AgilDTE en línea</span>
+        <a class="btn btn-ghost" href="#">Reportes</a>
+        <a class="btn btn-primary" href="#">Ir a caja →</a>
+      </div>
+    </header>
+
+    <section class="kpis" aria-label="Indicadores del día">
+      <article class="kpi">
+        <p class="kpi-label">Ventas hoy</p>
+        <p class="kpi-val kpi-val--blue">$0.00</p>
+        <p class="kpi-sub">0 tickets · vs ayer —</p>
+      </article>
+      <article class="kpi">
+        <p class="kpi-label">Mes en curso</p>
+        <p class="kpi-val">$47.33</p>
+        <p class="kpi-sub">8 ventas · 47% del mes</p>
+      </article>
+      <article class="kpi">
+        <p class="kpi-label">Vs mes anterior</p>
+        <p class="kpi-val kpi-val--up">+372%</p>
+        <p class="kpi-sub">Mayo: $10.00</p>
+      </article>
+      <article class="kpi">
+        <p class="kpi-label">DTE pendientes</p>
+        <p class="kpi-val kpi-val--warn">2</p>
+        <p class="kpi-sub">Revisar contingencia</p>
+      </article>
+    </section>
+
+    <div class="alert" role="status">
+      <span aria-hidden="true">⚠</span>
+      <div>
+        <strong>163 productos</strong> con stock &lt; 5 und.
+        Priorice reposición de los que más se venden.
+        <a href="#">Ver lista de compras</a>
+      </div>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Ventas · últimos 7 días</h2>
+        <span class="panel-meta">Clic en una barra → reporte del día</span>
+      </div>
+      <div class="chart" aria-hidden="true">
+        <!-- Alturas relativas a max ~$28.68 -->
+        <div class="bar-col"><span class="bar-amt">$0</span><div class="bar" style="height:4%"></div><span class="bar-lbl">Lun 8</span></div>
+        <div class="bar-col"><span class="bar-amt">$0</span><div class="bar" style="height:4%"></div><span class="bar-lbl">Mar 9</span></div>
+        <div class="bar-col"><span class="bar-amt">$0</span><div class="bar" style="height:4%"></div><span class="bar-lbl">Mié 10</span></div>
+        <div class="bar-col"><span class="bar-amt">$0</span><div class="bar" style="height:4%"></div><span class="bar-lbl">Jue 11</span></div>
+        <div class="bar-col"><span class="bar-amt">$0</span><div class="bar" style="height:4%"></div><span class="bar-lbl">Vie 12</span></div>
+        <div class="bar-col"><span class="bar-amt">$0</span><div class="bar" style="height:4%"></div><span class="bar-lbl">Sáb 13</span></div>
+        <div class="bar-col"><span class="bar-amt">$0</span><div class="bar" style="height:4%"></div><span class="bar-lbl">Dom 14</span></div>
+      </div>
+      <!-- Demo más realista con días con venta en el mes -->
+      <div class="chart" style="margin-top:1rem;border-top:1px dashed var(--line);padding-top:1rem;" title="Ejemplo con días del mes que sí tuvieron venta">
+        <div class="bar-col"><span class="bar-amt">$18.65</span><div class="bar" style="height:65%"></div><span class="bar-lbl">04 jun</span></div>
+        <div class="bar-col"><span class="bar-amt">$28.68</span><div class="bar" style="height:100%"></div><span class="bar-lbl">08 jun</span></div>
+        <div class="bar-col"><span class="bar-amt">$0</span><div class="bar" style="height:3%;background:#cbd5e1"></div><span class="bar-lbl">Hoy</span></div>
+      </div>
+      <p class="chart-hint">Eje Y muestra centavos cuando el máximo es &lt; $1 · Datos reales de empresa Jackheline</p>
+    </section>
+
+    <!-- VIEWPORT 2: tabs -->
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab is-active" data-tab="comercial" role="tab">Comercial</button>
+      <button type="button" class="tab" data-tab="fiscal" role="tab">Fiscal</button>
+      <button type="button" class="tab" data-tab="ops" role="tab">Operaciones</button>
+    </nav>
+
+    <div class="tab-panel is-active" id="panel-comercial" role="tabpanel">
+      <div class="grid-2">
+        <section class="panel">
+          <div class="panel-head"><h2>Top productos · este mes</h2><span class="panel-meta">Por unidades</span></div>
+          <ul class="list">
+            <li><span><span class="rank">1</span>Tornillo hex 1/4</span><span class="qty">42 u</span></li>
+            <li><span><span class="rank">2</span>Cinta aislante</span><span class="qty">28 u</span></li>
+            <li><span><span class="rank">3</span>Clavos 2"</span><span class="qty">19 u</span></li>
+            <li><span><span class="rank">4</span>Derivador EAGLE</span><span class="qty">7 u</span></li>
+          </ul>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Atajos</h2></div>
+          <div style="display:flex;flex-direction:column;gap:0.5rem;">
+            <a class="btn btn-primary" href="#" style="justify-content:center;">Panel de ventas</a>
+            <a class="btn btn-ghost" href="#" style="justify-content:center;">Inventario</a>
+            <a class="btn btn-ghost" href="#" style="justify-content:center;">Gestión de ventas</a>
+          </div>
+          <p class="chart-hint" style="margin-top:1rem;">Ticket promedio mes: <strong>$5.92</strong></p>
+        </section>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-fiscal" role="tabpanel">
+      <div class="grid-2">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Posición IVA · junio</h2>
+            <span class="panel-meta">Estimado (no es libro oficial)</span>
+          </div>
+          <div class="iva-row"><span>Débito ventas</span><span style="color:var(--green)">$5.44</span></div>
+          <div class="iva-row"><span>(−) Crédito compras</span><span style="color:var(--blue)">$8.63</span></div>
+          <div class="iva-row"><span>(−) Retenciones 1%</span><span>$0.00</span></div>
+          <div class="iva-total">
+            <span>Saldo a favor</span>
+            <strong>+$3.19</strong>
+          </div>
+          <div style="display:flex;gap:0.5rem;margin-top:0.85rem;">
+            <a class="btn btn-primary" href="#" style="flex:1;justify-content:center;">Libro CCF</a>
+            <a class="btn btn-ghost" href="#" style="flex:1;justify-content:center;">Libro compras</a>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Retenciones 1%</h2></div>
+          <p class="kpi-val" style="color:var(--amber);margin:0.5rem 0;">$0.00</p>
+          <p class="hero-sub">Sin retenciones este mes en ventas CCF.</p>
+        </section>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-ops" role="tabpanel">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Stock crítico (prioridad por rotación)</h2>
+          <span class="panel-meta">163 alertas</span>
+        </div>
+        <div class="stock-item"><span>Arco de solera segueta 12" PRETUL</span><span class="stock-qty">0</span></div>
+        <div class="stock-item"><span>Derivador polarizado 3 salidas EAGLE</span><span class="stock-qty">1</span></div>
+        <div class="stock-item"><span>Barra multicontacto 6 conectores VOLTECK</span><span class="stock-qty">1</span></div>
+        <a class="btn btn-primary" href="#" style="width:100%;justify-content:center;margin-top:0.75rem;">Ver lista de compras</a>
+      </section>
+    </div>
+
+    <p class="footnote">
+      Ejemplo de composición propuesta · Primera pantalla limpia · Detalle en pestañas · Tipografía grande · Azul Agil (sin púrpura)
+    </p>
+  </div>
+
+  <script>
+    document.querySelectorAll('.tab').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('is-active'); });
+        document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.remove('is-active'); });
+        tab.classList.add('is-active');
+        var id = 'panel-' + tab.getAttribute('data-tab');
+        var panel = document.getElementById(id);
+        if (panel) panel.classList.add('is-active');
+      });
+    });
+  </script>
+</body>
+</html>

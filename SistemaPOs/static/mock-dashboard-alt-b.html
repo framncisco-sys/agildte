@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Alt B · Fiscal primero</title>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
+<style>
+  :root{--ink:#1c1917;--muted:#78716c;--line:#e7e5e4;--teal:#0f766e;--teal2:#115e59;--paper:#fafaf9;--card:#fff}
+  *{box-sizing:border-box} body{margin:0;font-family:"Libre Franklin",system-ui,sans-serif;background:var(--paper);color:var(--ink)}
+  .tag{background:#134e4a;color:#ccfbf1;text-align:center;padding:.5rem;font-weight:700;font-size:.85rem}
+  .w{max-width:1000px;margin:0 auto;padding:1.25rem 1.2rem 2.5rem}
+  .hero{border-bottom:2px solid var(--ink);padding-bottom:1rem;margin-bottom:1.1rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+  .hero h1{font-family:Fraunces,Georgia,serif;font-size:1.9rem;margin:0;font-weight:700;letter-spacing:-.02em}
+  .hero p{margin:.35rem 0 0;color:var(--muted);font-weight:600}
+  .big{
+    background:linear-gradient(135deg,#0f766e,#115e59);color:#fff;border-radius:4px;
+    padding:1.4rem 1.5rem;margin-bottom:1rem;
+  }
+  .big .lbl{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;opacity:.85}
+  .big .num{font-family:Fraunces,serif;font-size:2.75rem;font-weight:700;margin:.2rem 0;letter-spacing:-.03em}
+  .big .hint{font-size:.95rem;font-weight:600;opacity:.9}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.75rem}
+  @media(max-width:700px){.cols{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:1rem 1.1rem}
+  .card h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;margin:0 0 .75rem;color:var(--muted);font-weight:800}
+  .line{display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line);font-weight:700;font-size:1.02rem}
+  .line:last-child{border-bottom:none}
+  .btns{display:flex;gap:.5rem;margin-top:.85rem;flex-wrap:wrap}
+  .btns a{flex:1;text-align:center;padding:.7rem;text-decoration:none;font-weight:800;border-radius:4px;font-size:.95rem;min-width:120px}
+  .btns .p{background:var(--teal);color:#fff}
+  .btns .g{background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .mini{display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem}
+  .mini .card strong{display:block;font-size:1.35rem;font-weight:800;margin-top:.2rem}
+  .mini .card span{font-size:.8rem;color:var(--muted);font-weight:700}
+  .note{text-align:center;margin-top:1.25rem;color:var(--muted);font-size:.88rem;font-weight:600}
+</style>
+</head>
+<body>
+<div class="tag">ALTERNATIVA B — FISCAL PRIMERO · Dueño / contador · El dinero e IVA mandan</div>
+<div class="w">
+  <div class="hero">
+    <div>
+      <h1>Posición del negocio</h1>
+      <p>Jackheline · Junio 2026 · Estimado operativo (no sustituye libros)</p>
+    </div>
+    <div class="btns" style="margin:0"><a class="g" href="#">Libros IVA</a><a class="p" href="#">Ir a caja</a></div>
+  </div>
+
+  <div class="big">
+    <div class="lbl">Saldo IVA estimado del mes</div>
+    <div class="num">+$3.19 a favor</div>
+    <div class="hint">Débito $5.44 − Crédito compras $8.63 − Retenciones $0.00</div>
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <h2>Desglose IVA ventas</h2>
+      <div class="line"><span>CCF contribuyentes</span><span>$0.00</span></div>
+      <div class="line"><span>Factura CF</span><span>$0.41 · 1 doc</span></div>
+      <div class="line"><span>Tickets / otros</span><span>$5.03 · 7 doc</span></div>
+      <div class="line"><span>Total débito</span><span style="color:#0f766e">$5.44</span></div>
+    </div>
+    <div class="card">
+      <h2>Compras y retenciones</h2>
+      <div class="line"><span>IVA crédito compras</span><span style="color:#1d4ed8">$8.63</span></div>
+      <div class="line"><span>Retenciones 1%</span><span>$0.00</span></div>
+      <div class="line"><span>Ventas del mes</span><span>$47.33</span></div>
+      <div class="btns"><a class="p" href="#">Libro CCF</a><a class="g" href="#">Libro compras</a></div>
+    </div>
+  </div>
+
+  <div class="mini">
+    <div class="card"><span>Ventas hoy</span><strong>$0.00</strong></div>
+    <div class="card"><span>DTE pendientes</span><strong>2</strong></div>
+    <div class="card"><span>Stock crítico</span><strong style="color:#b91c1c">163</strong></div>
+  </div>
+
+  <p class="note">B · Primera vista = salud fiscal · Comercial e inventario secundarios abajo · Tipografía serif para cifras clave</p>
+</div>
+</body>
+</html>

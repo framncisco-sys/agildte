@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Comparar propuestas dashboard</title>
+<style>
+  body{margin:0;font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;padding:1.5rem}
+  h1{font-size:1.35rem;margin:0 0 .5rem}
+  p{color:#94a3b8;margin:0 0 1.25rem;line-height:1.45}
+  .g{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+  @media(max-width:900px){.g{grid-template-columns:1fr}}
+  a{
+    display:block;background:#1e293b;border:1px solid #334155;border-radius:12px;
+    padding:1.1rem 1.2rem;text-decoration:none;color:inherit;transition:border-color .15s;
+  }
+  a:hover{border-color:#60a5fa}
+  a strong{display:block;font-size:1.1rem;margin-bottom:.35rem;color:#93c5fd}
+  a span{font-size:.92rem;color:#cbd5e1;line-height:1.4}
+  .letter{font-size:2rem;font-weight:800;color:#fff;margin-bottom:.25rem}
+</style>
+</head>
+<body>
+  <h1>Elige una dirección</h1>
+  <p>Tres alternativas distintas. Ábrelas y dime A, B o C (o una mezcla).</p>
+  <div class="g">
+    <a href="mock-dashboard-alt-a.html" target="_blank">
+      <div class="letter">A</div>
+      <strong>Denso ejecutivo</strong>
+      <span>Todo en una pantalla, 6 KPI, gráfico + fiscal + stock. Como ahora, pero más ordenado. Sin pestañas.</span>
+    </a>
+    <a href="mock-dashboard-alt-b.html" target="_blank">
+      <div class="letter">B</div>
+      <strong>Fiscal primero</strong>
+      <span>IVA grande al centro. Ideal dueño/contador. Comercial e inventario secundarios.</span>
+    </a>
+    <a href="mock-dashboard-alt-c.html" target="_blank">
+      <div class="letter">C</div>
+      <strong>Operación / caja</strong>
+      <span>Modo oscuro, botón enorme a POS, alertas urgentes. Menos informe, más acción.</span>
+    </a>
+  </div>
+</body>
+</html>

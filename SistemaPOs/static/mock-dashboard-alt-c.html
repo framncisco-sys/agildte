@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Alt C · Operación de caja</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#0b1220;--panel:#121a2b;--line:#243044;--text:#e8eef7;--muted:#93a4bd;--accent:#38bdf8;--ok:#4ade80;--warn:#fbbf24;--danger:#f87171}
+  *{box-sizing:border-box} body{margin:0;font-family:Outfit,system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  .tag{background:#fbbf24;color:#111;text-align:center;padding:.5rem;font-weight:800;font-size:.85rem}
+  .w{max-width:980px;margin:0 auto;padding:1.1rem 1rem 2.5rem}
+  .head{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap}
+  .head h1{margin:0;font-size:1.35rem;font-weight:800}
+  .head p{margin:.2rem 0 0;color:var(--muted);font-weight:600;font-size:.9rem}
+  .go{
+    display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
+    background:var(--accent);color:#062033;font-weight:800;font-size:1.15rem;
+    padding:1rem 1.6rem;border-radius:14px;text-decoration:none;
+    box-shadow:0 0 0 4px rgba(56,189,248,.2);
+  }
+  .strip{display:grid;grid-template-columns:repeat(4,1fr);gap:.55rem;margin-bottom:1rem}
+  @media(max-width:700px){.strip{grid-template-columns:1fr 1fr}}
+  .pill{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:.85rem;
+  }
+  .pill b{display:block;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:800}
+  .pill strong{font-size:1.4rem;font-weight:800}
+  .actions{display:grid;grid-template-columns:1fr 1fr;gap:.65rem;margin-bottom:1rem}
+  @media(max-width:600px){.actions{grid-template-columns:1fr}}
+  .act{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.15rem;
+    text-decoration:none;color:inherit;display:block;transition:border-color .15s;
+  }
+  .act:hover{border-color:var(--accent)}
+  .act .ico{font-size:1.5rem;margin-bottom:.35rem}
+  .act h2{margin:0;font-size:1.1rem;font-weight:800}
+  .act p{margin:.25rem 0 0;color:var(--muted);font-size:.9rem;font-weight:600}
+  .alerts{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1rem}
+  .alerts h2{margin:0 0 .75rem;font-size:1rem;font-weight:800}
+  .al{display:flex;justify-content:space-between;align-items:center;gap:.75rem;padding:.65rem 0;border-bottom:1px solid var(--line);font-weight:700}
+  .al:last-child{border-bottom:none}
+  .chip{padding:.25rem .55rem;border-radius:999px;font-size:.8rem;font-weight:800}
+  .chip.warn{background:rgba(251,191,36,.15);color:var(--warn)}
+  .chip.danger{background:rgba(248,113,113,.15);color:var(--danger)}
+  .chip.ok{background:rgba(74,222,128,.12);color:var(--ok)}
+  .note{text-align:center;margin-top:1.25rem;color:var(--muted);font-size:.88rem;font-weight:600}
+</style>
+</head>
+<body>
+<div class="tag">ALTERNATIVA C — OPERACIÓN / CAJA · Oscuro · Acciones grandes · Menos análisis, más hacer</div>
+<div class="w">
+  <div class="head">
+    <div>
+      <h1>¿Qué sigue, Jackheline?</h1>
+      <p>14 jun · Turno abierto · Canal DTE OK</p>
+    </div>
+    <a class="go" href="#">Abrir punto de venta</a>
+  </div>
+
+  <div class="strip">
+    <div class="pill"><b>Hoy</b><strong>$0.00</strong></div>
+    <div class="pill"><b>Mes</b><strong>$47.33</strong></div>
+    <div class="pill"><b>Tickets hoy</b><strong>0</strong></div>
+    <div class="pill"><b>Pendientes DTE</b><strong style="color:var(--warn)">2</strong></div>
+  </div>
+
+  <div class="actions">
+    <a class="act" href="#"><div class="ico">▣</div><h2>Nueva venta</h2><p>Cobrar en caja o ticket</p></a>
+    <a class="act" href="#"><div class="ico">▤</div><h2>Inventario</h2><p>163 con stock bajo</p></a>
+    <a class="act" href="#"><div class="ico">▥</div><h2>Compras</h2><p>Reponer lo crítico</p></a>
+    <a class="act" href="#"><div class="ico">▦</div><h2>Reportes</h2><p>Ventas, IVA, corte</p></a>
+  </div>
+
+  <div class="alerts">
+    <h2>Atención ahora</h2>
+    <div class="al"><span>2 DTE en contingencia / pendiente</span><span class="chip warn">Urgente</span></div>
+    <div class="al"><span>Arco segueta PRETUL sin stock</span><span class="chip danger">0 und</span></div>
+    <div class="al"><span>IVA estimado a favor este mes</span><span class="chip ok">+$3.19</span></div>
+  </div>
+
+  <p class="note">C · Parece un hub de trabajo · Ideal si el dashboard es “lanzador” hacia caja e inventario, no un informe largo</p>
+</div>
+</body>
+</html>
