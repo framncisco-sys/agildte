@@ -9,9 +9,32 @@ from api.services.whatsapp_cloud_service import (
     construir_enlace_descarga,
     construir_mensaje_factura,
     enviar_plantilla_factura_agildte,
+    http_status_cliente_whatsapp,
     normalizar_telefono_meta,
     resolver_nis_factura,
+    _mensaje_error_meta_amigable,
 )
+
+
+class HttpStatusClienteWhatsappTests(SimpleTestCase):
+    def test_no_propaga_401_ni_403_de_meta(self):
+        self.assertEqual(http_status_cliente_whatsapp(401), 400)
+        self.assertEqual(http_status_cliente_whatsapp(403), 400)
+
+    def test_conserva_400_y_502(self):
+        self.assertEqual(http_status_cliente_whatsapp(400), 400)
+        self.assertEqual(http_status_cliente_whatsapp(502), 502)
+
+
+class MensajeErrorMetaTests(SimpleTestCase):
+    def test_permisos_phone_number_id(self):
+        msg = _mensaje_error_meta_amigable(
+            {'error': {'message': "Object with ID '123' does not exist, cannot be loaded due to missing permissions", 'code': 100}},
+            "Object with ID '123' does not exist, cannot be loaded due to missing permissions",
+        )
+        self.assertIn('Phone Number ID', msg)
+        self.assertIn('WHATSAPP_ACCESS_TOKEN', msg)
+
 
 
 class NormalizarTelefonoTests(SimpleTestCase):

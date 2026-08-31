@@ -34,6 +34,60 @@ def _truthy_env(name: str, default: bool = False) -> bool:
     return v in ("1", "true", "yes", "on")
 
 
+def _id_entero(val: Any) -> int | None:
+    if isinstance(val, int):
+        return val
+    if isinstance(val, str) and val.isdigit():
+        return int(val)
+    return None
+
+
+def _extraer_resultados_listar(payload: Any) -> list:
+    if isinstance(payload, dict):
+        results = payload.get("results")
+        if isinstance(results, list):
+            return results
+        if isinstance(payload.get("ventas"), list):
+            return payload.get("ventas")
+    if isinstance(payload, list):
+        return payload
+    return []
+
+
+def resolver_id_venta_agildte(
+    cli: Any,
+    *,
+    empresa_id: int,
+    codigo_generacion: str,
+    numero_control: str,
+) -> int | None:
+    """
+    ID de la venta en AgilDTE (backend Django), no el ID local del POS.
+
+    Nunca usar el id de PosÁgil como fallback: son secuencias distintas
+    (POS 827 ≠ AgilDTE 827) y abrirían un DTE ajeno.
+    """
+    def _buscar_exacto(search_txt: str) -> int | None:
+        q = (search_txt or "").strip()
+        if not q:
+            return None
+        data = cli.get_json(
+            "/api/ventas/listar/",
+            params={"empresa_id": empresa_id, "search": q, "page": 1, "page_size": 20},
+        )
+        q_upper = q.upper()
+        for it in _extraer_resultados_listar(data):
+            if not isinstance(it, dict):
+                continue
+            cg = str(it.get("codigo_generacion") or "").strip().upper()
+            nc = str(it.get("numero_control") or "").strip().upper()
+            if q_upper and (cg == q_upper or nc == q_upper):
+                return _id_entero(it.get("id"))
+        return None
+
+    return _buscar_exacto(codigo_generacion) or _buscar_exacto(numero_control)
+
+
 def _extraer_id_venta_remota(resp: Any) -> int | None:
     if resp is None:
         return None
@@ -218,7 +272,11 @@ def sync_venta_a_agildte(
 
         if _truthy_env("AGILDTE_FETCH_DTE_JSON", default=False) and remote_id:
             try:
-                out["dte_json_preview"] = cli.generar_dte_venta(remote_id)
+                extra = {}
+                if isinstance(venta_payload, dict):
+                    extra["codigo_generacion"] = venta_payload.get("codigo_generacion")
+                    extra["numero_control"] = venta_payload.get("numero_control")
+                out["dte_json_preview"] = cli.generar_dte_venta(remote_id, extra)
             except AgilDTEAPIError as e:
                 out["dte_json_preview"] = None
                 out["dte_json_error"] = str(e)
@@ -267,6 +325,104 @@ def sync_venta_a_agildte(
                 "mensaje_usuario": "Error interno al sincronizar con AgilDTE.",
             }
         ) or {"ok": False, "error": "interno"}
+
+
+def remitir_venta_existente(
+    *,
+    cur,
+    empresa_id_local: int,
+    venta_id_local: int,
+) -> dict[str, Any]:
+    """
+    Emite en AgilDTE una venta ya cobrada en el POS (fecha y cajero se conservan).
+
+    Pendiente: primera emisión.
+    Rechazado: corrige y crea un DTE nuevo (nuevo correlativo). Si Hacienda acepta,
+    el estado local pasa a Corregido.
+    """
+    from azdigital.utils.estado_emision import (
+        CLAVES_EMITIBLES,
+        clasificar_estado_emision,
+        es_estado_aceptado_mh,
+    )
+
+    venta = ventas_repo.get_venta(cur, venta_id_local, empresa_id=empresa_id_local)
+    if not venta:
+        return {
+            "ok": False,
+            "error": "no_encontrada",
+            "mensaje_usuario": f"Venta #{venta_id_local} no encontrada.",
+        }
+    cg = str(venta[14] or "").strip() if len(venta) > 14 else ""
+    ed = str(venta[17] or "").strip() if len(venta) > 17 else ""
+    st = clasificar_estado_emision(cg, ed)
+    if st["clave"] not in CLAVES_EMITIBLES:
+        return {
+            "ok": False,
+            "error": "ya_enviada",
+            "mensaje_usuario": (
+                f"La venta #{venta_id_local} ya está en AgilDTE "
+                f"({st['etiqueta']}). No se vuelve a emitir para no duplicar el DTE."
+            ),
+        }
+    es_correccion = st["clave"] == "rechazado"
+    lineas_raw = ventas_repo.get_detalles_completos(cur, venta_id_local)
+    lineas = [
+        {
+            "producto_id": ln["producto_id"],
+            "cantidad": ln["cantidad"],
+            "precio_unitario": ln["precio_unitario"],
+            "subtotal": ln["subtotal"],
+            "descripcion": ln["nombre"],
+        }
+        for ln in lineas_raw
+        if ln.get("producto_id") and ln.get("cantidad", 0) > 0
+    ]
+    if not lineas:
+        return {
+            "ok": False,
+            "error": "sin_lineas",
+            "mensaje_usuario": f"La venta #{venta_id_local} no tiene líneas para emitir.",
+        }
+    tipo_comp = str(venta[4] or "TICKET")
+    tipo_pago = str(venta[9] or "EFECTIVO") if len(venta) > 9 else "EFECTIVO"
+    cliente_id = venta[5] if len(venta) > 5 else None
+    try:
+        cliente_id = int(cliente_id) if cliente_id is not None else None
+    except (TypeError, ValueError):
+        cliente_id = None
+    nombre = str(venta[3] or "Consumidor Final")
+    total = float(venta[2] or 0)
+    desc = float(venta[12] or 0) if len(venta) > 12 else 0.0
+    bruto = float(venta[13] or total) if len(venta) > 13 else total
+    result = sync_venta_a_agildte(
+        cur=cur,
+        empresa_id_local=empresa_id_local,
+        venta_id_local=venta_id_local,
+        tipo_comprobante=tipo_comp,
+        tipo_pago=tipo_pago,
+        lineas=lineas,
+        total_neto=total,
+        total_bruto=bruto,
+        descuento=desc,
+        cliente_id=cliente_id,
+        cliente_nombre_ticket=nombre,
+    )
+    if es_correccion and isinstance(result, dict):
+        result["reemitido"] = True
+        venta_despues = ventas_repo.get_venta(cur, venta_id_local, empresa_id=empresa_id_local)
+        ed_nueva = (
+            str(venta_despues[17] or "").strip()
+            if venta_despues and len(venta_despues) > 17
+            else ""
+        )
+        if result.get("ok") and es_estado_aceptado_mh(ed_nueva):
+            if ventas_repo.marcar_estado_dte_local(
+                cur, venta_id_local, "CORREGIDO", empresa_id=empresa_id_local
+            ):
+                result["corregido"] = True
+                result["dte_persistido"] = True
+    return result
 
 
 def intentar_sync_venta_si_habilitado(

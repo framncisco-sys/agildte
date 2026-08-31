@@ -731,6 +731,15 @@ class AgilDTEClient:
             params=params,
         )
 
+    def generar_pdf_venta(self, venta_id: int, extra_params: dict[str, Any] | None = None) -> Any:
+        """GET /api/ventas/{id}/generar-pdf/ — requiere código DTE en extra_params."""
+        params = self.merge_empresa_params(extra_params)
+        return self.request(
+            "GET",
+            f"{API_PREFIX}/ventas/{int(venta_id)}/generar-pdf/",
+            params=params,
+        )
+
 
 def _safe_json(r: httpx.Response) -> Any:
     try:
@@ -899,14 +908,24 @@ def build_crear_venta_con_detalles_payload(
             row["descripcion_libre"] = str(desc_libre).strip()[:1000]
         detalles.append(row)
 
-    # Ticket en POS = Factura Consumidor Final (DTE 01) en AgilDTE; sin cliente de catálogo = receptor genérico
-    # sin documento (el serializer Django aplica CASO CF sin cliente_id).
-    if es_ticket and cliente_id is None:
-        nombre_rec = _nombre_cf_ticket_default()
-    elif es_ticket:
-        nombre_rec = (cliente_nombre_ticket or _nombre_cf_ticket_default()).strip() or _nombre_cf_ticket_default()
+    # Ticket en POS = Factura Consumidor Final (DTE 01) en AgilDTE.
+    # Conservar el nombre digitado (p. ej. David Cerrano); solo usar el genérico si está vacío.
+    _nombres_cf_genericos = {
+        "",
+        "consumidor final",
+        "cliente de contado",
+        "cliente mostrador",
+    }
+    nombre_ticket = (cliente_nombre_ticket or "").strip()
+    if es_ticket:
+        if nombre_ticket and nombre_ticket.lower() not in _nombres_cf_genericos:
+            nombre_rec = nombre_ticket
+        elif cliente_id is not None and nombre_ticket:
+            nombre_rec = nombre_ticket
+        else:
+            nombre_rec = _nombre_cf_ticket_default()
     else:
-        nombre_rec = (cliente_nombre_ticket or "Consumidor Final").strip() or "Consumidor Final"
+        nombre_rec = nombre_ticket or "Consumidor Final"
 
     fe_iso, hora_sv, periodo = _fecha_hora_periodo_para_agildte(
         fecha_emision, periodo_aplicado, hora_emision=hora_emision

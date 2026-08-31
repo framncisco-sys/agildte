@@ -216,3 +216,36 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# Auditoría de descargas PDF/JSON DTE (accesos cruzados entre empresas).
+_LOG_DIR = BASE_DIR / 'logs'
+try:
+    _LOG_DIR.mkdir(exist_ok=True)
+except OSError:
+    _LOG_DIR = BASE_DIR
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'dte_acceso': {
+            'format': '{asctime} {levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'dte_acceso_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': str(_LOG_DIR / 'dte_acceso.log'),
+            'maxBytes': 5 * 1024 * 1024,
+            'backupCount': 10,
+            'formatter': 'dte_acceso',
+        },
+    },
+    'loggers': {
+        'api.dte_acceso': {
+            'handlers': ['dte_acceso_file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}

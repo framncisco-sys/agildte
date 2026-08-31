@@ -6,6 +6,12 @@ from .base_builder import BaseDTEBuilder
 from api.constants import DTE_LINEA_DESCRIPCION_MAX_LENGTH
 from api.dte_generator import formatear_decimal, formatear_nrc_emisor
 from api.utils.mh_direccion import armar_direccion_mh
+from api.utils.mh_item_totales import (
+    iva_item_cf,
+    money2,
+    montos_item_dte01_gravado,
+    montos_item_dte_neto,
+)
 from api.utils.mh_documento import (
     documento_cliente_para_mh,
     documento_receptor_desde_payload,
@@ -151,9 +157,10 @@ class DTE03Builder(BaseDTEBuilder):
     def _generar_items(self, tipo_dte, incluir_iva_item=False):
         """Genera items del cuerpo. incluir_iva_item=True para DTE-01.
 
-        Para DTE-01 (CF): en BD se guarda precio_unitario y venta_gravada SIN IVA (÷1.13).
-        MH exige que precioUni y ventaGravada vayan CON IVA (precio que el usuario ingresó).
-        Se reconstruye: total_con_iva = venta_gravada_sin_iva * 1.13
+        Para DTE-01 (CF): en BD se guarda precio_unitario y venta_gravada SIN IVA.
+        MH exige precioUni y ventaGravada CON IVA, y que
+        round(precioUni * cantidad - montoDescu, 2) == ventaGravada (código 003).
+        No redondear precioUni a 2 decimales: el schema permite 8.
         """
         items = []
         detalles = self.venta.detalles.all().order_by('numero_item')
@@ -166,61 +173,55 @@ class DTE03Builder(BaseDTEBuilder):
                     detalle.producto.descripcion if detalle.producto else (detalle.descripcion_libre or "Item")
                 )[:DTE_LINEA_DESCRIPCION_MAX_LENGTH]
                 tipo_item = detalle.producto.tipo_item if detalle.producto else 1
-                precio_unitario_bd = float(formatear_decimal(detalle.precio_unitario))
-                cantidad = float(formatear_decimal(detalle.cantidad))
+                precio_unitario_bd = float(formatear_decimal(detalle.precio_unitario, 8))
+                cantidad = float(formatear_decimal(detalle.cantidad, 8))
                 monto_descuento = float(formatear_decimal(detalle.monto_descuento))
 
                 detalle_gravada = float(formatear_decimal(detalle.venta_gravada))
                 detalle_exenta = float(formatear_decimal(detalle.venta_exenta))
                 detalle_nosuj = float(formatear_decimal(detalle.venta_no_sujeta))
+                detalle_iva = float(formatear_decimal(getattr(detalle, 'iva_item', 0) or 0))
 
                 if tipo_dte == '01':
-                    # En BD: precio_unitario y venta_gravada están SIN IVA.
-                    # MH CF exige precioUni y ventaGravada CON IVA.
-                    # total_sin_iva = precio_unitario_bd * cantidad (≈ venta_gravada en BD)
-                    total_sin_iva = round(precio_unitario_bd * cantidad, 2) - monto_descuento
-                    if detalle_gravada > 0 or (detalle_exenta == 0 and detalle_nosuj == 0):
-                        total_con_iva = round(total_sin_iva * 1.13, 2)
-                        iva_item = round(total_con_iva - total_sin_iva, 2)
-                        precio_uni_mh = round(total_con_iva / cantidad, 2) if cantidad else total_con_iva
-                        v_gravada = total_con_iva
-                        v_exenta = 0.0
-                        v_nosujeta = 0.0
-                    elif detalle_exenta > 0:
-                        total_con_iva = round(precio_unitario_bd * cantidad, 2) - monto_descuento
-                        iva_item = 0.0
-                        precio_uni_mh = precio_unitario_bd
-                        v_gravada = 0.0
-                        v_exenta = total_con_iva
-                        v_nosujeta = 0.0
+                    if detalle_exenta > 0 and detalle_gravada <= 0:
+                        montos = montos_item_dte_neto(
+                            cantidad=cantidad,
+                            precio_unitario_bd=precio_unitario_bd,
+                            venta_exenta_bd=detalle_exenta,
+                            monto_descuento=monto_descuento,
+                        )
+                    elif detalle_nosuj > 0 and detalle_gravada <= 0:
+                        montos = montos_item_dte_neto(
+                            cantidad=cantidad,
+                            precio_unitario_bd=precio_unitario_bd,
+                            venta_nosuj_bd=detalle_nosuj,
+                            monto_descuento=monto_descuento,
+                        )
                     else:
-                        total_con_iva = round(precio_unitario_bd * cantidad, 2) - monto_descuento
-                        iva_item = 0.0
-                        precio_uni_mh = precio_unitario_bd
-                        v_gravada = 0.0
-                        v_exenta = 0.0
-                        v_nosujeta = total_con_iva
+                        montos = montos_item_dte01_gravado(
+                            cantidad=cantidad,
+                            precio_unitario_bd=precio_unitario_bd,
+                            venta_gravada_bd=detalle_gravada,
+                            iva_item_bd=detalle_iva,
+                            monto_descuento=monto_descuento,
+                        )
                 else:
-                    # CCF y otros: precio_unitario ya es sin IVA, ventaGravada sin IVA
-                    monto_total_linea = round(precio_unitario_bd * cantidad, 2) - monto_descuento
-                    if detalle_gravada > 0:
-                        v_gravada = round(monto_total_linea, 2)
-                        v_exenta = 0.0
-                        v_nosujeta = 0.0
-                    elif detalle_exenta > 0:
-                        v_gravada = 0.0
-                        v_exenta = round(monto_total_linea, 2)
-                        v_nosujeta = 0.0
-                    elif detalle_nosuj > 0:
-                        v_gravada = 0.0
-                        v_exenta = 0.0
-                        v_nosujeta = round(monto_total_linea, 2)
-                    else:
-                        v_gravada = round(monto_total_linea, 2)
-                        v_exenta = 0.0
-                        v_nosujeta = 0.0
-                    iva_item = round(v_gravada * 0.13, 2) if v_gravada > 0 else 0.0
-                    precio_uni_mh = precio_unitario_bd
+                    montos = montos_item_dte_neto(
+                        cantidad=cantidad,
+                        precio_unitario_bd=precio_unitario_bd,
+                        venta_gravada_bd=detalle_gravada,
+                        venta_exenta_bd=detalle_exenta,
+                        venta_nosuj_bd=detalle_nosuj,
+                        monto_descuento=monto_descuento,
+                    )
+
+                precio_uni_mh = montos['precioUni']
+                v_gravada = montos['ventaGravada']
+                v_exenta = montos['ventaExenta']
+                v_nosujeta = montos['ventaNoSuj']
+                iva_item = montos['ivaItem']
+                monto_descuento = montos['montoDescu']
+                cantidad = montos['cantidad']
 
                 tributos = None if tipo_dte == '01' else (["20"] if v_gravada > 0 else [])
                 item = {
@@ -232,11 +233,11 @@ class DTE03Builder(BaseDTEBuilder):
                     "descripcion": descripcion,
                     "cantidad": cantidad,
                     "uniMedida": 59,
-                    "precioUni": round(precio_uni_mh, 2),
+                    "precioUni": precio_uni_mh,
                     "montoDescu": monto_descuento,
-                    "ventaNoSuj": round(v_nosujeta, 2),
-                    "ventaExenta": round(v_exenta, 2),
-                    "ventaGravada": round(v_gravada, 2),
+                    "ventaNoSuj": money2(v_nosujeta),
+                    "ventaExenta": money2(v_exenta),
+                    "ventaGravada": money2(v_gravada),
                     "tributos": tributos,
                     "psv": 0.00,
                     "noGravado": 0.00,
@@ -264,9 +265,8 @@ class DTE03Builder(BaseDTEBuilder):
         num_item = 1
         if venta_gravada_bd > 0:
             if tipo_dte == '01':
-                # Reconstruir total con IVA desde el valor sin IVA guardado en BD
                 venta_gravada_mh = round(venta_gravada_bd * 1.13, 2)
-                iva = round(venta_gravada_mh - venta_gravada_bd, 2)
+                iva = iva_item_cf(venta_gravada_mh)
             else:
                 venta_gravada_mh = venta_gravada_bd
                 iva = round(venta_gravada_bd * 0.13, 2)
@@ -316,7 +316,7 @@ class DTE03Builder(BaseDTEBuilder):
         debito = float(formatear_decimal(self.venta.debito_fiscal or 0))
         if tipo_dte == '01':
             venta_gravada_mh = round(venta_gravada_bd * 1.13, 2)
-            iva = round(venta_gravada_mh - venta_gravada_bd, 2)
+            iva = iva_item_cf(venta_gravada_mh)
         else:
             venta_gravada_mh = venta_gravada_bd
             iva = round(venta_gravada_bd * 0.13, 2)

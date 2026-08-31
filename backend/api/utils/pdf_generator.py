@@ -39,6 +39,7 @@ from api.utils.mh_ubicacion_labels import (
     nombre_distrito as _nombre_distrito_cat,
     nombre_municipio as _nombre_municipio_cat,
 )
+from api.utils.mh_direccion import normalizar_ubicacion_mh
 
 
 MARGIN = 1.2 * cm
@@ -135,18 +136,32 @@ def _nombre_departamento(codigo):
     )
 
 
+def _labels_ubicacion(departamento_codigo, municipio_codigo=None, distrito_codigo=None):
+    """Nombres legibles CAT-012/013/008 con corrección del swap San Miguel/Morazán."""
+    depto, muni, dist = normalizar_ubicacion_mh(
+        departamento_codigo, municipio_codigo, distrito_codigo
+    )
+    return {
+        'departamento': _nombre_departamento_cat(depto),
+        'municipio': _nombre_municipio_cat(depto, muni),
+        'distrito': _nombre_distrito_cat(depto, muni, dist),
+        'depto': depto,
+        'muni': muni,
+        'dist': dist,
+    }
+
+
 def _armar_direccion(complemento, departamento_codigo, municipio_codigo=None, distrito_codigo=None):
     partes = []
     comp = (complemento or '').strip().rstrip(',')
     if comp:
         partes.append(comp)
-    dist_nom = _nombre_distrito_cat(departamento_codigo, municipio_codigo, distrito_codigo)
-    if dist_nom:
-        partes.append(f'Distrito {dist_nom}')
-    muni_nom = _nombre_municipio_cat(departamento_codigo, municipio_codigo)
-    if muni_nom:
-        partes.append(muni_nom)
-    depto = _nombre_departamento(departamento_codigo)
+    ub = _labels_ubicacion(departamento_codigo, municipio_codigo, distrito_codigo)
+    if ub['distrito']:
+        partes.append(f"Distrito {ub['distrito']}")
+    if ub['municipio']:
+        partes.append(ub['municipio'])
+    depto = _nombre_departamento(ub['depto'])
     if depto:
         partes.append(depto)
     return ', '.join(partes)
@@ -307,6 +322,7 @@ def _obtener_datos_emisor(venta):
     elif cod_est:
         tipo_est = f"{TIPOS_ESTABLECIMIENTO.get('01', 'Sucursal / Agencia')} ({cod_est})"
 
+    ub = _labels_ubicacion(depto, muni, dist)
     return {
         'nombre': nombre,
         'nombre_comercial': nombre_comercial if nombre_comercial != nombre else '',
@@ -315,9 +331,9 @@ def _obtener_datos_emisor(venta):
         'actividad_economica': actividad,
         'direccion': _armar_direccion(complemento, depto, muni, dist),
         'complemento': complemento,
-        'municipio': _nombre_municipio_cat(depto, muni),
-        'distrito': _nombre_distrito_cat(depto, muni, dist),
-        'departamento': _nombre_departamento_cat(depto),
+        'municipio': ub['municipio'],
+        'distrito': ub['distrito'],
+        'departamento': ub['departamento'],
         'telefono': (getattr(empresa, 'telefono', None) or '').strip(),
         'correo': (getattr(empresa, 'correo', None) or '').strip(),
         'tipo_establecimiento': tipo_est,
@@ -397,6 +413,7 @@ def _obtener_datos_receptor(venta):
         etiqueta_doc = 'NIT' if (nit_dui and len(''.join(c for c in nit_dui if c.isdigit())) >= 14) else 'Documento'
         doc_display = _formatear_nit_display(nit_dui) if nit_dui and etiqueta_doc == 'NIT' else (nit_dui or '')
 
+    ub = _labels_ubicacion(depto, muni, dist)
     return {
         'nombre': nombre,
         'nombre_comercial': nombre_comercial,
@@ -406,9 +423,9 @@ def _obtener_datos_receptor(venta):
         'actividad_economica': actividad,
         'direccion': _armar_direccion(direccion_comp, depto, muni, dist),
         'complemento': direccion_comp,
-        'municipio': _nombre_municipio_cat(depto, muni),
-        'distrito': _nombre_distrito_cat(depto, muni, dist),
-        'departamento': _nombre_departamento_cat(depto),
+        'municipio': ub['municipio'],
+        'distrito': ub['distrito'],
+        'departamento': ub['departamento'],
         'correo': correo or '',
         'telefono': telefono or '',
         'tipo_venta': tipo_venta,
@@ -501,13 +518,18 @@ def generar_pdf_venta(venta):
     fecha_iso = venta.fecha_emision.strftime('%Y-%m-%d') if venta.fecha_emision else ''
     modelo_fact, tipo_trans = _modelo_transmision(venta)
     condicion_op = _condicion_operacion_label(venta)
-    ambiente_venta = (
+    # empresa.ambiente / venta.ambiente_emision: '00'=PROD API, '01'=PRUEBAS API
+    # consultaPublica (y el JSON DTE) usan la convención invertida de MH:
+    #   '01'=Producción, '00'=Pruebas  (igual que FacturacionService.DTE_AMBIENTE_CODE)
+    ambiente_interno = (
         getattr(venta, 'ambiente_emision', None)
         or getattr(empresa, 'ambiente', None)
         or '01'
     )
+    ambiente_interno = str(ambiente_interno).strip() or '01'
+    ambiente_consulta = {'01': '00', '00': '01'}.get(ambiente_interno, ambiente_interno)
     if codigo_gen_raw:
-        params = {'ambiente': ambiente_venta, 'codGen': codigo_gen_raw}
+        params = {'ambiente': ambiente_consulta, 'codGen': codigo_gen_raw}
         if fecha_iso:
             params['fechaEmi'] = fecha_iso
         url_consulta = f"https://admin.factura.gob.sv/consultaPublica?{urlencode(params)}"

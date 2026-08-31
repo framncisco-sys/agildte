@@ -129,22 +129,27 @@ function pad2(valor, def = '') {
 /**
  * Normaliza ubicación para formularios DTE (CAT-012/013 oficial).
  * Corrige el swap histórico 12/13 (San Miguel↔Morazán) y códigos CGEOES 01..N.
+ *
+ * Importante: los códigos de municipio 21/22/23 también existen en San Salvador (06).
+ * Solo se fuerza San Miguel/Morazán cuando el departamento ya es 12 o 13.
  */
 export function normalizarUbicacionMh(departamento, municipio, distrito) {
   let d = pad2(departamento, '06')
   const mRaw = pad2(municipio, '')
   let m = MUNI_CGEOES_A_MH[d]?.[mRaw] || mRaw
 
-  // Municipios MH de San Miguel / Morazán fuerzan el depto CAT-012 correcto.
-  if (['21', '22', '23'].includes(m)) d = '12'
-  else if (['27', '28'].includes(m)) d = '13'
-  else if (d === '13' && ['01', '02', '03'].includes(mRaw)) {
-    // Histórico: San Miguel guardado como depto 13 + CGEOES
-    d = '12'
-    m = MUNI_CGEOES_A_MH['12']?.[mRaw] || m
-  } else if (d === '12' && ['01', '02'].includes(mRaw) && !['21', '22', '23'].includes(m)) {
-    d = '13'
-    m = MUNI_CGEOES_A_MH['13']?.[mRaw] || m
+  // Solo corregir swap histórico entre San Miguel (12) y Morazán (13).
+  if (d === '12' || d === '13') {
+    if (['21', '22', '23'].includes(m)) d = '12'
+    else if (['27', '28'].includes(m)) d = '13'
+    else if (d === '13' && ['01', '02', '03'].includes(mRaw)) {
+      // Histórico: San Miguel guardado como depto 13 + CGEOES
+      d = '12'
+      m = MUNI_CGEOES_A_MH['12']?.[mRaw] || m
+    } else if (d === '12' && ['01', '02'].includes(mRaw) && !['21', '22', '23'].includes(m)) {
+      d = '13'
+      m = MUNI_CGEOES_A_MH['13']?.[mRaw] || m
+    }
   }
 
   if (!m || !MUNICIPIOS_POR_DEPARTAMENTO[d]?.some((x) => x.codigo === m)) {

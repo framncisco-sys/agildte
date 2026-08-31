@@ -1,10 +1,12 @@
 """
 Builder para DTE-01 (Factura Consumidor Final).
-Esquema fe-f-v2 - Sin NRC, sin nombreComercial en receptor cuando Consumidor Final.
+Esquema fe-f-v2 - Receptor opcional: NRC/actividad si se capturan en el formulario.
 Cuerpo: precioUni incluye IVA, ivaItem para desglose.
 """
 from .dte_03_builder import DTE03Builder
+from api.dte_generator import formatear_nrc_emisor
 from api.utils.mh_direccion import armar_direccion_mh
+from api.utils.mh_documento import normalizar_nrc_mh
 
 
 class DTE01Builder(DTE03Builder):
@@ -18,12 +20,45 @@ class DTE01Builder(DTE03Builder):
         """Emisor fe-f-v2."""
         return super()._construir_emisor()
 
+    def _receptor_nrc_actividad(self, cliente=None):
+        """
+        NRC / actividad del receptor CF: opcionales en fe-f-v2 (pueden ser null).
+        Si el usuario los llenó en el formulario (o están en la ficha), se envían a MH.
+        """
+        nrc_raw = str(getattr(self.venta, 'nrc_receptor', None) or '').strip()
+        if not nrc_raw and cliente:
+            nrc_raw = str(getattr(cliente, 'nrc', None) or '').strip()
+        nrc = normalizar_nrc_mh(nrc_raw) or formatear_nrc_emisor(nrc_raw) or None
+        if nrc and (len(nrc) < 2 or len(nrc) > 8):
+            nrc = None
+
+        cod = str(getattr(self.venta, 'cod_actividad_receptor', None) or '').strip()
+        if not cod and cliente:
+            cod = str(getattr(cliente, 'cod_actividad', None) or '').strip()
+        desc = str(getattr(self.venta, 'desc_actividad_receptor', None) or '').strip()
+        if not desc and cliente:
+            desc = str(
+                getattr(cliente, 'desc_actividad', None)
+                or getattr(cliente, 'giro', None)
+                or ''
+            ).strip()
+
+        # Schema: codActividad 5–6, descActividad 5–150; enviar ambos o ninguno
+        if not cod or not (5 <= len(cod) <= 6):
+            cod = None
+        if not desc or not (5 <= len(desc) <= 150):
+            desc = None
+        if not cod or not desc:
+            return nrc, None, None
+
+        return nrc, cod, desc[:150]
+
     def _construir_receptor(self):
         """
         Receptor DTE-01: Consumidor Final.
         - Nombre vacío -> "Consumidor Final".
         - Dirección vacía -> null (fe-f-v2 permite receptor.direccion null).
-        - No enviar campos nulos que Hacienda rechaza (nombreComercial, nrc si no existen).
+        - NRC / codActividad / descActividad: null si no hay datos; valores del formulario si existen.
         """
         cliente = self.venta.cliente
 
@@ -60,6 +95,8 @@ class DTE01Builder(DTE03Builder):
                 distrito=codigo_distrito or '14',
             )
 
+        nrc, cod_act, desc_act = self._receptor_nrc_actividad(cliente)
+
         if not cliente:
             nombre = (
                 (getattr(self.venta, 'nombre_receptor', None) or '').strip()
@@ -69,8 +106,10 @@ class DTE01Builder(DTE03Builder):
             tdoc = getattr(self.venta, 'tipo_doc_receptor', None) or None
             try:
                 tipo_doc, num_doc = normalizar_tipo_y_numero_mh(tdoc, doc) if doc else (None, None)
-                if tipo_doc == "13" and num_doc:
-                    tipo_doc = None
+                # fe-f-v2: MH rechaza receptor.tipoDocumento "13" (DUI) en CF.
+                # Enviar ambos null (no dejar numDocumento huérfano).
+                if tipo_doc == "13":
+                    tipo_doc, num_doc = None, None
             except ValueError:
                 tipo_doc, num_doc = None, None
             correo = str(getattr(self.venta, 'correo_receptor', None) or '').strip() or None
@@ -82,9 +121,9 @@ class DTE01Builder(DTE03Builder):
                 "tipoDocumento": tipo_doc,
                 "numDocumento": num_doc,
                 "nombre": nombre,
-                "nrc": None,
-                "codActividad": None,
-                "descActividad": None,
+                "nrc": nrc,
+                "codActividad": cod_act,
+                "descActividad": desc_act,
                 "direccion": direccion_obj,
                 "telefono": telefono,
                 "correo": correo,
@@ -106,16 +145,25 @@ class DTE01Builder(DTE03Builder):
             tipo_doc, num_doc = documento_cliente_para_mh(cliente)
         except ValueError:
             tipo_doc, num_doc = None, None
+        # Preferir documento del snapshot de la venta si existe
+        doc_venta = str(getattr(self.venta, 'documento_receptor', None) or '').strip()
+        tdoc_venta = getattr(self.venta, 'tipo_doc_receptor', None) or None
+        if doc_venta:
+            try:
+                tipo_doc, num_doc = normalizar_tipo_y_numero_mh(tdoc_venta, doc_venta)
+            except ValueError:
+                pass
         # fe-f-v2: MH rechaza receptor.tipoDocumento "13" (DUI) en CF.
-        if tipo_doc == "13" and num_doc:
-            tipo_doc = None
+        # Enviar ambos null para no romper el par tipo/número.
+        if tipo_doc == "13":
+            tipo_doc, num_doc = None, None
         receptor["tipoDocumento"] = tipo_doc
         receptor["numDocumento"] = num_doc
 
         receptor["nombre"] = nombre_receptor
-        receptor["nrc"] = None
-        receptor["codActividad"] = None
-        receptor["descActividad"] = None
+        receptor["nrc"] = nrc
+        receptor["codActividad"] = cod_act
+        receptor["descActividad"] = desc_act
         receptor["telefono"] = telefono
         receptor["direccion"] = direccion_obj
 

@@ -5885,13 +5885,13 @@ def historial_usuarios():
         n_logouts = eventos_count.get("LOGOUT", 0)
         n_ventas = sum(
             eventos_count.get(k, 0)
-            for k in ("VENTA_CREADA", "VENTA_EDITADA", "VENTA_ANULADA")
+            for k in ("VENTA_CREADA", "VENTA_EDITADA", "VENTA_ANULADA", "VENTA_REMITIDA")
         )
         n_logins_todos = eventos_todos.get("LOGIN", 0)
         n_logouts_todos = eventos_todos.get("LOGOUT", 0)
         n_ventas_todos = sum(
             eventos_todos.get(k, 0)
-            for k in ("VENTA_CREADA", "VENTA_EDITADA", "VENTA_ANULADA")
+            for k in ("VENTA_CREADA", "VENTA_EDITADA", "VENTA_ANULADA", "VENTA_REMITIDA")
         )
         n_total_global = sum(eventos_todos.values()) if eventos_todos else n_total
         return render_template(
@@ -7306,6 +7306,53 @@ def eliminar_sucursal(sucursal_id):
     return redirect(url_for("admin.sucursales"))
 
 
+def _filas_gestion_ventas(cur, emp_id: int, ambiente_empresa: str, limit: int = 150) -> tuple[list[dict], int]:
+    from azdigital.utils.estado_emision import fila_gestion_venta
+
+    rows = ventas_repo.listar_ventas_recientes(
+        cur,
+        empresa_id=emp_id,
+        limit=limit,
+        ambiente_emision=ambiente_empresa,
+    ) or []
+    filas = [fila_gestion_venta(r) for r in rows]
+    n_pend = sum(1 for f in filas if f.get("puede_remitir"))
+    return filas, n_pend
+
+
+def _flash_resultado_remitir(venta_id: int, result: dict) -> bool:
+    if result.get("corregido"):
+        flash(
+            f"Venta #{venta_id}: Hacienda aceptó el nuevo correlativo. Estado: Corregido.",
+            "success",
+        )
+        return True
+    if result.get("ok"):
+        if result.get("reemitido"):
+            flash(
+                f"Venta #{venta_id} emitida de nuevo (nuevo correlativo). "
+                "Si Hacienda aún la rechaza, siga en Rechazado.",
+                "warning",
+            )
+        else:
+            flash(f"Venta #{venta_id} remitida a AgilDTE (fecha y cajero se conservaron).", "success")
+        return True
+    msg = (result.get("mensaje_usuario") or "").strip() or f"No se pudo remitir la venta #{venta_id}."
+    flash(msg, "danger")
+    return False
+
+
+def _persistir_resultado_remitir(conn, cur, venta_id: int, result: dict, detalle: str) -> bool:
+    """Commit si se emitió o se guardó código DTE (aunque MH rechace). Evita re-emitir duplicados."""
+    if result.get("ok") or result.get("dte_persistido"):
+        if result.get("ok"):
+            registrar_accion(cur, historial_usuarios_repo.EVENTO_VENTA_REMITIDA, detalle)
+        conn.commit()
+        return bool(result.get("ok"))
+    conn.rollback()
+    return False
+
+
 @bp.route("/gestion_ventas")
 @rol_requerido("GERENTE")
 def gestion_ventas():
@@ -7321,75 +7368,121 @@ def gestion_ventas():
     except Exception:
         pass
     try:
-        rows = ventas_repo.listar_ventas_recientes(
-            cur,
-            empresa_id=emp_id,
-            limit=150,
-            ambiente_emision=ambiente_empresa,
-        ) or []
+        filas, n_pend = _filas_gestion_ventas(cur, emp_id, ambiente_empresa)
         return render_template(
             "gestion_ventas.html",
-            ventas=rows,
+            ventas=filas,
             ambiente_emision=ambiente_empresa,
+            pendientes_n=n_pend,
         )
     finally:
         cur.close()
         conn.close()
 
 
-def _resolver_venta_remota_agildte(cli, *, empresa_id: int, codigo_generacion: str, numero_control: str, venta_local_id: int) -> int | None:
-    """
-    Busca el ID remoto en AgilDTE para la venta local.
-    Prioriza codigo_generacion y luego numero_control.
-    """
-    def _extraer_resultados(payload):
-        if isinstance(payload, dict):
-            results = payload.get("results")
-            if isinstance(results, list):
-                return results
-            if isinstance(payload.get("ventas"), list):
-                return payload.get("ventas")
-        if isinstance(payload, list):
-            return payload
-        return []
+@bp.route("/gestion_ventas/<int:venta_id>/remitir", methods=["POST"])
+@rol_requerido("GERENTE")
+def gestion_ventas_remitir(venta_id):
+    from azdigital.integration.agildte_sync import remitir_venta_existente
 
-    def _buscar(search_txt: str) -> int | None:
-        q = (search_txt or "").strip()
-        if not q:
-            return None
-        data = cli.get_json(
-            "/api/ventas/listar/",
-            params={"empresa_id": empresa_id, "search": q, "page": 1, "page_size": 20},
+    emp_id = _empresa_id()
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    try:
+        result = remitir_venta_existente(
+            cur=cur,
+            empresa_id_local=emp_id,
+            venta_id_local=venta_id,
         )
-        candidatos = _extraer_resultados(data)
-        if not candidatos:
-            return None
-        q_upper = q.upper()
-        for it in candidatos:
-            if not isinstance(it, dict):
-                continue
-            cg = str(it.get("codigo_generacion") or "").strip().upper()
-            nc = str(it.get("numero_control") or "").strip().upper()
-            if q_upper and (cg == q_upper or nc == q_upper):
-                rid = it.get("id")
-                if isinstance(rid, int):
-                    return rid
-                if isinstance(rid, str) and rid.isdigit():
-                    return int(rid)
-        first = candidatos[0]
-        if isinstance(first, dict):
-            rid = first.get("id")
-            if isinstance(rid, int):
-                return rid
-            if isinstance(rid, str) and rid.isdigit():
-                return int(rid)
-        return None
+        _persistir_resultado_remitir(
+            conn, cur, venta_id, result, f"Venta #{venta_id} remitida a AgilDTE"
+        )
+        _flash_resultado_remitir(venta_id, result)
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        flash(f"Error al remitir la venta #{venta_id}: {e}", "danger")
+    finally:
+        cur.close()
+        conn.close()
+    return redirect(url_for("admin.gestion_ventas"))
 
-    rid = _buscar(codigo_generacion) or _buscar(numero_control)
-    if rid is not None:
-        return rid
-    # Último fallback: algunos ambientes mantienen ids cercanos entre POS y backend central.
-    return int(venta_local_id) if venta_local_id else None
+
+@bp.route("/gestion_ventas/remitir-pendientes", methods=["POST"])
+@rol_requerido("GERENTE")
+def gestion_ventas_remitir_pendientes():
+    from azdigital.integration.agildte_sync import remitir_venta_existente
+
+    emp_id = _empresa_id()
+    db = ConexionDB()
+    conn = psycopg2.connect(**db.config)
+    cur = conn.cursor()
+    ambiente_empresa = "01"
+    try:
+        from azdigital.services.modo_operacion_service import obtener_ambiente_empresa
+
+        ambiente_empresa = obtener_ambiente_empresa(emp_id, cur=cur)
+    except Exception:
+        pass
+    ok_n = 0
+    fail_n = 0
+    try:
+        filas, _n = _filas_gestion_ventas(cur, emp_id, ambiente_empresa)
+        pendientes = [f for f in filas if f.get("puede_remitir")]
+        if not pendientes:
+            flash("No hay ventas pendientes de remitir en este listado.", "info")
+            return redirect(url_for("admin.gestion_ventas"))
+        for f in pendientes:
+            vid = int(f["id"])
+            try:
+                result = remitir_venta_existente(
+                    cur=cur,
+                    empresa_id_local=emp_id,
+                    venta_id_local=vid,
+                )
+                if _persistir_resultado_remitir(
+                    conn, cur, vid, result, f"Venta #{vid} remitida a AgilDTE (lote)"
+                ):
+                    ok_n += 1
+                else:
+                    fail_n += 1
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                fail_n += 1
+        if ok_n and not fail_n:
+            flash(f"Se remitieron {ok_n} venta(s) pendientes a AgilDTE.", "success")
+        elif ok_n and fail_n:
+            flash(f"Remitidas {ok_n}. No se pudieron remitir {fail_n}. Revise cada fila.", "warning")
+        else:
+            flash("No se pudo remitir ninguna venta pendiente. Abra la factura, corrija y emita.", "danger")
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        flash(f"Error al remitir pendientes: {e}", "danger")
+    finally:
+        cur.close()
+        conn.close()
+    return redirect(url_for("admin.gestion_ventas"))
+
+
+def _resolver_venta_remota_agildte(cli, *, empresa_id: int, codigo_generacion: str, numero_control: str, venta_local_id: int) -> int | None:
+    """Busca el ID remoto en AgilDTE. No usa el ID local del POS (secuencias distintas)."""
+    from azdigital.integration.agildte_sync import resolver_id_venta_agildte
+
+    return resolver_id_venta_agildte(
+        cli,
+        empresa_id=empresa_id,
+        codigo_generacion=codigo_generacion,
+        numero_control=numero_control,
+    )
 
 
 @bp.route("/gestion_ventas/<int:venta_id>/generar-json")
@@ -7415,9 +7508,20 @@ def gestion_ventas_generar_json(venta_id):
             venta_local_id=venta_id,
         )
         if not remote_id:
-            flash("No se encontró la venta remota en AgilDTE para generar JSON.", "warning")
+            flash(
+                f"La venta POS #{venta_id} no está en AgilDTE (no se sincronizó o no tiene código DTE). "
+                "El JSON de AgilDTE no corresponde a este ticket: son IDs distintos.",
+                "warning",
+            )
             return redirect(url_for("admin.gestion_ventas"))
-        data = cli.get_json(f"/api/ventas/{int(remote_id)}/generar-dte/", params={"empresa_id": emp_id})
+        data = cli.get_json(
+            f"/api/ventas/{int(remote_id)}/generar-dte/",
+            params={
+                "empresa_id": emp_id,
+                "codigo_generacion": codigo_generacion,
+                "numero_control": numero_control,
+            },
+        )
         dte_json = data.get("dte_json") if isinstance(data, dict) else data
         nombre = numero_control or codigo_generacion or f"venta_{venta_id}"
         blob = BytesIO(json.dumps(dte_json, ensure_ascii=False, indent=2).encode("utf-8"))
@@ -7461,12 +7565,20 @@ def gestion_ventas_generar_pdf(venta_id):
             venta_local_id=venta_id,
         )
         if not remote_id:
-            flash("No se encontró la venta remota en AgilDTE para generar PDF.", "warning")
+            flash(
+                f"La venta POS #{venta_id} no está en AgilDTE (no se sincronizó o no tiene código DTE). "
+                "El PDF que se abría antes podía ser de OTRA factura (el ID del POS no es el de AgilDTE).",
+                "warning",
+            )
             return redirect(url_for("admin.gestion_ventas"))
         resp = cli.request(
             "GET",
             f"/api/ventas/{int(remote_id)}/generar-pdf/",
-            params={"empresa_id": emp_id},
+            params={
+                "empresa_id": emp_id,
+                "codigo_generacion": codigo_generacion,
+                "numero_control": numero_control,
+            },
         )
         if resp.status_code >= 400:
             raise AgilDTEAPIError(f"HTTP {resp.status_code}: {resp.text[:400]}", status_code=resp.status_code, body=None)
@@ -7488,9 +7600,89 @@ def gestion_ventas_generar_pdf(venta_id):
         conn.close()
 
 
+def _guardar_edicion_gestion_venta(cur, emp_id: int, venta_id: int, v, *, editar_lineas: bool) -> tuple[bool, str]:
+    """Guarda cabecera y, si aplica, líneas. No cambia fecha ni cajero. Retorna (ok, mensaje)."""
+    from azdigital.services.ventas_service import calcular_retencion_iva
+    from azdigital.utils.estado_emision import clasificar_estado_emision
+
+    cn = (request.form.get("cliente_nombre") or "").strip() or "Consumidor Final"
+    tp = (request.form.get("tipo_pago") or "EFECTIVO").strip().upper()
+    tc = (request.form.get("tipo_comprobante") or "TICKET").strip().upper()
+    if tc not in ("TICKET", "FACTURA", "CREDITO_FISCAL"):
+        tc = "TICKET"
+    cr = (request.form.get("cliente_id") or "").strip()
+    cid = int(cr) if cr.isdigit() else None
+    if cid:
+        snap = clientes_repo.snapshot_cliente_venta_por_id(cur, cid, emp_id)
+        if snap:
+            cn = snap
+    if tc == "CREDITO_FISCAL":
+        if not cid:
+            return False, "Crédito fiscal requiere cliente del catálogo (ID)."
+        cur.execute(
+            "SELECT COALESCE(es_contribuyente, FALSE) FROM clientes WHERE id = %s AND empresa_id = %s",
+            (cid, emp_id),
+        )
+        r = cur.fetchone()
+        if not r or not r[0]:
+            return False, "Crédito fiscal: el cliente debe ser contribuyente."
+    ec = (request.form.get("estado_cobro") or "COBRADO").strip().upper()
+    if ec not in ("COBRADO", "PENDIENTE"):
+        ec = "COBRADO"
+
+    cg = str(v[14] or "").strip() if len(v) > 14 else ""
+    ed = str(v[17] or "").strip() if len(v) > 17 else ""
+    puede_lineas = editar_lineas and clasificar_estado_emision(cg, ed)["clave"] in (
+        "pendiente",
+        "rechazado",
+    )
+    total_venta = float(v[2]) if v and len(v) > 2 else 0
+    desc = float(v[12] or 0) if len(v) > 12 else 0.0
+
+    if puede_lineas:
+        lineas = ventas_repo.get_detalles_completos(cur, venta_id)
+        bruto = 0.0
+        for ln in lineas:
+            raw_c = request.form.get(f"cant_{ln['id']}")
+            raw_p = request.form.get(f"precio_{ln['id']}")
+            try:
+                cant = float(raw_c) if raw_c is not None and str(raw_c).strip() != "" else ln["cantidad"]
+                pu = float(raw_p) if raw_p is not None and str(raw_p).strip() != "" else ln["precio_unitario"]
+            except (TypeError, ValueError):
+                return False, f"Cantidad o precio inválido en {ln['nombre']}."
+            if cant <= 0:
+                return False, f"La cantidad de {ln['nombre']} debe ser mayor a 0."
+            if pu < 0:
+                return False, f"El precio de {ln['nombre']} no puede ser negativo."
+            if not ventas_repo.actualizar_detalle_montos(cur, ln["id"], venta_id, cant, pu):
+                return False, f"No se pudo actualizar la línea {ln['nombre']}."
+            bruto += round(cant * pu, 2)
+        total_venta = round(max(bruto - desc, 0.0), 2)
+        ventas_repo.actualizar_totales_venta(cur, venta_id, emp_id, total_venta, total_bruto=round(bruto, 2))
+
+    ret_iva = calcular_retencion_iva(cur, total_venta, tc, cid, emp_id)
+    ok = ventas_repo.actualizar_venta_cabecera(
+        cur,
+        venta_id,
+        emp_id,
+        cn,
+        tp,
+        tc,
+        cid,
+        estado_cobro=ec,
+        retencion_iva=ret_iva,
+    )
+    if not ok:
+        return False, "No se pudo actualizar la cabecera."
+    return True, ""
+
+
 @bp.route("/gestion_ventas/editar/<int:venta_id>", methods=["GET", "POST"])
 @rol_requerido("GERENTE")
 def gestion_ventas_editar(venta_id):
+    from azdigital.integration.agildte_sync import remitir_venta_existente
+    from azdigital.utils.estado_emision import clasificar_estado_emision
+
     emp_id = _empresa_id()
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
@@ -7500,45 +7692,75 @@ def gestion_ventas_editar(venta_id):
         if not v:
             flash("Venta no encontrada.", "danger")
             return redirect(url_for("admin.gestion_ventas"))
+        cg = str(v[14] or "").strip() if len(v) > 14 else ""
+        ed = str(v[17] or "").strip() if len(v) > 17 else ""
+        st = clasificar_estado_emision(cg, ed)
+        puede_emitir = st["clave"] in ("pendiente", "rechazado")
         if request.method == "POST":
-            cn = (request.form.get("cliente_nombre") or "").strip() or "Consumidor Final"
-            tp = (request.form.get("tipo_pago") or "EFECTIVO").strip().upper()
-            tc = (request.form.get("tipo_comprobante") or "TICKET").strip().upper()
-            if tc not in ("TICKET", "FACTURA", "CREDITO_FISCAL"):
-                tc = "TICKET"
-            cr = (request.form.get("cliente_id") or "").strip()
-            cid = int(cr) if cr.isdigit() else None
-            if cid:
-                snap = clientes_repo.snapshot_cliente_venta_por_id(cur, cid, emp_id)
-                if snap:
-                    cn = snap
-            if tc == "CREDITO_FISCAL":
-                if not cid:
-                    flash("Crédito fiscal requiere cliente del catálogo (ID).", "danger")
-                    return redirect(url_for("admin.gestion_ventas_editar", venta_id=venta_id))
-                cur.execute(
-                    "SELECT COALESCE(es_contribuyente, FALSE) FROM clientes WHERE id = %s AND empresa_id = %s",
-                    (cid, emp_id),
-                )
-                r = cur.fetchone()
-                if not r or not r[0]:
-                    flash("Crédito fiscal: el cliente debe ser contribuyente.", "danger")
-                    return redirect(url_for("admin.gestion_ventas_editar", venta_id=venta_id))
-            ec = (request.form.get("estado_cobro") or "COBRADO").strip().upper()
-            total_venta = float(v[2]) if v and len(v) > 2 else 0
-            from azdigital.services.ventas_service import calcular_retencion_iva
-            ret_iva = calcular_retencion_iva(cur, total_venta, tc, cid, emp_id)
-            ok = ventas_repo.actualizar_venta_cabecera(cur, venta_id, emp_id, cn, tp, tc, cid, estado_cobro=ec if ec in ("COBRADO", "PENDIENTE") else "COBRADO", retencion_iva=ret_iva)
-            if ok:
-                registrar_accion(cur, historial_usuarios_repo.EVENTO_VENTA_EDITADA, f"Venta #{venta_id} actualizada")
-                conn.commit()
-                flash("Venta actualizada.", "success")
-            else:
+            accion = (request.form.get("accion") or "guardar").strip()
+            ok, err = _guardar_edicion_gestion_venta(cur, emp_id, venta_id, v, editar_lineas=True)
+            if not ok:
                 conn.rollback()
-                flash("No se pudo actualizar.", "warning")
-            return redirect(url_for("admin.gestion_ventas"))
-        detalles = ventas_repo.get_detalles(cur, venta_id) or []
-        return render_template("gestion_venta_editar.html", venta=v, detalles=detalles, venta_id=venta_id)
+                flash(err, "danger")
+                return redirect(url_for("admin.gestion_ventas_editar", venta_id=venta_id))
+            registrar_accion(cur, historial_usuarios_repo.EVENTO_VENTA_EDITADA, f"Venta #{venta_id} actualizada")
+            conn.commit()
+            if accion == "guardar_emitir":
+                if not puede_emitir:
+                    flash("La venta ya está en AgilDTE. No se vuelve a emitir para no duplicar el DTE.", "warning")
+                    return redirect(url_for("admin.gestion_ventas"))
+                result = remitir_venta_existente(
+                    cur=cur,
+                    empresa_id_local=emp_id,
+                    venta_id_local=venta_id,
+                )
+                if result.get("ok") or result.get("corregido"):
+                    registrar_accion(
+                        cur,
+                        historial_usuarios_repo.EVENTO_VENTA_REMITIDA,
+                        f"Venta #{venta_id} emitida desde factura completa",
+                    )
+                    conn.commit()
+                    if result.get("corregido"):
+                        flash(
+                            "Factura corregida: Hacienda aceptó el nuevo correlativo. Estado: Corregido.",
+                            "success",
+                        )
+                    elif result.get("reemitido"):
+                        flash(
+                            "Se emitió un DTE nuevo. Si Hacienda aún lo rechaza, el estado sigue en Rechazado.",
+                            "warning",
+                        )
+                    else:
+                        flash("Factura guardada y emitida a AgilDTE. Fecha y cajero se conservaron.", "success")
+                else:
+                    if result.get("dte_persistido"):
+                        conn.commit()
+                    else:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                    mu = (result.get("mensaje_usuario") or "").strip()
+                    flash(
+                        "La factura se guardó en el POS, pero no se pudo emitir. "
+                        + (mu or "Revise la conexión con AgilDTE e intente Remitir."),
+                        "warning",
+                    )
+                return redirect(url_for("admin.gestion_ventas"))
+            flash("Venta actualizada. Fecha y cajero no se modificaron.", "success")
+            return redirect(url_for("admin.gestion_ventas_editar", venta_id=venta_id))
+        lineas = ventas_repo.get_detalles_completos(cur, venta_id)
+        cajero = ventas_repo.get_cajero_venta(cur, venta_id)
+        return render_template(
+            "gestion_venta_editar.html",
+            venta=v,
+            lineas=lineas,
+            venta_id=venta_id,
+            cajero=cajero,
+            estado=st,
+            puede_emitir=puede_emitir,
+        )
     except Exception as e:
         try:
             conn.rollback()

@@ -111,6 +111,24 @@ class BuildPayloadContractTests(unittest.TestCase):
         self.assertEqual(d0["precio_unitario"], 25.0)
         self.assertEqual(d0["subtotal"], 25.0)
 
+    def test_ticket_conserva_nombre_digitado(self):
+        """POS con nombre (David Cerrano) no debe llegar a AgilDTE como Cliente de contado."""
+        p = build_crear_venta_con_detalles_payload(
+            empresa_id=1,
+            tipo_comprobante_pos="TICKET",
+            tipo_pago="EFECTIVO",
+            lineas=[_linea(1, cant=3.0, pu=1.10, st=3.30)],
+            total_neto=3.30,
+            total_bruto=3.30,
+            descuento=0.0,
+            cliente_id=None,
+            cliente_nombre_ticket="David Cerrano",
+            receptor=None,
+        )
+        self.assertEqual(p["nombre_receptor"], "David Cerrano")
+        self.assertEqual(p["detalles"][0]["subtotal"], 3.30)
+        self.assertEqual(p["detalles"][0]["precio_unitario"], 1.10)
+
     def test_ccf_dui_en_receptor_mapea_nit_receptor(self):
         p = build_crear_venta_con_detalles_payload(
             empresa_id=1,
@@ -314,6 +332,49 @@ class GenerarDteUsesGetTests(unittest.TestCase):
         path = gj.call_args[0][0]
         self.assertIn("generar-dte", path)
         self.assertIn("99", path)
+
+
+class ResolverIdAgilDteTests(unittest.TestCase):
+    def test_sin_codigo_no_usa_id_local_del_pos(self):
+        from azdigital.integration.agildte_sync import resolver_id_venta_agildte
+
+        cli = type("Cli", (), {"get_json": staticmethod(lambda *a, **k: {"results": [{"id": 827}]})})()
+        rid = resolver_id_venta_agildte(
+            cli, empresa_id=1, codigo_generacion="", numero_control=""
+        )
+        self.assertIsNone(rid)
+
+    def test_match_exacto_por_numero_control(self):
+        from azdigital.integration.agildte_sync import resolver_id_venta_agildte
+
+        class Cli:
+            def get_json(self, *args, **kwargs):
+                return {
+                    "results": [
+                        {"id": 100, "numero_control": "DTE-01-M001P001-0000000000000338"},
+                        {"id": 827, "numero_control": "OTRO"},
+                    ]
+                }
+
+        rid = resolver_id_venta_agildte(
+            Cli(),
+            empresa_id=1,
+            codigo_generacion="",
+            numero_control="DTE-01-M001P001-0000000000000338",
+        )
+        self.assertEqual(rid, 100)
+
+    def test_no_toma_el_primer_resultado_si_no_coincide(self):
+        from azdigital.integration.agildte_sync import resolver_id_venta_agildte
+
+        class Cli:
+            def get_json(self, *args, **kwargs):
+                return {"results": [{"id": 827, "numero_control": "NO-ES-ESTE"}]}
+
+        rid = resolver_id_venta_agildte(
+            Cli(), empresa_id=1, codigo_generacion="", numero_control="DTE-01-XXXX"
+        )
+        self.assertIsNone(rid)
 
 
 if __name__ == "__main__":

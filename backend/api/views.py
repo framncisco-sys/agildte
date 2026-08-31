@@ -25,6 +25,7 @@ from .serializers import ClienteSerializer, CompraSerializer, VentaSerializer, R
 from .utils.pdf_generator import generar_pdf_venta
 from .utils.dte_historico import obtener_dte_historico
 from .utils.tenant import get_empresa_ids_allowlist, require_empresa_allowed, require_object_empresa_allowed, get_and_validate_empresa
+from .utils.dte_acceso import auditar_acceso_dte, autenticar_request_jwt, evaluar_acceso_dte_venta
 from .services import FacturacionService, FacturacionServiceError, AutenticacionMHError, FirmaDTEError, EnvioMHError
 from .services.email_service import enviar_factura_email
 from .utils.contingencia import generar_reporte_contingencia
@@ -2387,6 +2388,7 @@ def enviar_factura_whatsapp_api(request):
         MSG_WHATSAPP_NO_HABILITADO,
         WhatsAppCloudError,
         enviar_factura_whatsapp,
+        http_status_cliente_whatsapp,
     )
 
     if not request.user.is_authenticated:
@@ -2434,13 +2436,17 @@ def enviar_factura_whatsapp_api(request):
             status=status.HTTP_200_OK,
         )
     except WhatsAppCloudError as exc:
-        code = exc.status_code or status.HTTP_400_BAD_REQUEST
-        if code == 403:
+        raw_code = exc.status_code or status.HTTP_400_BAD_REQUEST
+        # 403 propio del módulo premium (no confundir con 403 de Meta)
+        if raw_code == 403 and MSG_WHATSAPP_NO_HABILITADO in str(exc):
             return Response(
                 {'detail': MSG_WHATSAPP_NO_HABILITADO, 'code': 'whatsapp_premium_disabled'},
                 status=403,
             )
-        return Response({'detail': str(exc)}, status=code if 400 <= code < 600 else status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'detail': str(exc)},
+            status=http_status_cliente_whatsapp(raw_code),
+        )
     except Exception:
         logger.exception('enviar_factura_whatsapp_api venta_id=%s', venta_id)
         return Response(
@@ -2846,33 +2852,42 @@ def obtener_venta(request, pk):
 
 def generar_pdf_venta_endpoint(request, pk):
     """
-    Genera y retorna el PDF de una factura individual.
-    NO usa @api_view para evitar negociación de contenido de DRF.
-    Devuelve HttpResponse directamente para PDFs binarios.
+    PDF de una factura. Autenticado + empresa dueña + código/número de control.
+    El ID numérico no basta (POS 819 no es AgilDTE 819).
     """
+    if not autenticar_request_jwt(request):
+        auditar_acceso_dte(
+            request=request,
+            resultado="denegado_auth",
+            recurso="pdf",
+            venta_id=pk,
+        )
+        return JsonResponse({"error": "Autenticación requerida"}, status=401)
     try:
         venta = Venta.objects.select_related('empresa', 'cliente').prefetch_related('detalles__producto').get(pk=pk)
-        
-        # Generar el PDF
-        buffer = generar_pdf_venta(venta)
-        
-        # Leer el contenido del buffer
-        pdf_content = buffer.getvalue()
-        
-        # Crear la respuesta HTTP con el PDF (sin pasar por DRF)
-        response = HttpResponse(pdf_content, content_type='application/pdf')
-        response['Content-Disposition'] = f'inline; filename="factura_{venta.numero_control or venta.id}.pdf"'
-        response['Content-Length'] = len(pdf_content)
-        
-        return response
     except Venta.DoesNotExist:
-        # Para errores, devolver JSON usando JsonResponse de Django
-        return JsonResponse({'error': 'Venta no encontrada'}, status=404)
+        auditar_acceso_dte(
+            request=request,
+            resultado="denegado_documento",
+            recurso="pdf",
+            venta_id=pk,
+        )
+        return JsonResponse({"error": "No encontrado"}, status=404)
+    resultado, code, body = evaluar_acceso_dte_venta(request, venta, recurso="pdf")
+    if resultado != "ok":
+        return JsonResponse(body, status=code)
+    try:
+        buffer = generar_pdf_venta(venta)
+        pdf_content = buffer.getvalue()
+        response = HttpResponse(pdf_content, content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'inline; filename="factura_{venta.numero_control or venta.codigo_generacion or venta.id}.pdf"'
+        )
+        response["Content-Length"] = len(pdf_content)
+        return response
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error generando PDF para venta {pk}: {str(e)}")
-        return JsonResponse({'error': f'Error al generar PDF: {str(e)}'}, status=500)
+        logger.error("Error generando PDF para venta %s: %s", pk, e)
+        return JsonResponse({"error": "No se pudo generar el PDF."}, status=500)
 
 
 @csrf_exempt
@@ -2917,16 +2932,23 @@ def descargar_factura_publica(request):
 @api_view(['GET'])
 def generar_dte_venta(request, pk):
     """
-    Descarga el JSON DTE completo.
-    - Si la venta conserva dte_firmado, decodifica el payload original del JWS.
-      Nunca reconstruye un DTE histórico con los builders actuales.
-    - Si aún no fue aceptada: devuelve el JSON sin firmar (para diagnóstico).
-    Endpoint: GET /api/ventas/{id}/generar-dte/
+    JSON DTE. Autenticado + empresa dueña + código/número de control.
+    El ID numérico no basta.
     """
     try:
         venta = Venta.objects.get(pk=pk)
     except Venta.DoesNotExist:
-        return Response({"error": "Venta no encontrada"}, status=404)
+        auditar_acceso_dte(
+            request=request,
+            resultado="denegado_documento",
+            recurso="json",
+            venta_id=pk,
+        )
+        return Response({"error": "No encontrado"}, status=404)
+
+    resultado, code, body = evaluar_acceso_dte_venta(request, venta, recurso="json")
+    if resultado != "ok":
+        return Response(body, status=code)
 
     if not venta.empresa:
         return Response({"error": "La venta debe tener una empresa asociada para generar el DTE"}, status=400)

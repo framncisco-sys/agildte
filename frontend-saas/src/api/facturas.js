@@ -1,4 +1,5 @@
 import apiClient from './axios'
+import { useEmpresaStore } from '../stores/useEmpresaStore'
 import { fechaHoyElSalvadorISO } from '../utils/format'
 
 /**
@@ -24,7 +25,6 @@ function mapearPayloadFrontendADjango(payload) {
   const nombreReceptor = (tipoVenta === 'CF' || esFSE)
     ? (cliente?.nombreCompleto?.trim() || (esFSE ? 'Proveedor Sujeto Excluido' : 'Consumidor Final'))
     : (cliente?.nombreCompleto ?? '')
-  const nrcReceptor = (tipoVenta === 'CF' || esFSE) ? null : (cliente?.numeroDocumento ?? '')
   const documentoReceptor = (tipoVenta === 'CF' || esFSE)
     ? (cliente?.numeroDocumento?.trim() || null)
     : (['CCF', 'NC', 'ND'].includes(tipoVenta) ? (cliente?.numeroDocumento?.trim() || null) : null)
@@ -73,8 +73,8 @@ function mapearPayloadFrontendADjango(payload) {
     }
   })
 
-  // Para CCF: priorizar NRC del formulario (nrc del cliente en form > nrcReceptor derivado del NIT)
-  const nrcFinal = ['CCF', 'NC', 'ND'].includes(tipoVenta)
+  // NRC del formulario: CCF/NC/ND obligatorios; CF opcional (si se captura, va al DTE/MH)
+  const nrcFinal = ['CCF', 'NC', 'ND', 'CF'].includes(tipoVenta)
     ? (cliente?.nrc?.trim() || null)
     : null
 
@@ -183,9 +183,15 @@ export async function getVentas(filters = {}) {
  * @param {number} id - ID de la venta
  * @param {string} filename - Nombre sugerido para el archivo
  */
-export async function downloadPDF(id, filename = 'factura.pdf') {
+export async function downloadPDF(id, filename = 'factura.pdf', meta = {}) {
+  const empresaId = meta.empresa_id || useEmpresaStore.getState().empresaId
+  const params = {}
+  if (empresaId) params.empresa_id = empresaId
+  if (meta.codigo_generacion) params.codigo_generacion = meta.codigo_generacion
+  if (meta.numero_control) params.numero_control = meta.numero_control
   const { data } = await apiClient.get(`ventas/${id}/generar-pdf/`, {
     responseType: 'blob',
+    params,
   })
   const url = window.URL.createObjectURL(new Blob([data], { type: 'application/pdf' }))
   const link = document.createElement('a')
@@ -202,8 +208,13 @@ export async function downloadPDF(id, filename = 'factura.pdf') {
  * @param {number} id - ID de la venta
  * @param {string} filename - Nombre sugerido para el archivo
  */
-export async function downloadJSON(id, filename) {
-  const { data } = await apiClient.get(`ventas/${id}/generar-dte/`)
+export async function downloadJSON(id, filename, meta = {}) {
+  const empresaId = meta.empresa_id || useEmpresaStore.getState().empresaId
+  const params = {}
+  if (empresaId) params.empresa_id = empresaId
+  if (meta.codigo_generacion) params.codigo_generacion = meta.codigo_generacion
+  if (meta.numero_control) params.numero_control = meta.numero_control
+  const { data } = await apiClient.get(`ventas/${id}/generar-dte/`, { params })
   const jsonStr = JSON.stringify(data.dte_json || data, null, 2)
   const blob = new Blob([jsonStr], { type: 'application/json' })
   const url = window.URL.createObjectURL(blob)

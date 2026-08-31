@@ -121,8 +121,8 @@ export function EnviarWhatsAppModal({ open, onClose, venta, onExito }) {
                 . Puede cambiarlo antes de enviar.
               </p>
             ) : (
-              <p className="text-xs text-amber-700 mt-1.5">
-                Esta factura no tiene teléfono guardado. Escriba el número de destino.
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1.5">
+                Esta factura no tiene teléfono guardado. Escriba aquí el número de WhatsApp para enviarla.
               </p>
             )}
           </div>

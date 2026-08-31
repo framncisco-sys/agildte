@@ -173,6 +173,40 @@ def actualizar_dte_desde_respuesta_agildte(
         return False
 
 
+def marcar_estado_dte_local(
+    cur,
+    venta_id: int,
+    estado_dte: str,
+    empresa_id: int | None = None,
+) -> bool:
+    """Actualiza solo estado_dte local (p. ej. CORREGIDO tras aceptación del nuevo correlativo)."""
+    ed = (estado_dte or "").strip()[:32]
+    if not ed:
+        return False
+    sp = "spest" + uuid.uuid4().hex[:12]
+    cur.execute(f"SAVEPOINT {sp}")
+    try:
+        if empresa_id is not None:
+            cur.execute(
+                """
+                UPDATE ventas SET estado_dte = %s
+                WHERE id = %s AND (empresa_id IS NULL OR empresa_id = %s)
+                """,
+                (ed, int(venta_id), int(empresa_id)),
+            )
+        else:
+            cur.execute(
+                "UPDATE ventas SET estado_dte = %s WHERE id = %s",
+                (ed, int(venta_id)),
+            )
+        ok = cur.rowcount > 0
+        cur.execute(f"RELEASE SAVEPOINT {sp}")
+        return ok
+    except Exception:
+        cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+        return False
+
+
 def actualizar_dte_venta(
     cur,
     venta_id: int,
@@ -365,6 +399,137 @@ def venta_existe_y_empresa_id(cur, venta_id: int) -> tuple[bool, int | None]:
     return True, int(e)
 
 
+def get_cajero_venta(cur, venta_id: int) -> str:
+    """Username de quien registró la venta (no se altera al editar/remitir)."""
+    try:
+        cur.execute(
+            """
+            SELECT COALESCE(NULLIF(TRIM(u.username), ''), '—')
+            FROM ventas v
+            LEFT JOIN usuarios u ON u.id = v.usuario_id
+            WHERE v.id = %s
+            """,
+            (int(venta_id),),
+        )
+        row = cur.fetchone()
+        return (row[0] if row and row[0] else "—")
+    except Exception:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+        return "—"
+
+
+def get_detalles_completos(cur, venta_id: int) -> list[dict]:
+    """Líneas con id, producto y montos para factura completa / sync AgilDTE."""
+    try:
+        cur.execute(
+            """
+            SELECT dv.id, p.nombre, dv.cantidad, dv.precio_unitario,
+                   COALESCE(dv.texto_cantidad, ''), dv.producto_id,
+                   COALESCE(dv.subtotal, dv.cantidad * dv.precio_unitario)
+            FROM venta_detalles dv
+            JOIN productos p ON dv.producto_id = p.id
+            WHERE dv.venta_id = %s
+            ORDER BY dv.id
+            """,
+            (venta_id,),
+        )
+        rows = cur.fetchall() or []
+    except Exception:
+        cur.connection.rollback()
+        cur.execute(
+            """
+            SELECT dv.id, p.nombre, dv.cantidad, dv.precio_unitario, '',
+                   dv.producto_id, COALESCE(dv.subtotal, dv.cantidad * dv.precio_unitario)
+            FROM venta_detalles dv
+            JOIN productos p ON dv.producto_id = p.id
+            WHERE dv.venta_id = %s
+            ORDER BY dv.id
+            """,
+            (venta_id,),
+        )
+        rows = cur.fetchall() or []
+    out: list[dict] = []
+    for r in rows:
+        cant = float(r[2] or 0)
+        pu = float(r[3] or 0)
+        st = float(r[6] or 0) if len(r) > 6 else round(cant * pu, 2)
+        if st <= 0:
+            st = round(cant * pu, 2)
+        out.append(
+            {
+                "id": int(r[0]),
+                "nombre": r[1],
+                "cantidad": cant,
+                "precio_unitario": pu,
+                "texto_cantidad": r[4] or "",
+                "producto_id": int(r[5]) if r[5] is not None else 0,
+                "subtotal": st,
+            }
+        )
+    return out
+
+
+def actualizar_detalle_montos(
+    cur,
+    detalle_id: int,
+    venta_id: int,
+    cantidad: float,
+    precio_unitario: float,
+) -> bool:
+    """Actualiza cantidad/precio/subtotal de una línea. No toca stock."""
+    cant = float(cantidad)
+    pu = float(precio_unitario)
+    if cant <= 0 or pu < 0:
+        return False
+    sub = round(cant * pu, 2)
+    sp = "spdet" + uuid.uuid4().hex[:12]
+    cur.execute(f"SAVEPOINT {sp}")
+    try:
+        cur.execute(
+            """
+            UPDATE venta_detalles
+            SET cantidad = %s, precio_unitario = %s, subtotal = %s
+            WHERE id = %s AND venta_id = %s
+            """,
+            (cant, pu, sub, int(detalle_id), int(venta_id)),
+        )
+        ok = cur.rowcount > 0
+        cur.execute(f"RELEASE SAVEPOINT {sp}")
+        return ok
+    except Exception:
+        cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+        cur.execute(
+            """
+            UPDATE venta_detalles
+            SET cantidad = %s, precio_unitario = %s
+            WHERE id = %s AND venta_id = %s
+            """,
+            (cant, pu, int(detalle_id), int(venta_id)),
+        )
+        return cur.rowcount > 0
+
+
+def actualizar_totales_venta(
+    cur,
+    venta_id: int,
+    empresa_id: int,
+    total_pagar: float,
+    total_bruto: float | None = None,
+) -> None:
+    tb = float(total_bruto) if total_bruto is not None else float(total_pagar)
+    cur.execute(
+        """
+        UPDATE ventas
+        SET total_pagar = %s, total_bruto = %s
+        WHERE id = %s AND (empresa_id IS NULL OR empresa_id = %s)
+        """,
+        (float(total_pagar), tb, int(venta_id), int(empresa_id)),
+    )
+
+
 def get_detalles(cur, venta_id: int):
     try:
         cur.execute(
@@ -467,9 +632,12 @@ def listar_ventas_recientes(
     params.append(limit)
     sql = f"""
         SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
-               COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id
+               COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id,
+               COALESCE(v.codigo_generacion, ''), COALESCE(v.estado_dte, 'RESPALDO'),
+               COALESCE(NULLIF(TRIM(u.username), ''), '—')
         FROM ventas v
         LEFT JOIN clientes c ON c.id = v.cliente_id
+        LEFT JOIN usuarios u ON u.id = v.usuario_id
         WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
           AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
           {filtro_amb}
@@ -480,24 +648,59 @@ def listar_ventas_recientes(
         cur.execute(sql, tuple(params))
         return cur.fetchall()
     except Exception as ex:
-        if "ambiente_emision" not in str(ex):
-            raise
+        err = str(ex)
+        err_l = err.lower()
         cur.connection.rollback()
         params_sin_amb = [empresa_id, limit]
-        cur.execute(
-            f"""
+        if "usuarios" in err_l or "username" in err_l or "usuario_id" in err_l:
+            try:
+                sql_sin_u = (
+                    sql.replace("COALESCE(NULLIF(TRIM(u.username), ''), '—')", "'—'").replace(
+                        "LEFT JOIN usuarios u ON u.id = v.usuario_id", ""
+                    )
+                )
+                cur.execute(sql_sin_u, tuple(params))
+                return cur.fetchall()
+            except Exception:
+                cur.connection.rollback()
+        if "ambiente_emision" in err:
+            try:
+                cur.execute(
+                    f"""
             SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
-                   COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id
+                   COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id,
+                   COALESCE(v.codigo_generacion, ''), COALESCE(v.estado_dte, 'RESPALDO'),
+                   COALESCE(NULLIF(TRIM(u.username), ''), '—')
+            FROM ventas v
+            LEFT JOIN clientes c ON c.id = v.cliente_id
+            LEFT JOIN usuarios u ON u.id = v.usuario_id
+            WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
+              AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
+            ORDER BY v.id DESC
+            LIMIT %s
+                    """,
+                    tuple(params_sin_amb),
+                )
+                return cur.fetchall()
+            except Exception:
+                cur.connection.rollback()
+        if "codigo_generacion" in err or "estado_dte" in err or "ambiente_emision" in err:
+            cur.execute(
+                f"""
+            SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
+                   COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id,
+                   '', 'RESPALDO', '—'
             FROM ventas v
             LEFT JOIN clientes c ON c.id = v.cliente_id
             WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
               AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
             ORDER BY v.id DESC
             LIMIT %s
-            """,
-            tuple(params_sin_amb),
-        )
-        return cur.fetchall()
+                """,
+                tuple(params_sin_amb),
+            )
+            return cur.fetchall()
+        raise
 
 
 def actualizar_venta_cabecera(

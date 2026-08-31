@@ -252,6 +252,7 @@
                         <option value="VENTA_CREADA" {{ 'selected' if evento_actual == 'VENTA_CREADA' else '' }}>Venta creada</option>
                         <option value="VENTA_EDITADA" {{ 'selected' if evento_actual == 'VENTA_EDITADA' else '' }}>Venta editada</option>
                         <option value="VENTA_ANULADA" {{ 'selected' if evento_actual == 'VENTA_ANULADA' else '' }}>Venta anulada</option>
+                        <option value="VENTA_REMITIDA" {{ 'selected' if evento_actual == 'VENTA_REMITIDA' else '' }}>Venta remitida</option>
                     </optgroup>
                     <optgroup label="Productos / Inventario">
                         <option value="PRODUCTO_CREADO" {{ 'selected' if evento_actual == 'PRODUCTO_CREADO' else '' }}>Producto creado</option>
@@ -347,7 +348,7 @@
                             <span class="his-badge his-badge--logout"><i class="bi bi-box-arrow-right"></i> Logout</span>
                             {% elif ev == 'CAMBIO_PASSWORD' %}
                             <span class="his-badge his-badge--catalogo"><i class="bi bi-key"></i> Cambio clave</span>
-                            {% elif ev in ('VENTA_CREADA', 'VENTA_EDITADA', 'VENTA_ANULADA') %}
+                            {% elif ev in ('VENTA_CREADA', 'VENTA_EDITADA', 'VENTA_ANULADA', 'VENTA_REMITIDA') %}
                             <span class="his-badge his-badge--venta"><i class="bi bi-cart-check"></i> {{ ev|replace('_',' ')|title }}</span>
                             {% elif ev in ('PRODUCTO_CREADO', 'PRODUCTO_EDITADO', 'PRODUCTO_ELIMINADO', 'AJUSTE_INVENTARIO', 'CONTEO_FISICO') %}
                             <span class="his-badge his-badge--inventario"><i class="bi bi-box-seam"></i> {{ ev|replace('_',' ')|title }}</span>

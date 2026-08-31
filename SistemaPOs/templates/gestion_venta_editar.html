@@ -1,25 +1,94 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="container py-4" style="max-width: 720px;">
+<style>
+    .gve-lock { background: #f8fafc; color: #334155; font-weight: 700; }
+    .gve-note { font-size: 0.82rem; color: #475569; }
+</style>
+<div class="container py-4" style="max-width: 960px;">
     <a href="{{ url_for('admin.gestion_ventas') }}" class="btn btn-outline-secondary btn-sm mb-3"><i class="bi bi-arrow-left"></i> Lista</a>
-    <h2 class="fw-bold">Editar venta #{{ venta_id }}</h2>
-    {% set ret_iva = (venta[11]|float) if venta|length > 11 else 0 %}
-    <p class="text-muted small">Fecha: {{ venta[1] }} — Total: ${{ "%.2f"|format(venta[2]|float) }}{% if ret_iva > 0 %} — IVA Retenido 1%: ${{ "%.2f"|format(ret_iva) }} — Total a pagar: ${{ "%.2f"|format((venta[2]|float) - ret_iva) }}{% endif %}</p>
-
-    <div class="card border-0 shadow-sm rounded-4 mb-4">
-        <div class="card-header bg-white fw-bold">Líneas (solo lectura)</div>
-        <ul class="list-group list-group-flush">
-            {% for d in detalles %}
-            <li class="list-group-item d-flex justify-content-between small">
-                <span>{{ d[0] }} × {{ d[1] }}</span>
-                <span>${{ "%.2f"|format((d[1]|float) * (d[2]|float)) }}</span>
-            </li>
-            {% endfor %}
-        </ul>
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <div>
+            <h2 class="fw-bold mb-1">Factura #{venta_id}</h2>
+            <p class="text-muted small mb-0">
+                {% if estado.clave == 'rechazado' %}
+                Corrija y emita de nuevo: se genera un correlativo DTE nuevo. Si Hacienda acepta, el estado pasa a Corregido.
+                {% else %}
+                Corrija lo necesario y emita. La fecha y el cajero no se cambian.
+                {% endif %}
+            </p>
+        </div>
+        <span class="gv-badge gv-badge--{{ estado.clave }}" style="display:inline-flex;align-items:center;font-size:0.75rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:.28rem .65rem;border-radius:999px;border:1px solid #e2e8f0;">{{ estado.etiqueta }}</span>
     </div>
+    {% set ret_iva = (venta[11]|float) if venta|length > 11 else 0 %}
+    {% set desc = (venta[12]|float) if venta|length > 12 else 0 %}
+    {% set bruto = (venta[13]|float) if venta|length > 13 else (venta[2]|float) %}
 
-    <div class="card border-0 shadow-sm rounded-4 p-4">
-        <form method="POST">
+    <form method="POST">
+        <div class="card border-0 shadow-sm rounded-4 mb-3">
+            <div class="card-header bg-white fw-bold">Datos que se conservan</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Fecha de la venta</label>
+                        <input type="text" class="form-control gve-lock" value="{{ venta[1] }}" readonly tabindex="-1">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Persona que cobró (cajero)</label>
+                        <input type="text" class="form-control gve-lock" value="{{ cajero }}" readonly tabindex="-1">
+                    </div>
+                </div>
+                <p class="gve-note mt-2 mb-0">Al emitir, AgilDTE usa esta misma fecha. El usuario de cobro no se reemplaza por quien remite ahora.</p>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 mb-3">
+            <div class="card-header bg-white fw-bold">Líneas de la factura{% if not puede_emitir %} (solo lectura: ya está en AgilDTE){% endif %}</div>
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th class="text-end" style="width:8rem">Cantidad</th>
+                            <th class="text-end" style="width:9rem">Precio</th>
+                            <th class="text-end" style="width:8rem">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ln in lineas %}
+                        <tr>
+                            <td>
+                                <span class="fw-bold">{{ ln.nombre }}</span>
+                                {% if ln.texto_cantidad %}<div class="small text-muted">{{ ln.texto_cantidad }}</div>{% endif %}
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" min="0.01" name="cant_{{ ln.id }}" class="form-control form-control-sm text-end" value="{{ ln.cantidad }}" {% if not puede_emitir %}readonly{% endif %} required>
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" min="0" name="precio_{{ ln.id }}" class="form-control form-control-sm text-end" value="{{ '%.2f'|format(ln.precio_unitario) }}" {% if not puede_emitir %}readonly{% endif %} required>
+                            </td>
+                            <td class="text-end fw-bold">${{ "%.2f"|format(ln.subtotal) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">Sin líneas</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-body border-top">
+                <div class="d-flex justify-content-end gap-4 small">
+                    <span>Bruto: <strong>${{ "%.2f"|format(bruto) }}</strong></span>
+                    {% if desc > 0 %}<span>Descuento: <strong>${{ "%.2f"|format(desc) }}</strong></span>{% endif %}
+                    <span>Total: <strong>${{ "%.2f"|format(venta[2]|float) }}</strong></span>
+                    {% if ret_iva > 0 %}<span>IVA retenido: <strong>${{ "%.2f"|format(ret_iva) }}</strong></span>{% endif %}
+                </div>
+                {% if puede_emitir %}
+                <p class="gve-note mb-0 mt-2">Cambiar cantidad o precio no mueve inventario. El total se recalcula al guardar. Use el mismo cobro del POS (p. ej. 3 × $1.10 = $3.30) para que Hacienda acepte el DTE.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 p-4 mb-3">
+            <h5 class="fw-bold mb-3">Datos de facturación</h5>
             <div class="mb-3">
                 <label class="form-label fw-bold">Nombre / razón (texto en venta)</label>
                 <input type="text" name="cliente_nombre" class="form-control" value="{{ venta[3] }}" required>
@@ -28,8 +97,11 @@
             <div class="mb-3">
                 <label class="form-label fw-bold">ID cliente en catálogo (opcional)</label>
                 <input type="text" name="cliente_id" class="form-control" value="{{ venta[5] if venta[5] is not none else '' }}" placeholder="Vacío si no aplica">
-                <small class="text-muted">Crédito fiscal exige ID de un cliente contribuyente. Ese ID es el que enlaza la venta al registro en Clientes.</small>
+                <small class="text-muted">Crédito fiscal exige ID de un cliente contribuyente.</small>
             </div>
+            {% if venta|length > 8 and (venta[6] or venta[8]) %}
+            <p class="gve-note mb-3">Catálogo: {{ venta[8] }}{% if venta[7] %} · {{ venta[7] }}{% endif %}{% if venta[6] %} {{ venta[6] }}{% endif %}</p>
+            {% endif %}
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
                     <label class="form-label fw-bold">Tipo de comprobante</label>
@@ -49,7 +121,7 @@
                     </select>
                 </div>
             </div>
-            <div class="mb-3">
+            <div class="mb-0">
                 <label class="form-label fw-bold">Estado de cobro</label>
                 {% set ecobro = venta[10] if venta|length > 10 else 'COBRADO' %}
                 <select name="estado_cobro" class="form-select">
@@ -57,8 +129,18 @@
                     <option value="PENDIENTE" {{ 'selected' if ecobro == 'PENDIENTE' else '' }}>Pendiente (cuenta por cobrar)</option>
                 </select>
             </div>
-            <button type="submit" class="btn btn-primary fw-bold">Guardar cambios</button>
-        </form>
-    </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <button type="submit" name="accion" value="guardar" class="btn btn-outline-primary fw-bold">Guardar</button>
+            {% if puede_emitir %}
+            <button type="submit" name="accion" value="guardar_emitir" class="btn btn-success fw-bold">
+                <i class="bi bi-send-check"></i> {% if estado.clave == 'rechazado' %}Guardar y emitir de nuevo{% else %}Guardar y emitir{% endif %}
+            </button>
+            {% else %}
+            <span class="align-self-center small text-muted">{% if estado.clave == 'corregido' %}Ya está Corregido (Hacienda aceptó el nuevo DTE).{% else %}Ya está en AgilDTE; no se vuelve a emitir para no duplicar el DTE.{% endif %}</span>
+            {% endif %}
+        </div>
+    </form>
 </div>
 {% endblock %}

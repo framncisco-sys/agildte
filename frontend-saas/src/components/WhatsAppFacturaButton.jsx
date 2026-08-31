@@ -34,7 +34,7 @@ export function WhatsAppFacturaButton({
   if (!hint) {
     if (locked) hint = 'Módulo de WhatsApp no habilitado'
     else if (sinProcesar) hint = 'Disponible cuando la factura esté PROCESADA por Hacienda'
-    else hint = 'Enviar factura por WhatsApp'
+    else hint = 'Enviar por WhatsApp (puede escribir el número si no está en la ficha)'
   }
 
   const inactivo = locked || sinProcesar

@@ -37,6 +37,22 @@ class WhatsAppCloudError(Exception):
         self.body = body
 
 
+def http_status_cliente_whatsapp(meta_or_internal: int | None) -> int:
+    """
+    Mapea códigos de Meta/internos a HTTP para el cliente AgilDTE.
+
+    Nunca devolver 401/403 de Graph API: el interceptor del frontend cierra sesión
+    ante cualquier 401 de /api (confundiría fallo de WhatsApp con JWT inválido).
+    """
+    if meta_or_internal is None:
+        return 400
+    if meta_or_internal in (401, 403):
+        return 400
+    if 400 <= meta_or_internal < 600:
+        return meta_or_internal
+    return 400
+
+
 def normalizar_telefono_meta(telefono: str) -> str | None:
     """E.164 sin '+' para el campo `to` de Meta (El Salvador: 503 + 8 dígitos)."""
     raw = (telefono or '').strip()
@@ -157,6 +173,23 @@ def _mensaje_error_meta_amigable(data: Any, raw_message: str) -> str:
         return (
             'La plantilla exige un PDF en el encabezado y no se pudo adjuntar. '
             'Verifique generación del PDF y permisos del token de WhatsApp.'
+        )
+    if (
+        'does not exist' in msg.lower()
+        or 'missing permissions' in msg.lower()
+        or 'cannot be loaded' in msg.lower()
+    ):
+        return (
+            'El Phone Number ID de WhatsApp no coincide con el token (o el System User '
+            'no tiene acceso a ese número/WABA). En Meta Business → Usuarios del sistema, '
+            'asigne la cuenta de WhatsApp al usuario y regenere WHATSAPP_ACCESS_TOKEN; '
+            'verifique WHATSAPP_PHONE_NUMBER_ID en el .env del servidor.'
+        )
+    if code in (190, 102) or 'oauth' in msg.lower() or 'access token' in msg.lower():
+        return (
+            'El token de WhatsApp es inválido o expiró. Genere un token permanente '
+            '(System User) con permisos whatsapp_business_messaging y actualice '
+            'WHATSAPP_ACCESS_TOKEN en el .env.'
         )
     return msg[:500] if msg else 'Error al enviar mensaje por WhatsApp (Meta).'
 

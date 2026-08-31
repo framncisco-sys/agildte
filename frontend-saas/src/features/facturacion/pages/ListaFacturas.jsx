@@ -227,7 +227,11 @@ export function ListaFacturas() {
 
   const handleDownloadPDF = async (v) => {
     try {
-      await downloadPDF(v.id, `factura_${v.numero_control || v.id}.pdf`)
+      await downloadPDF(v.id, `factura_${v.numero_control || v.id}.pdf`, {
+        codigo_generacion: v.codigo_generacion,
+        numero_control: v.numero_control,
+        empresa_id: v.empresa_id || empresaId,
+      })
       toast.success('PDF descargado')
     } catch (err) {
       toast.error(err.response?.data?.error || 'Error al descargar PDF')
@@ -236,7 +240,11 @@ export function ListaFacturas() {
 
   const handleDownloadJSON = async (v) => {
     try {
-      await downloadJSON(v.id, `dte_${v.numero_control || v.id}.json`)
+      await downloadJSON(v.id, `dte_${v.numero_control || v.id}.json`, {
+        codigo_generacion: v.codigo_generacion,
+        numero_control: v.numero_control,
+        empresa_id: v.empresa_id || empresaId,
+      })
       toast.success('JSON descargado')
     } catch (err) {
       toast.error(err.response?.data?.error || 'Error al descargar JSON')

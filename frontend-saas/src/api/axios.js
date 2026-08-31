@@ -57,7 +57,10 @@ apiClient.interceptors.response.use(
         url.includes('generar-pdf') ||
         url.includes('generar-dte') ||
         url.includes('informe-cf-diario')
-      if (!esDescargaBlob) {
+      // Fallos de WhatsApp/Meta no deben cerrar la sesión (a veces Meta responde 401)
+      const esWhatsApp =
+        url.includes('enviar-whatsapp') || url.includes('whatsapp')
+      if (!esDescargaBlob && !esWhatsApp) {
         useAuthStore.getState().logout()
         window.location.href = '/login'
       }

@@ -476,12 +476,32 @@ class VentaSerializer(serializers.ModelSerializer):
         return 'PENDIENTE'
 
     def get_pdf_url(self, obj):
-        """Ruta para descargar el PDF (relativa al baseURL del frontend)"""
-        return f"ventas/{obj.pk}/generar-pdf/"
+        """Ruta PDF con código DTE (el ID solo no autoriza la descarga)."""
+        from urllib.parse import urlencode
+
+        q = {}
+        if obj.codigo_generacion:
+            q["codigo_generacion"] = obj.codigo_generacion
+        if obj.numero_control:
+            q["numero_control"] = obj.numero_control
+        if obj.empresa_id:
+            q["empresa_id"] = obj.empresa_id
+        qs = urlencode(q)
+        return f"ventas/{obj.pk}/generar-pdf/" + (f"?{qs}" if qs else "")
 
     def get_json_url(self, obj):
-        """Ruta para descargar el JSON DTE"""
-        return f"ventas/{obj.pk}/generar-dte/"
+        """Ruta JSON DTE con código DTE (el ID solo no autoriza la descarga)."""
+        from urllib.parse import urlencode
+
+        q = {}
+        if obj.codigo_generacion:
+            q["codigo_generacion"] = obj.codigo_generacion
+        if obj.numero_control:
+            q["numero_control"] = obj.numero_control
+        if obj.empresa_id:
+            q["empresa_id"] = obj.empresa_id
+        qs = urlencode(q)
+        return f"ventas/{obj.pk}/generar-dte/" + (f"?{qs}" if qs else "")
 
     def get_fecha_hora_emision(self, obj):
         """Combina fecha_emision y hora_emision en ISO para el frontend (coincide con PDF/DTE)"""
@@ -1138,42 +1158,35 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
             # Asegurar numero_item
             detalle_data['numero_item'] = detalle_raw.get('numero_item', idx + 1)
             
-            # Consumidor Final (01 / CF): el precio ingresado es TOTAL con IVA. Normalizar para no guardar total como gravado.
+            # Consumidor Final (01 / CF): POS cobra CON IVA. Preferir subtotal cobrado.
             if es_cf_dte:
+                from .utils.mh_item_totales import total_con_iva_linea_cf
                 try:
-                    cant = Decimal(str(detalle_raw.get('cantidad', 1)))
-                    prec = Decimal(str(detalle_raw.get('precio_unitario', 0)))
-                    total_linea = (cant * prec).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    if total_linea <= 0 and subtotal_linea is not None:
-                        try:
-                            st_dec = Decimal(str(subtotal_linea)).quantize(
-                                Decimal('0.01'), rounding=ROUND_HALF_UP
-                            )
-                            if st_dec > 0 and cant > 0:
-                                total_linea = st_dec
-                                prec = (st_dec / cant).quantize(Decimal('0.00000001'), rounding=ROUND_HALF_UP)
-                        except (ValueError, TypeError):
-                            pass
-                    vg_raw = Decimal(str(detalle_raw.get('venta_gravada', 0)))
-                    iva_raw = Decimal(str(detalle_raw.get('iva_item', 0)))
-                except (ValueError, TypeError):
-                    total_linea = vg_raw = iva_raw = Decimal('0.00')
-                # Si venta_gravada parece "total con IVA" (ej. 1000) e iva ≈ total - total/1.13, normalizar
-                if total_linea > 0:
-                    iva_si_total = (vg_raw - vg_raw / Decimal('1.13')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    if abs(iva_raw - iva_si_total) <= Decimal('0.03'):
-                        total_con_iva = vg_raw
-                    else:
-                        total_con_iva = (vg_raw + iva_raw).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    cant = Decimal(str(detalle_raw.get('cantidad', 1) or 1))
+                    if cant <= 0:
+                        cant = Decimal('1')
+                    prec = Decimal(str(detalle_raw.get('precio_unitario') or 0))
+                    vg_raw = Decimal(str(detalle_raw.get('venta_gravada') or 0))
+                    iva_raw = Decimal(str(detalle_raw.get('iva_item') or 0))
+                    total_con_iva = total_con_iva_linea_cf(
+                        cant, prec, subtotal_linea, vg_raw, iva_raw,
+                    )
+                except (ValueError, TypeError, ArithmeticError):
+                    total_con_iva = Decimal('0.00')
+                    cant = Decimal('1')
+                if total_con_iva > 0:
                     monto_gravado = (total_con_iva / Decimal('1.13')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                     iva_linea = (total_con_iva - monto_gravado).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                     detalle_data['venta_gravada'] = monto_gravado
                     detalle_data['iva_item'] = iva_linea
-                    detalle_data['precio_unitario'] = (monto_gravado / cant).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if cant else Decimal('0.00')
+                    detalle_data['precio_unitario'] = (
+                        (monto_gravado / cant).quantize(Decimal('0.00000001'), rounding=ROUND_HALF_UP)
+                        if cant else monto_gravado
+                    )
                     detalle_data['cantidad'] = cant
-                    detalle_data['monto_descuento'] = Decimal(str(detalle_raw.get('monto_descuento', 0))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    detalle_data['venta_no_sujeta'] = Decimal(str(detalle_raw.get('venta_no_sujeta', 0))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                    detalle_data['venta_exenta'] = Decimal(str(detalle_raw.get('venta_exenta', 0))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    detalle_data['monto_descuento'] = Decimal(str(detalle_raw.get('monto_descuento') or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    detalle_data['venta_no_sujeta'] = Decimal(str(detalle_raw.get('venta_no_sujeta') or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    detalle_data['venta_exenta'] = Decimal(str(detalle_raw.get('venta_exenta') or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                 else:
                     for campo in ['cantidad', 'precio_unitario', 'monto_descuento', 'venta_no_sujeta', 'venta_exenta', 'venta_gravada', 'iva_item']:
                         valor_raw = detalle_raw.get(campo, 0)

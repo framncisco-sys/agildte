@@ -3,13 +3,13 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from api.utils.mh_direccion import MUNI_CGEOES_A_MH
+from api.utils.mh_direccion import MUNI_CGEOES_A_MH, normalizar_ubicacion_mh
 
 DEPARTAMENTOS = {
     '01': 'Ahuachapán', '02': 'Santa Ana', '03': 'Sonsonate', '04': 'Chalatenango',
     '05': 'La Libertad', '06': 'San Salvador', '07': 'Cuscatlán', '08': 'La Paz',
-    '09': 'Cabañas', '10': 'San Vicente', '11': 'Usulután', '12': 'Morazán',
-    '13': 'San Miguel', '14': 'La Unión',
+    '09': 'Cabañas', '10': 'San Vicente', '11': 'Usulután', '12': 'San Miguel',
+    '13': 'Morazán', '14': 'La Unión',
 }
 
 
@@ -38,15 +38,12 @@ def municipio_mh_codigo(departamento, municipio):
 
 
 def nombre_municipio(departamento, municipio):
-    depto = _pad(departamento)
-    muni = municipio_mh_codigo(depto, municipio)
+    depto, muni, _dist = normalizar_ubicacion_mh(departamento, municipio, None)
     return (_labels().get('municipios') or {}).get(depto, {}).get(muni, '')
 
 
 def nombre_distrito(departamento, municipio, distrito):
-    depto = _pad(departamento)
-    muni = municipio_mh_codigo(depto, municipio)
-    dist = _pad(distrito)
+    depto, muni, dist = normalizar_ubicacion_mh(departamento, municipio, distrito)
     if not (depto and muni and dist):
         return ''
     return (_labels().get('distritos') or {}).get(f'{depto}/{muni}/{dist}', '')
@@ -54,17 +51,18 @@ def nombre_distrito(departamento, municipio, distrito):
 
 def armar_partes_ubicacion(complemento, departamento, municipio=None, distrito=None):
     """Partes legibles: complemento, distrito, municipio, departamento (solo no vacíos)."""
+    depto, muni, dist = normalizar_ubicacion_mh(departamento, municipio, distrito)
     partes = []
     comp = (complemento or '').strip().rstrip(',')
     if comp:
         partes.append(comp)
-    dist_nom = nombre_distrito(departamento, municipio, distrito)
+    dist_nom = nombre_distrito(depto, muni, dist)
     if dist_nom:
         partes.append(f'Distrito {dist_nom}')
-    muni_nom = nombre_municipio(departamento, municipio)
+    muni_nom = nombre_municipio(depto, muni)
     if muni_nom:
         partes.append(muni_nom)
-    depto_nom = nombre_departamento(departamento)
+    depto_nom = nombre_departamento(depto)
     if depto_nom:
         partes.append(depto_nom.upper())
     return partes

@@ -1027,7 +1027,10 @@ def guardar_venta():
     cliente_id = _parse_cliente_id(datos.get("cliente_id"))
     cliente = (datos.get("cliente_nombre") or "").strip() or "Consumidor Final"
     if tipo_comp == "TICKET" and not cliente_id:
-        cliente = (os.environ.get("POSAGIL_NOMBRE_CF_TICKET") or "Cliente de contado").strip() or "Cliente de contado"
+        default_cf = (os.environ.get("POSAGIL_NOMBRE_CF_TICKET") or "Cliente de contado").strip() or "Cliente de contado"
+        # Conservar nombre digitado (p. ej. David Cerrano); no pisarlo con el genérico.
+        if cliente.lower() in ("", "consumidor final", "cliente de contado", "cliente mostrador"):
+            cliente = default_cf
 
     if not carrito:
         return jsonify({"status": "error", "msg": "Carrito vacío"})
