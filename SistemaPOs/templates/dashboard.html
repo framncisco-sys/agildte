@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 
 {% block content %}
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,700&display=swap" rel="stylesheet">
 <style>
     .accion-card { cursor: pointer; transition: all 0.25s ease; }
     .accion-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.1) !important; }
@@ -1254,137 +1255,315 @@
         .dash-header-title { font-size: 1.28rem; }
     }
 
-    /* —— Pulido profesional (misma estructura, look más sobrio) —— */
+    /* —— Look marca (misma estructura: cabecera + atmósfera + KPIs) —— */
     .dash-wrap {
-        --dash-brand: #2563eb;
-        --dash-brand-dark: #1d4ed8;
+        --dash-brand: #1d4ed8;
+        --dash-brand-bright: #3b82f6;
+        --dash-brand-deep: #0b1f4a;
         --dash-brand-soft: #eff6ff;
         --dash-ink: #0f172a;
         --dash-muted: #64748b;
-        --dash-line: #e2e8f0;
+        --dash-line: rgba(148, 163, 184, 0.35);
     }
-    .dash-wrap .card {
-        border: 1px solid var(--dash-line) !important;
-        border-radius: 14px !important;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.04) !important;
+    body:has(.dash-wrap.dash-marca) {
+        background:
+            radial-gradient(1200px 500px at 12% -8%, rgba(59, 130, 246, 0.2), transparent 55%),
+            radial-gradient(900px 420px at 96% 0%, rgba(13, 148, 136, 0.12), transparent 50%),
+            linear-gradient(180deg, #e8eef8 0%, #f4f7fb 42%, #eef2f7 100%) !important;
     }
-    .dash-wrap .card:hover {
-        box-shadow: 0 2px 4px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.07) !important;
-    }
-    .dash-header-title { font-size: 1.65rem !important; letter-spacing: -0.03em !important; }
-    .dash-header-eyebrow {
-        font-size: 0.78rem !important;
-        letter-spacing: 0.06em !important;
-        color: var(--dash-brand) !important;
-    }
-    .dash-header-intro:hover .dash-header-eyebrow { color: var(--dash-brand-dark) !important; }
-    .dash-header-title-icon {
-        width: 46px !important; height: 46px !important;
-        background: linear-gradient(145deg, #3b82f6 0%, #2563eb 100%) !important;
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28) !important;
-    }
-    .dash-header-intro:hover .dash-header-title-icon {
-        box-shadow: 0 8px 20px rgba(37, 99, 235, 0.38) !important;
-    }
-    .dash-header-chip {
-        font-size: 0.9rem !important;
-        font-weight: 700 !important;
-        padding: 0.35rem 0.7rem !important;
-    }
-    .dash-section-head {
-        border-left: 3px solid var(--dash-brand) !important;
+    body:has(.dash-wrap.dash-marca) .main-content {
         background: transparent !important;
-        padding: 0.35rem 0 0.35rem 0.85rem !important;
+    }
+    .dash-wrap .card:not(.acceso-rapido) {
+        border: 1px solid rgba(255, 255, 255, 0.85) !important;
+        border-radius: 18px !important;
+        background: rgba(255, 255, 255, 0.9) !important;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px rgba(15, 23, 42, 0.06) !important;
+        backdrop-filter: blur(8px);
+    }
+    .dash-wrap .card:not(.acceso-rapido):hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 28px rgba(15, 23, 42, 0.12) !important;
+    }
+
+    /* Cabecera marca */
+    .dash-header--hero {
+        position: relative;
+        overflow: hidden;
+        border-bottom: none !important;
+        border-radius: 22px !important;
+        padding: 1.3rem 1.35rem 1.2rem !important;
+        margin-bottom: 1.15rem !important;
+        background: linear-gradient(135deg, #0b1f4a 0%, #1e3a8a 45%, #1d4ed8 100%) !important;
+        color: #fff !important;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22) !important;
+        animation: dash-hero-in 0.55s ease both;
+    }
+    .dash-header--hero::after {
+        content: "";
+        position: absolute; right: -40px; top: -60px;
+        width: 220px; height: 220px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(147, 197, 253, 0.35), transparent 70%);
+        pointer-events: none;
+    }
+    .dash-header--hero::before {
+        content: "";
+        position: absolute; left: 18%; bottom: -80px;
+        width: 180px; height: 180px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.2), transparent 70%);
+        pointer-events: none;
+    }
+    @keyframes dash-hero-in {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: none; }
+    }
+    .dash-header--hero > * { position: relative; z-index: 1; }
+    .dash-header--hero .dash-header-title {
+        font-family: "Source Serif 4", Georgia, serif !important;
+        font-size: clamp(1.55rem, 2.6vw, 2.05rem) !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.02em !important;
+        color: #fff !important;
+    }
+    .dash-header--hero .dash-header-eyebrow {
+        font-size: 0.75rem !important;
+        letter-spacing: 0.12em !important;
+        color: #93c5fd !important;
+    }
+    .dash-header--hero .dash-header-intro:hover .dash-header-eyebrow { color: #bfdbfe !important; }
+    .dash-header--hero .dash-header-title-icon {
+        width: 52px !important; height: 52px !important;
+        border-radius: 16px !important;
+        background: rgba(255, 255, 255, 0.14) !important;
+        border: 1px solid rgba(255, 255, 255, 0.22) !important;
+        box-shadow: none !important;
+        backdrop-filter: blur(6px);
+    }
+    .dash-header--hero .dash-header-intro:hover .dash-header-title-icon {
+        transform: translateY(-2px) scale(1.05) !important;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2) !important;
+    }
+    .dash-header--hero .dash-header-chip {
+        font-size: 0.88rem !important;
+        font-weight: 700 !important;
+        padding: 0.38rem 0.75rem !important;
+        background: rgba(255, 255, 255, 0.12) !important;
+        border-color: rgba(255, 255, 255, 0.22) !important;
+        color: #e2e8f0 !important;
+    }
+    .dash-header--hero .dash-header-chip i { color: #93c5fd !important; }
+    .dash-header--hero .dash-header-chip:hover {
+        background: rgba(255, 255, 255, 0.2) !important;
+        color: #fff !important;
+        border-color: rgba(255, 255, 255, 0.35) !important;
+    }
+    .dash-header--hero .dash-status-widget {
+        border-radius: 14px !important;
+        background: rgba(255, 255, 255, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        box-shadow: none !important;
+        backdrop-filter: blur(8px);
+        color: #fff;
+    }
+    .dash-header--hero .dash-status-widget:hover {
+        background: rgba(255, 255, 255, 0.16) !important;
+        transform: translateY(-2px);
+    }
+    .dash-header--hero .dash-status-label { color: #94a3b8 !important; }
+    .dash-header--hero .dash-status-value,
+    .dash-header--hero .dash-status-hint,
+    .dash-header--hero .dash-susc-meta { color: #e2e8f0 !important; }
+    .dash-header--hero .dash-status-agildte.is-online {
+        background: rgba(15, 118, 110, 0.28) !important;
+        border-color: rgba(74, 222, 128, 0.45) !important;
+    }
+    .dash-header--hero .dash-status-agildte.is-online .dash-status-value { color: #4ade80 !important; }
+    .dash-header--hero .dash-status-agildte.is-offline {
+        background: rgba(185, 28, 28, 0.28) !important;
+        border-color: rgba(252, 165, 165, 0.45) !important;
+    }
+    .dash-header--hero .dash-status-susc.is-ok,
+    .dash-header--hero .dash-status-susc.is-warn,
+    .dash-header--hero .dash-status-susc.is-urgent {
+        background: rgba(255, 255, 255, 0.1) !important;
+    }
+    .dash-header--hero .dash-susc-badge { color: #86efac !important; }
+
+    .dash-section-head {
+        border-left: none !important;
+        background: transparent !important;
+        padding: 0.2rem 0 !important;
         border-radius: 0 !important;
         box-shadow: none !important;
-        margin-bottom: 0.9rem !important;
+        margin-bottom: 0.95rem !important;
     }
-    .dash-section-head:hover {
-        background: linear-gradient(90deg, rgba(37, 99, 235, 0.08) 0%, transparent 72%) !important;
-        border-left-color: var(--dash-brand-dark) !important;
-        box-shadow: none !important;
-    }
+    .dash-section-head:hover { background: transparent !important; box-shadow: none !important; }
     .dash-section-head-icon {
-        background: var(--dash-brand) !important;
-        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.28) !important;
-        width: 32px !important; height: 32px !important;
-        border-radius: 8px !important;
+        background: linear-gradient(145deg, #3b82f6, #1d4ed8) !important;
+        box-shadow: 0 4px 12px rgba(29, 78, 216, 0.3) !important;
+        width: 28px !important; height: 28px !important;
+        border-radius: 9px !important;
     }
     .dash-section-head h2 {
-        font-size: 1.05rem !important;
-        letter-spacing: 0.04em !important;
-        color: var(--dash-ink) !important;
+        font-size: 0.82rem !important;
+        letter-spacing: 0.08em !important;
+        color: var(--dash-brand-deep) !important;
+        text-transform: uppercase !important;
     }
-    .dash-section-head:hover h2 { color: var(--dash-brand-dark) !important; }
+    .dash-section-head:hover h2 { color: var(--dash-brand) !important; }
     .dash-section-head-meta {
-        font-size: 0.88rem !important;
-        background: #fff !important;
+        font-size: 0.82rem !important;
+        background: rgba(255, 255, 255, 0.75) !important;
         border-color: var(--dash-line) !important;
         color: var(--dash-muted) !important;
     }
     .dash-section-head:hover .dash-section-head-meta {
         border-color: #bfdbfe !important;
-        color: var(--dash-brand-dark) !important;
+        color: var(--dash-brand) !important;
         background: var(--dash-brand-soft) !important;
     }
-    body.layout-gerente .dash-section-head {
-        border-left-color: var(--dash-brand) !important;
+    body.layout-gerente .dash-section-head,
+    body.layout-gerente .dash-section-head:hover {
+        border-left: none !important;
         background: transparent !important;
     }
-    body.layout-gerente .dash-section-head:hover {
-        border-left-color: var(--dash-brand-dark) !important;
-        background: linear-gradient(90deg, rgba(37, 99, 235, 0.1) 0%, transparent 72%) !important;
-    }
     body.layout-gerente .dash-section-head-icon {
-        background: var(--dash-brand) !important;
-        box-shadow: none !important;
+        background: linear-gradient(145deg, #3b82f6, #1d4ed8) !important;
+        box-shadow: 0 4px 12px rgba(29, 78, 216, 0.3) !important;
     }
-    body.layout-gerente .dash-section-head:hover h2 { color: var(--dash-brand-dark) !important; }
+    body.layout-gerente .dash-section-head:hover h2 { color: var(--dash-brand) !important; }
 
-    .dash-kpi-row .kpi-value { font-size: 1.55rem !important; font-weight: 800 !important; }
-    .dash-kpi-row .kpi-eyebrow { font-size: 0.74rem !important; letter-spacing: 0.05em !important; }
-    .dash-kpi-row .kpi-sub { font-size: 0.88rem !important; }
+    .dash-kpi-row .kpi-value { font-size: 1.6rem !important; font-weight: 800 !important; }
+    .dash-kpi-row .kpi-eyebrow { font-size: 0.72rem !important; letter-spacing: 0.06em !important; }
+    .dash-kpi-row .kpi-sub { font-size: 0.86rem !important; }
     .dash-kpi-row .kpi-dia-icon,
     .dash-kpi-row .kpi-mes-cal,
     .dash-kpi-row .kpi-proy-icon {
-        width: 48px !important; height: 48px !important; border-radius: 12px !important;
+        width: 52px !important; height: 52px !important; border-radius: 15px !important;
     }
+    .kpi-card-dia,
+    .kpi-card-mes,
+    .kpi-card-proy {
+        position: relative;
+        overflow: hidden;
+        border-left: 5px solid transparent !important;
+    }
+    .kpi-card-dia { border-left-color: #1d4ed8 !important; }
+    .kpi-card-mes { border-left-color: #0f766e !important; }
+    .kpi-card-proy { border-left-color: #15803d !important; }
     .kpi-dia-icon {
-        background: linear-gradient(145deg, #3b82f6 0%, #2563eb 100%) !important;
-        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.25) !important;
-    }
-    .kpi-card-dia:hover { box-shadow: 0 12px 28px rgba(37, 99, 235, 0.14) !important; }
-    .kpi-card-dia:hover .kpi-dia-icon {
+        background: linear-gradient(145deg, #60a5fa 0%, #1d4ed8 100%) !important;
         box-shadow: 0 8px 18px rgba(37, 99, 235, 0.35) !important;
     }
-
-    .acceso-rapido {
-        background: linear-gradient(145deg, #1e40af 0%, #2563eb 55%, #3b82f6 100%) !important;
+    .kpi-mes-cal {
+        background: linear-gradient(145deg, #2dd4bf 0%, #0f766e 100%) !important;
+        box-shadow: 0 8px 18px rgba(13, 148, 136, 0.3) !important;
         color: #fff !important;
     }
-    .acceso-rapido-main {
-        color: var(--dash-brand-dark) !important;
-        font-size: 1rem !important;
+    .kpi-proy-icon {
+        background: linear-gradient(145deg, #4ade80 0%, #15803d 100%) !important;
+        box-shadow: 0 8px 18px rgba(22, 163, 74, 0.3) !important;
     }
-    .acceso-rapido-main:hover { color: #1e3a8a !important; }
-    .dash-hotkey-f9 {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+    .kpi-card-dia:hover { box-shadow: 0 12px 28px rgba(37, 99, 235, 0.16) !important; }
+    .kpi-card-dia:hover .kpi-dia-icon {
+        box-shadow: 0 10px 22px rgba(37, 99, 235, 0.4) !important;
     }
-    .dash-kpi-quick .acceso-rapido-main-text { font-size: 0.95rem !important; }
-    .dash-kpi-quick .acceso-rapido-btn { font-size: 0.72rem !important; font-weight: 700 !important; }
 
-    .dash-resource { border-radius: 12px !important; padding: 0.55rem 0.75rem !important; }
-    .dash-resource-val { font-size: 1.15rem !important; font-weight: 800 !important; }
-    .dash-resource-lbl { font-size: 0.78rem !important; font-weight: 700 !important; }
+    .acceso-rapido.card,
+    .dash-wrap .acceso-rapido {
+        background: linear-gradient(145deg, #0b1f4a 0%, #1d4ed8 55%, #2563eb 100%) !important;
+        color: #fff !important;
+        border: none !important;
+        border-radius: 18px !important;
+        box-shadow: 0 14px 32px rgba(29, 78, 216, 0.35) !important;
+        padding: 1rem 1.05rem !important;
+    }
+    .acceso-rapido:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 18px 36px rgba(29, 78, 216, 0.42) !important;
+    }
+    .acceso-rapido > .text-uppercase {
+        font-size: 0.7rem !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.08em !important;
+        opacity: 0.9 !important;
+        color: #fff !important;
+        margin-bottom: 0.5rem !important;
+    }
+    .dash-wrap .acceso-rapido-main,
+    .dash-kpi-quick .acceso-rapido-main {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        gap: 0.45rem !important;
+        width: 100% !important;
+        background: #fff !important;
+        color: #1e3a8a !important;
+        border: none !important;
+        border-radius: 12px !important;
+        padding: 0.65rem 0.8rem !important;
+        font-weight: 800 !important;
+        font-size: 0.98rem !important;
+        box-shadow: none !important;
+        flex-wrap: nowrap !important;
+    }
+    .dash-wrap .acceso-rapido-main:hover,
+    .dash-kpi-quick .acceso-rapido-main:hover {
+        color: #0b1f4a !important;
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.15) !important;
+    }
+    .dash-kpi-quick .acceso-rapido-main .bi-cart-plus {
+        font-size: 1.2rem !important;
+        color: #1e3a8a !important;
+    }
+    .dash-kpi-quick .acceso-rapido-main-text {
+        font-size: 0.98rem !important;
+        font-weight: 800 !important;
+        color: #1e3a8a !important;
+    }
+    .dash-wrap .dash-hotkey-f9,
+    .dash-kpi-quick .dash-hotkey-f9 {
+        margin-left: auto !important;
+        min-width: auto !important;
+        padding: 0.22rem 0.5rem !important;
+        font-size: 0.8rem !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.04em !important;
+        border: none !important;
+        border-radius: 8px !important;
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+        box-shadow: 0 3px 8px rgba(37, 99, 235, 0.35) !important;
+        color: #fff !important;
+    }
+    .dash-kpi-quick .acceso-rapido-grid { gap: 0.4rem !important; margin-top: 0.5rem !important; }
+    .dash-kpi-quick .acceso-rapido-btn {
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        padding: 0.42rem 0.3rem !important;
+        border-radius: 9px !important;
+        background: rgba(255, 255, 255, 0.14) !important;
+        color: #fff !important;
+    }
+    .dash-kpi-quick .acceso-rapido-btn:hover {
+        background: rgba(255, 255, 255, 0.28) !important;
+        color: #fff !important;
+        transform: scale(1.03);
+    }
+
+    .dash-resource {
+        border-radius: 14px !important;
+        padding: 0.6rem 0.85rem !important;
+        background: rgba(255, 255, 255, 0.85) !important;
+        border: 1px solid var(--dash-line) !important;
+    }
+    .dash-resource-val { font-size: 1.2rem !important; font-weight: 800 !important; }
+    .dash-resource-lbl { font-size: 0.76rem !important; font-weight: 700 !important; }
 
     .chart-card-head h6 { font-size: 1.05rem !important; font-weight: 800 !important; }
     .fisc-card-title { font-size: 1.12rem !important; }
-    .dash-status-widget {
-        border-radius: 12px !important;
-        border: 1px solid var(--dash-line) !important;
-    }
     .dash-link-tile.tile-pos i { color: var(--dash-brand) !important; }
-    .dash-status-agildte:hover .dash-status-hint { color: var(--dash-brand) !important; }
+    .dash-status-agildte:hover .dash-status-hint { color: #93c5fd !important; }
 
     /* —— Celebración meta mensual —— */
     .kpi-card-mes.is-meta-ok,
@@ -1509,8 +1688,8 @@
         .dash-meta-celeb-btn { animation: none !important; }
     }
 </style>
-<div class="container-fluid px-4 mt-4 dash-wrap">
-    <div class="dash-header mb-3 d-flex justify-content-between align-items-start flex-wrap gap-3">
+<div class="container-fluid px-4 mt-4 dash-wrap dash-marca">
+    <div class="dash-header dash-header--hero mb-3 d-flex justify-content-between align-items-start flex-wrap gap-3">
         <div class="dash-header-intro">
             <div class="dash-header-title-row">
                 <span class="dash-header-title-icon" aria-hidden="true"><i class="bi bi-speedometer2"></i></span>
