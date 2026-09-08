@@ -183,6 +183,19 @@ def reparar_detalles_venta_desde_payload_pos(venta, payload: dict[str, Any]) -> 
                 )
                 cambio = True
 
+    if es_cf:
+        from api.utils.mh_item_totales import (
+            alinear_detalles_cf_al_cobro,
+            cobro_cf_desde_payload,
+        )
+        cobro_caja = cobro_cf_desde_payload(payload)
+        if cobro_caja > 0:
+            dets_cf = list(venta.detalles.all().order_by('numero_item', 'id'))
+            if alinear_detalles_cf_al_cobro(dets_cf, cobro_caja):
+                for det_cf in dets_cf:
+                    det_cf.save()
+                cambio = True
+
     if cambio:
         venta.calcular_totales()
         venta.save()

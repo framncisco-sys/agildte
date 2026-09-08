@@ -61,18 +61,125 @@ def linea_mh_coherente(item: dict[str, Any], *, tolerancia: float = 0.005) -> bo
 
 
 def alinear_precio_a_total(cantidad, total_linea, monto_descu=0) -> tuple[float, float]:
-    """precioUni a 8 decimales tal que round(pu * cant - desc, 2) == total_linea."""
+    """
+    precioUni a 8 decimales tal que round(pu * cant - desc, 2) == total_linea (cobro).
+    No cambia el cobro: si el primer redondeo descuadra 1 centavo, ajusta precioUni.
+    Casos: 250 × $0.044 = $11.00 (788); 3 × $1.10 = $3.30 (0338).
+    """
     cant = _d(cantidad)
     total = _d(total_linea).quantize(Q2, rounding=ROUND_HALF_UP)
     desc = _d(monto_descu).quantize(Q2, rounding=ROUND_HALF_UP)
     if cant <= 0:
         return precio8(total), money2(total)
     pu = ((total + desc) / cant).quantize(Q8, rounding=ROUND_HALF_UP)
-    calc = (pu * cant - desc).quantize(Q2, rounding=ROUND_HALF_UP)
-    if calc != total:
-        # Recalcular venta desde el precio (la identidad MH manda)
-        total = calc
+    for _ in range(80):
+        calc = (pu * cant - desc).quantize(Q2, rounding=ROUND_HALF_UP)
+        if calc == total:
+            return float(pu), float(total)
+        diff = total - calc
+        ajuste = (diff / cant).quantize(Q8, rounding=ROUND_HALF_UP)
+        if ajuste == 0:
+            ajuste = Q8 if diff > 0 else -Q8
+        pu = pu + ajuste
+        if pu < 0:
+            pu = Decimal('0')
+            break
     return float(pu), float(total)
+
+
+def forzar_identidad_mh_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Garantiza código MH 003 sobre un ítem ya armado (DTE-01/03)."""
+    vg = money2(item.get('ventaGravada', 0))
+    ve = money2(item.get('ventaExenta', 0))
+    vn = money2(item.get('ventaNoSuj', 0))
+    desc = money2(item.get('montoDescu', 0))
+    cant = item.get('cantidad', 1) or 1
+    objetivo = money2(_d(vg) + _d(ve) + _d(vn))
+    if objetivo <= 0:
+        return item
+    pu, total_ok = alinear_precio_a_total(cant, objetivo, desc)
+    item['precioUni'] = pu
+    if vg > 0:
+        item['ventaGravada'] = total_ok
+        if 'ivaItem' in item:
+            item['ivaItem'] = iva_item_cf(total_ok)
+    elif ve > 0:
+        item['ventaExenta'] = total_ok
+    else:
+        item['ventaNoSuj'] = total_ok
+    item['montoDescu'] = desc
+    return item
+
+
+def cobro_con_iva_detalle(detalle) -> Decimal:
+    vg = _d(getattr(detalle, 'venta_gravada', 0))
+    iva = _d(getattr(detalle, 'iva_item', 0))
+    ve = _d(getattr(detalle, 'venta_exenta', 0))
+    vn = _d(getattr(detalle, 'venta_no_sujeta', 0))
+    if iva > 0:
+        return (vg + iva + ve + vn).quantize(Q2, rounding=ROUND_HALF_UP)
+    if vg > 0:
+        return (vg * IVA).quantize(Q2, rounding=ROUND_HALF_UP)
+    return (ve + vn).quantize(Q2, rounding=ROUND_HALF_UP)
+
+
+def aplicar_cobro_cf_a_detalle(detalle, cobro_con_iva) -> None:
+    """Ajusta una línea CF (BD: venta_gravada SIN IVA) al cobro CON IVA del POS."""
+    cobro = _d(cobro_con_iva).quantize(Q2, rounding=ROUND_HALF_UP)
+    cant = _d(getattr(detalle, 'cantidad', 1) or 1)
+    if cant <= 0:
+        cant = Decimal('1')
+        detalle.cantidad = cant
+    vg = (cobro / IVA).quantize(Q2, rounding=ROUND_HALF_UP)
+    iva = (cobro - vg).quantize(Q2, rounding=ROUND_HALF_UP)
+    detalle.venta_gravada = vg
+    detalle.iva_item = iva
+    detalle.precio_unitario = (vg / cant).quantize(Q8, rounding=ROUND_HALF_UP) if cant else vg
+    detalle.venta_exenta = Decimal('0.00')
+    detalle.venta_no_sujeta = Decimal('0.00')
+
+
+def alinear_detalles_cf_al_cobro(detalles, cobro_con_iva) -> bool:
+    """
+    Si la suma de líneas no es el total cobrado en caja (ej. 807: $1.05 vs $1.00),
+    ajusta la última línea gravada. Evita 003 por descuadre cabecera/detalle.
+    """
+    cobro = _d(cobro_con_iva).quantize(Q2, rounding=ROUND_HALF_UP)
+    if cobro <= 0:
+        return False
+    filas = list(detalles)
+    if not filas:
+        return False
+    suma = sum((cobro_con_iva_detalle(d) for d in filas), Decimal('0.00'))
+    if suma == cobro:
+        return False
+    ultima = None
+    for d in reversed(filas):
+        if cobro_con_iva_detalle(d) > 0:
+            ultima = d
+            break
+    if ultima is None:
+        ultima = filas[-1]
+    delta = cobro - suma
+    nuevo = cobro_con_iva_detalle(ultima) + delta
+    if nuevo <= 0:
+        return False
+    aplicar_cobro_cf_a_detalle(ultima, nuevo)
+    return True
+
+
+def cobro_cf_desde_payload(payload) -> Decimal:
+    """Total cobrado en caja (POS envía `total` CON IVA)."""
+    if not payload or not isinstance(payload, dict):
+        return Decimal('0.00')
+    for key in ('total', 'total_neto', 'montoTotalOperacion'):
+        raw = payload.get(key)
+        if raw is None or str(raw).strip() == '':
+            continue
+        val = _d(raw).quantize(Q2, rounding=ROUND_HALF_UP)
+        if val > 0:
+            return val
+    return Decimal('0.00')
 
 
 def total_con_iva_linea_cf(

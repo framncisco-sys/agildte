@@ -280,21 +280,22 @@ class DetalleVentaSerializer(serializers.ModelSerializer):
     
     def to_internal_value(self, data):
         """Redondea automáticamente campos DecimalField a 2 decimales antes de validar"""
-        # Campos monetarios que deben tener máximo 2 decimales
-        campos_decimales = [
-            'cantidad', 'precio_unitario', 'monto_descuento', 
-            'venta_no_sujeta', 'venta_exenta', 'venta_gravada', 'iva_item'
+        # cantidad/montos de línea: 2 decimales. precio_unitario: 8 (MH 003).
+        campos_2 = [
+            'cantidad', 'monto_descuento',
+            'venta_no_sujeta', 'venta_exenta', 'venta_gravada', 'iva_item',
         ]
-        
-        for campo in campos_decimales:
+        for campo in campos_2:
             if campo in data and data[campo] is not None:
                 try:
-                    valor = float(data[campo])
-                    # Redondear a 2 decimales
-                    valor_redondeado = round(valor, 2)
-                    data[campo] = valor_redondeado
+                    data[campo] = round(float(data[campo]), 2)
                 except (ValueError, TypeError):
-                    pass  # Si no se puede convertir, dejar que la validación normal lo maneje
+                    pass
+        if 'precio_unitario' in data and data['precio_unitario'] is not None:
+            try:
+                data['precio_unitario'] = round(float(data['precio_unitario']), 8)
+            except (ValueError, TypeError):
+                pass
         
         return super().to_internal_value(data)
 
@@ -699,7 +700,8 @@ class VentaSerializer(serializers.ModelSerializer):
                     if campo in detalle_data:
                         try:
                             valor = Decimal(str(detalle_data[campo]))
-                            detalle_data[campo] = valor.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            q = Decimal('0.00000001') if campo == 'precio_unitario' else Decimal('0.01')
+                            detalle_data[campo] = valor.quantize(q, rounding=ROUND_HALF_UP)
                         except (ValueError, TypeError):
                             detalle_data[campo] = Decimal('0.00')
                 
@@ -1191,7 +1193,8 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
                     for campo in ['cantidad', 'precio_unitario', 'monto_descuento', 'venta_no_sujeta', 'venta_exenta', 'venta_gravada', 'iva_item']:
                         valor_raw = detalle_raw.get(campo, 0)
                         try:
-                            detalle_data[campo] = Decimal(str(valor_raw)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            q = Decimal('0.00000001') if campo == 'precio_unitario' else Decimal('0.01')
+                            detalle_data[campo] = Decimal(str(valor_raw)).quantize(q, rounding=ROUND_HALF_UP)
                         except (ValueError, TypeError):
                             detalle_data[campo] = Decimal('0.00')
             else:
@@ -1204,7 +1207,8 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
                     valor_raw = detalle_raw.get(campo, 0)
                     try:
                         valor = Decimal(str(valor_raw))
-                        detalle_data[campo] = valor.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        q = Decimal('0.00000001') if campo == 'precio_unitario' else Decimal('0.01')
+                        detalle_data[campo] = valor.quantize(q, rounding=ROUND_HALF_UP)
                     except (ValueError, TypeError):
                         detalle_data[campo] = Decimal('0.00')
             
@@ -1247,6 +1251,20 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
                     venta_exenta=Decimal('0.00'),
                     monto_descuento=Decimal('0.00'),
                 )
+
+        # 5b. CF: el cobro de caja (payload.total) manda sobre la suma de líneas
+        # (ej. 807: 3 × $0.35 = $1.05 vs $1.00 cobrado).
+        if es_cf_dte:
+            from .utils.mh_item_totales import (
+                alinear_detalles_cf_al_cobro,
+                cobro_cf_desde_payload,
+            )
+            cobro_caja = cobro_cf_desde_payload(self.initial_data or {})
+            if cobro_caja > 0:
+                dets_cf = list(venta.detalles.all().order_by('numero_item', 'id'))
+                if alinear_detalles_cf_al_cobro(dets_cf, cobro_caja):
+                    for det_cf in dets_cf:
+                        det_cf.save()
         
         # 6. Recalcular totales desde los detalles (sobrescribe los valores enviados)
         venta.calcular_totales()

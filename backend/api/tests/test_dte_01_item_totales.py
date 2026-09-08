@@ -6,6 +6,10 @@ from django.test import SimpleTestCase
 
 from api.utils.builders.dte_01_builder import DTE01Builder
 from api.utils.mh_item_totales import (
+    alinear_detalles_cf_al_cobro,
+    alinear_precio_a_total,
+    cobro_con_iva_detalle,
+    forzar_identidad_mh_item,
     iva_item_cf,
     linea_mh_coherente,
     montos_item_dte01_gravado,
@@ -137,3 +141,98 @@ class DTE01BuilderItemTests(SimpleTestCase):
         calc = round(item['precioUni'] * item['cantidad'] - item['montoDescu'], 2)
         self.assertEqual(calc, item['ventaGravada'])
         self.assertEqual(item['ventaGravada'], 3.30)
+
+
+class MhCodigo003RegresionTests(SimpleTestCase):
+    """Rechazos reales: DTE 0338, POS 788 (250×$0.044) y POS 807 (3×$0.35 vs $1.00)."""
+
+    def test_788_250_bolsas_agua_mantiene_cobro_11(self):
+        m = montos_item_dte01_gravado(
+            cantidad=250,
+            precio_unitario_bd=Decimal('0.03893805'),
+            venta_gravada_bd=Decimal('9.73'),
+            iva_item_bd=Decimal('1.27'),
+            monto_descuento=0,
+        )
+        self.assertEqual(m['ventaGravada'], 11.00)
+        self.assertTrue(linea_mh_coherente(m), m)
+        self.assertEqual(total_linea_mh(m['precioUni'], m['cantidad']), 11.00)
+        # Redondear precioUni a 2 decimales era el 003: 250×0.04=$10.00
+        self.assertNotEqual(round(m['precioUni'], 2) * 250, 11.00)
+
+    def test_alinear_precio_no_tira_el_cobro(self):
+        pu, total = alinear_precio_a_total(250, 11.00, 0)
+        self.assertEqual(total, 11.00)
+        self.assertEqual(total_linea_mh(pu, 250), 11.00)
+
+    def test_807_alinea_lineas_al_cobro_de_caja(self):
+        linea = SimpleNamespace(
+            cantidad=Decimal('3.00'),
+            precio_unitario=Decimal('0.31000000'),
+            venta_gravada=Decimal('0.93'),
+            iva_item=Decimal('0.12'),
+            venta_exenta=Decimal('0.00'),
+            venta_no_sujeta=Decimal('0.00'),
+        )
+        self.assertEqual(cobro_con_iva_detalle(linea), Decimal('1.05'))
+        self.assertTrue(alinear_detalles_cf_al_cobro([linea], Decimal('1.00')))
+        self.assertEqual(cobro_con_iva_detalle(linea), Decimal('1.00'))
+
+    def test_807_identidad_mh_con_cobro_1_00(self):
+        m = montos_item_dte01_gravado(
+            cantidad=3,
+            precio_unitario_bd=Decimal('0.29498584'),
+            venta_gravada_bd=Decimal('0.88'),
+            iva_item_bd=Decimal('0.12'),
+            monto_descuento=0,
+        )
+        self.assertEqual(m['ventaGravada'], 1.00)
+        self.assertTrue(linea_mh_coherente(m), m)
+        self.assertEqual(total_linea_mh(m['precioUni'], m['cantidad']), 1.00)
+
+    def test_forzar_identidad_corrige_precio_redondeado_a_2_decimales(self):
+        item = {
+            'cantidad': 250,
+            'precioUni': 0.04,
+            'montoDescu': 0.0,
+            'ventaGravada': 11.00,
+            'ventaExenta': 0.0,
+            'ventaNoSuj': 0.0,
+            'ivaItem': iva_item_cf(11.00),
+        }
+        self.assertFalse(linea_mh_coherente(item))
+        forzar_identidad_mh_item(item)
+        self.assertTrue(linea_mh_coherente(item), item)
+        self.assertEqual(item['ventaGravada'], 11.00)
+
+    def test_builder_788_identidad_mh(self):
+        producto = SimpleNamespace(codigo='AGUA', descripcion='Bolsa de Agua Jordan', tipo_item=1)
+        detalle = SimpleNamespace(
+            numero_item=1,
+            producto=producto,
+            codigo_libre=None,
+            descripcion_libre=None,
+            monto_descuento=Decimal('0.00'),
+            venta_exenta=Decimal('0.00'),
+            venta_no_sujeta=Decimal('0.00'),
+            cantidad=Decimal('250.00'),
+            precio_unitario=Decimal('0.03893805'),
+            venta_gravada=Decimal('9.73'),
+            iva_item=Decimal('1.27'),
+        )
+        venta = SimpleNamespace(
+            cliente=None,
+            nombre_receptor='Cliente de contado',
+            iva_retenido_1=0,
+            observaciones='',
+            condicion_operacion=1,
+            plazo_pago='',
+            periodo_pago='',
+            venta_gravada=detalle.venta_gravada,
+            detalles=_qs([detalle]),
+        )
+        b = DTE01Builder.__new__(DTE01Builder)
+        b.venta = venta
+        item = b._construir_cuerpo_documento()[0]
+        self.assertTrue(linea_mh_coherente(item), item)
+        self.assertEqual(item['ventaGravada'], 11.00)

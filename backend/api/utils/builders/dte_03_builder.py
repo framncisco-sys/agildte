@@ -7,6 +7,7 @@ from api.constants import DTE_LINEA_DESCRIPCION_MAX_LENGTH
 from api.dte_generator import formatear_decimal, formatear_nrc_emisor
 from api.utils.mh_direccion import armar_direccion_mh
 from api.utils.mh_item_totales import (
+    forzar_identidad_mh_item,
     iva_item_cf,
     money2,
     montos_item_dte01_gravado,
@@ -250,6 +251,8 @@ class DTE03Builder(BaseDTEBuilder):
 
         if not items:
             items = [self._item_default(tipo_dte, incluir_iva_item)]
+        for item in items:
+            forzar_identidad_mh_item(item)
         return items
 
     def _items_desde_totales(self, tipo_dte, incluir_iva_item):
