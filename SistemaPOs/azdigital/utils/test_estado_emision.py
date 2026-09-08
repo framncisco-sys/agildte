@@ -69,6 +69,73 @@ class FilaGestionVentaTests(unittest.TestCase):
         self.assertFalse(f["puede_emitir"])
         self.assertEqual(f["etiqueta"], "Corregido")
 
+    def test_total_invalido_no_revienta(self):
+        row = (1, "01/01/2026 10:00", "no-num", "CF", "EFECTIVO", "TICKET", None, "", "RESPALDO", "cajero")
+        f = fila_gestion_venta(row)
+        self.assertEqual(f["total"], 0.0)
+        self.assertTrue(f["puede_remitir"])
+
+    def test_acepta_dict(self):
+        f = fila_gestion_venta({"id": 9, "fecha": "01/01/2026", "total": 1.5, "cliente": "A"})
+        self.assertEqual(f["id"], 9)
+        self.assertEqual(f["total"], 1.5)
+        self.assertEqual(f["clave"], "pendiente")
+
+
+class ListarVentasRecientesFallbackTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[1] / "repositories" / "ventas_repo.py"
+        spec = importlib.util.spec_from_file_location("ventas_repo_listar_iso", path)
+        cls.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.mod)
+
+    def test_degrada_si_sql_falla_y_no_relanza(self):
+        class _Cur:
+            def __init__(self):
+                self.n = 0
+                self.connection = self
+                self.rows = [(1, "01/01/2026 10:00", 1.1, "CF", "EFECTIVO", "TICKET", None, "", "RESPALDO", "-")]
+
+            def rollback(self):
+                pass
+
+            def execute(self, sql, params=None):
+                self.n += 1
+                if "ambiente_emision" in (sql or "") or "LEFT JOIN usuarios" in (sql or ""):
+                    raise Exception("column v.ambiente_emision does not exist")
+                if "c.nombre_cliente" in (sql or ""):
+                    raise Exception("column c.nombre_cliente does not exist")
+
+            def fetchall(self):
+                return self.rows
+
+        cur = _Cur()
+        rows = self.mod.listar_ventas_recientes(cur, empresa_id=1, limit=10, ambiente_emision="00")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][0], 1)
+        self.assertGreaterEqual(cur.n, 2)
+
+    def test_si_todo_falla_devuelve_lista_vacia(self):
+        class _Cur:
+            def __init__(self):
+                self.connection = self
+
+            def rollback(self):
+                pass
+
+            def execute(self, sql, params=None):
+                raise Exception("current transaction is aborted")
+
+            def fetchall(self):
+                return []
+
+        rows = self.mod.listar_ventas_recientes(_Cur(), empresa_id=1, limit=10)
+        self.assertEqual(rows, [])
+
 
 class RemitirVentaExistenteTests(unittest.TestCase):
     """La re-emisión se bloquea con clasificar_estado_emision (sin importar sync/psycopg2)."""

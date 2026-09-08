@@ -249,7 +249,7 @@
             </p>
         </div>
         <div class="gv-row-actions" style="align-items:flex-start">
-            {% if pendientes_n|default(0) > 0 %}
+            {% if (pendientes_n|default(0)|int) > 0 %}
             <button type="button" class="gv-pos-btn" style="border-color:#bbf7d0;background:linear-gradient(135deg,#fff 0%,#f0fdf4 100%);color:#15803d" data-bs-toggle="modal" data-bs-target="#modalRemitirTodos">
                 <span class="gv-pos-btn-icon" style="background:rgba(22,163,74,.14);color:#16a34a"><i class="bi bi-send-check"></i></span>
                 Remitir pendientes ({{ pendientes_n }})
@@ -261,7 +261,7 @@
             </a>
         </div>
     </div>
-    {% if pendientes_n|default(0) > 0 %}
+    {% if (pendientes_n|default(0)|int) > 0 %}
     <div class="modal fade" id="modalRemitirTodos" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -301,37 +301,77 @@
                 </thead>
                 <tbody>
                     {% for v in ventas %}
-                    {% set comp = (v.comprobante or '')|upper %}
+                    {% set ns = namespace(vid=0, fecha='', cajero='-', cliente='', comprobante='TICKET', pago='', total=0, clave='pendiente', etiqueta='Pendiente', puede_remitir=false, puede_reemitir=false, en_agildte=false) %}
+                    {% if v is mapping %}
+                        {% set ns.vid = v.id %}
+                        {% set ns.fecha = v.fecha %}
+                        {% set ns.cajero = v.cajero or '-' %}
+                        {% set ns.cliente = v.cliente %}
+                        {% set ns.comprobante = v.comprobante or 'TICKET' %}
+                        {% set ns.pago = v.pago %}
+                        {% set ns.total = v.total|default(0)|float %}
+                        {% set ns.clave = v.clave or 'pendiente' %}
+                        {% set ns.etiqueta = v.etiqueta or 'Pendiente' %}
+                        {% set ns.puede_remitir = v.puede_remitir %}
+                        {% set ns.puede_reemitir = v.puede_reemitir %}
+                        {% set ns.en_agildte = v.en_agildte %}
+                    {% else %}
+                        {% set ns.vid = v[0] %}
+                        {% set ns.fecha = v[1] %}
+                        {% set ns.total = (v[2] or 0)|float %}
+                        {% set ns.cliente = v[3] %}
+                        {% set ns.pago = v[4] %}
+                        {% set ns.comprobante = v[5] or 'TICKET' %}
+                        {% set ns.cajero = (v[9] if v|length > 9 else '-') or '-' %}
+                        {% set _cg = (v[7] if v|length > 7 else '')|trim %}
+                        {% set _ed = (v[8] if v|length > 8 else '')|upper %}
+                        {% if _cg|length > 8 %}
+                            {% if 'CORREG' in _ed %}
+                                {% set ns.clave = 'corregido' %}{% set ns.etiqueta = 'Corregido' %}
+                            {% elif 'RECHAZ' in _ed %}
+                                {% set ns.clave = 'rechazado' %}{% set ns.etiqueta = 'Rechazado' %}{% set ns.puede_reemitir = true %}
+                            {% elif 'ACEPT' in _ed or 'ENVIADO' in _ed or 'PROCESADO' in _ed %}
+                                {% set ns.clave = 'procesado' %}{% set ns.etiqueta = 'Procesado' %}
+                            {% else %}
+                                {% set ns.clave = 'agildte' %}{% set ns.etiqueta = 'En AgilDTE' %}
+                            {% endif %}
+                            {% set ns.en_agildte = true %}
+                        {% else %}
+                            {% set ns.puede_remitir = true %}
+                        {% endif %}
+                    {% endif %}
+                    {% set vid = ns.vid %}
+                    {% set comp = (ns.comprobante or '')|upper %}
                     <tr>
-                        <td><span class="gv-id">{{ v.id }}</span></td>
-                        <td><span class="gv-fecha">{{ v.fecha }}</span></td>
-                        <td><span class="gv-cajero">{{ v.cajero }}</span></td>
-                        <td><span class="gv-cliente">{{ v.cliente }}</span></td>
+                        <td><span class="gv-id">{{ vid }}</span></td>
+                        <td><span class="gv-fecha">{{ ns.fecha }}</span></td>
+                        <td><span class="gv-cajero">{{ ns.cajero }}</span></td>
+                        <td><span class="gv-cliente">{{ ns.cliente }}</span></td>
                         <td>
-                            <span class="gv-badge {% if 'FACTURA' in comp %}gv-badge--factura{% elif 'CCF' in comp or 'CRÉDITO' in comp or 'CREDITO' in comp %}gv-badge--ccf{% else %}gv-badge--ticket{% endif %}">{{ v.comprobante }}</span>
+                            <span class="gv-badge {% if 'FACTURA' in comp %}gv-badge--factura{% elif 'CCF' in comp or 'CRÉDITO' in comp or 'CREDITO' in comp %}gv-badge--ccf{% else %}gv-badge--ticket{% endif %}">{{ ns.comprobante }}</span>
                         </td>
-                        <td><span class="gv-pago">{{ v.pago }}</span></td>
-                        <td class="text-end"><span class="gv-total">${{ "%.2f"|format(v.total) }}</span></td>
+                        <td><span class="gv-pago">{{ ns.pago }}</span></td>
+                        <td class="text-end"><span class="gv-total">${{ "%.2f"|format(ns.total) }}</span></td>
                         <td>
-                            <span class="gv-badge gv-badge--{{ v.clave }}" title="{% if v.puede_remitir %}Solo en POS; se puede remitir a AgilDTE{% elif v.clave == 'rechazado' %}DTE rechazado: corrija y emita con correlativo nuevo. Si Hacienda acepta, pasa a Corregido.{% elif v.clave == 'corregido' %}El DTE nuevo fue aceptado por Hacienda.{% else %}Ya está en AgilDTE{% endif %}">{{ v.etiqueta }}</span>
+                            <span class="gv-badge gv-badge--{{ ns.clave }}" title="{% if ns.puede_remitir %}Solo en POS; se puede remitir a AgilDTE{% elif ns.clave == 'rechazado' %}DTE rechazado: corrija y emita con correlativo nuevo. Si Hacienda acepta, pasa a Corregido.{% elif ns.clave == 'corregido' %}El DTE nuevo fue aceptado por Hacienda.{% else %}Ya está en AgilDTE{% endif %}">{{ ns.etiqueta }}</span>
                         </td>
                         <td class="text-end">
                             <div class="gv-row-actions">
-                                <a href="{{ url_for('admin.gestion_ventas_editar', venta_id=v.id) }}" class="gv-row-btn gv-row-btn--open" title="{% if v.puede_reemitir %}Corregir y emitir con correlativo DTE nuevo{% else %}Abrir factura completa (fecha y cajero no se cambian){% endif %}">
-                                    <i class="bi bi-box-arrow-up-right"></i> {% if v.puede_reemitir %}Corregir{% else %}Abrir{% endif %}
+                                <a href="{{ url_for('admin.gestion_ventas_editar', venta_id=vid) }}" class="gv-row-btn gv-row-btn--open" title="{% if ns.puede_reemitir %}Corregir y emitir con correlativo DTE nuevo{% else %}Abrir factura completa (fecha y cajero no se cambian){% endif %}">
+                                    <i class="bi bi-box-arrow-up-right"></i> {% if ns.puede_reemitir %}Corregir{% else %}Abrir{% endif %}
                                 </a>
-                                {% if v.puede_remitir %}
-                                <form action="{{ url_for('admin.gestion_ventas_remitir', venta_id=v.id) }}" method="POST" class="d-inline">
+                                {% if ns.puede_remitir %}
+                                <form action="{{ url_for('admin.gestion_ventas_remitir', venta_id=vid) }}" method="POST" class="d-inline">
                                     <button type="submit" class="gv-row-btn gv-row-btn--remitir" title="Emitir en AgilDTE con la corrección de montos. Conserva fecha y cajero.">
                                         <i class="bi bi-send"></i> Remitir
                                     </button>
                                 </form>
                                 {% endif %}
-                                {% if v.en_agildte %}
-                                <a href="{{ url_for('admin.gestion_ventas_generar_json', venta_id=v.id) }}" class="gv-row-btn gv-row-btn--json" title="JSON DTE de esta venta en AgilDTE">
+                                {% if ns.en_agildte %}
+                                <a href="{{ url_for('admin.gestion_ventas_generar_json', venta_id=vid) }}" class="gv-row-btn gv-row-btn--json" title="JSON DTE de esta venta en AgilDTE">
                                     <i class="bi bi-braces"></i> JSON
                                 </a>
-                                <a href="{{ url_for('admin.gestion_ventas_generar_pdf', venta_id=v.id) }}" class="gv-row-btn gv-row-btn--pdf" target="_blank" title="PDF DTE de esta venta en AgilDTE">
+                                <a href="{{ url_for('admin.gestion_ventas_generar_pdf', venta_id=vid) }}" class="gv-row-btn gv-row-btn--pdf" target="_blank" title="PDF DTE de esta venta en AgilDTE">
                                     <i class="bi bi-file-earmark-pdf"></i> PDF
                                 </a>
                                 {% else %}
@@ -342,18 +382,18 @@
                                     <i class="bi bi-file-earmark-pdf"></i> PDF
                                 </span>
                                 {% endif %}
-                                <button type="button" class="gv-row-btn gv-row-btn--void" data-bs-toggle="modal" data-bs-target="#modalAnular{{ v.id }}">
+                                <button type="button" class="gv-row-btn gv-row-btn--void" data-bs-toggle="modal" data-bs-target="#modalAnular{{ vid }}">
                                     <i class="bi bi-x-circle"></i> Anular
                                 </button>
                             </div>
-                            <div class="modal fade" id="modalAnular{{ v.id }}" tabindex="-1">
+                            <div class="modal fade" id="modalAnular{{ vid }}" tabindex="-1">
                                 <div class="modal-dialog">
                                     <div class="modal-content">
                                         <div class="modal-header bg-danger text-white">
-                                            <h5 class="modal-title"><i class="bi bi-x-circle"></i> Anular venta #{{ v.id }}</h5>
+                                            <h5 class="modal-title"><i class="bi bi-x-circle"></i> Anular venta #{{ vid }}</h5>
                                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                         </div>
-                                        <form action="{{ url_for('admin.gestion_ventas_eliminar', venta_id=v.id) }}" method="POST">
+                                        <form action="{{ url_for('admin.gestion_ventas_eliminar', venta_id=vid) }}" method="POST">
                                             <div class="modal-body">
                                                 <p class="small text-muted">Se repondrá el stock. El registro se marca como ANULADO (no se borra). Para auditoría tributaria debe indicar el motivo.</p>
                                                 <label class="form-label fw-bold">Motivo de anulación <span class="text-danger">*</span></label>

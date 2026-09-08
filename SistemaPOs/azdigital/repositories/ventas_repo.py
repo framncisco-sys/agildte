@@ -607,6 +607,13 @@ def actualizar_ambiente_emision(
         return False
 
 
+def _rollback_silencioso(cur) -> None:
+    try:
+        cur.connection.rollback()
+    except Exception:
+        pass
+
+
 def listar_ventas_recientes(
     cur,
     empresa_id: int,
@@ -616,91 +623,132 @@ def listar_ventas_recientes(
     """
     Lista ventas activas. Si ambiente_emision ('00'|'01'), filtra como AgilDTE
     (solo documentos del ambiente actual de la empresa).
+
+    Nunca relanza: si el esquema es viejo o el JOIN falla, degrada la consulta.
+    Un error aquí no debe devolver HTTP 500 en Gestión de ventas.
     """
     etiqueta = _sql_etiqueta_cliente_venta()
     amb = (ambiente_emision or "").strip()
+    usa_amb = amb in ("00", "01")
     filtro_amb = ""
-    params: list = [empresa_id]
-    if amb in ("00", "01"):
+    params_amb: list = [empresa_id]
+    if usa_amb:
         filtro_amb = """
           AND (
             v.ambiente_emision = %s
             OR (v.ambiente_emision IS NULL AND %s = '01')
           )
         """
-        params.extend([amb, amb])
-    params.append(limit)
-    sql = f"""
+        params_amb.extend([amb, amb])
+    params_amb.append(limit)
+    params_basicos = [empresa_id, limit]
+    cajero_join = "COALESCE(NULLIF(TRIM(u.username), ''), '-')"
+    select_dte = "COALESCE(v.codigo_generacion, ''), COALESCE(v.estado_dte, 'RESPALDO')"
+    where_estado = "AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'"
+    intentos = [
+        (
+            f"""
         SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
                COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id,
-               COALESCE(v.codigo_generacion, ''), COALESCE(v.estado_dte, 'RESPALDO'),
-               COALESCE(NULLIF(TRIM(u.username), ''), '—')
+               {select_dte}, {cajero_join}
         FROM ventas v
         LEFT JOIN clientes c ON c.id = v.cliente_id
         LEFT JOIN usuarios u ON u.id = v.usuario_id
         WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
-          AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
+          {where_estado}
           {filtro_amb}
         ORDER BY v.id DESC
         LIMIT %s
-        """
-    try:
-        cur.execute(sql, tuple(params))
-        return cur.fetchall()
-    except Exception as ex:
-        err = str(ex)
-        err_l = err.lower()
-        cur.connection.rollback()
-        params_sin_amb = [empresa_id, limit]
-        if "usuarios" in err_l or "username" in err_l or "usuario_id" in err_l:
-            try:
-                sql_sin_u = (
-                    sql.replace("COALESCE(NULLIF(TRIM(u.username), ''), '—')", "'—'").replace(
-                        "LEFT JOIN usuarios u ON u.id = v.usuario_id", ""
-                    )
-                )
-                cur.execute(sql_sin_u, tuple(params))
-                return cur.fetchall()
-            except Exception:
-                cur.connection.rollback()
-        if "ambiente_emision" in err:
-            try:
-                cur.execute(
-                    f"""
-            SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
-                   COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id,
-                   COALESCE(v.codigo_generacion, ''), COALESCE(v.estado_dte, 'RESPALDO'),
-                   COALESCE(NULLIF(TRIM(u.username), ''), '—')
-            FROM ventas v
-            LEFT JOIN clientes c ON c.id = v.cliente_id
-            LEFT JOIN usuarios u ON u.id = v.usuario_id
-            WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
-              AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
-            ORDER BY v.id DESC
-            LIMIT %s
-                    """,
-                    tuple(params_sin_amb),
-                )
-                return cur.fetchall()
-            except Exception:
-                cur.connection.rollback()
-        if "codigo_generacion" in err or "estado_dte" in err or "ambiente_emision" in err:
-            cur.execute(
-                f"""
-            SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
-                   COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id,
-                   '', 'RESPALDO', '—'
-            FROM ventas v
-            LEFT JOIN clientes c ON c.id = v.cliente_id
-            WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
-              AND COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
-            ORDER BY v.id DESC
-            LIMIT %s
-                """,
-                tuple(params_sin_amb),
-            )
+            """,
+            params_amb if usa_amb else params_basicos,
+        ),
+        (
+            f"""
+        SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
+               COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id,
+               {select_dte}, '-'
+        FROM ventas v
+        LEFT JOIN clientes c ON c.id = v.cliente_id
+        WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
+          {where_estado}
+          {filtro_amb}
+        ORDER BY v.id DESC
+        LIMIT %s
+            """,
+            params_amb if usa_amb else params_basicos,
+        ),
+        (
+            f"""
+        SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
+               COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id,
+               {select_dte}, {cajero_join}
+        FROM ventas v
+        LEFT JOIN clientes c ON c.id = v.cliente_id
+        LEFT JOIN usuarios u ON u.id = v.usuario_id
+        WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
+          {where_estado}
+        ORDER BY v.id DESC
+        LIMIT %s
+            """,
+            params_basicos,
+        ),
+        (
+            f"""
+        SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar, ({etiqueta}), v.tipo_pago,
+               COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id,
+               '', 'RESPALDO', '-'
+        FROM ventas v
+        LEFT JOIN clientes c ON c.id = v.cliente_id
+        WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
+          {where_estado}
+        ORDER BY v.id DESC
+        LIMIT %s
+            """,
+            params_basicos,
+        ),
+        (
+            """
+        SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar,
+               COALESCE(NULLIF(TRIM(v.cliente_nombre), ''), 'Consumidor Final'), v.tipo_pago,
+               COALESCE(v.tipo_comprobante, 'TICKET'), v.cliente_id,
+               COALESCE(v.codigo_generacion, ''), COALESCE(v.estado_dte, 'RESPALDO'), '-'
+        FROM ventas v
+        WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
+        ORDER BY v.id DESC
+        LIMIT %s
+            """,
+            params_basicos,
+        ),
+        (
+            """
+        SELECT v.id, TO_CHAR(v.fecha_registro, 'DD/MM/YYYY HH24:MI'), v.total_pagar,
+               COALESCE(NULLIF(TRIM(v.cliente_nombre), ''), 'Consumidor Final'), v.tipo_pago,
+               'TICKET', NULL, '', 'RESPALDO', '-'
+        FROM ventas v
+        WHERE (v.empresa_id IS NULL OR v.empresa_id = %s)
+        ORDER BY v.id DESC
+        LIMIT %s
+            """,
+            params_basicos,
+        ),
+    ]
+    ultimo = None
+    for sql, params in intentos:
+        try:
+            cur.execute(sql, tuple(params))
             return cur.fetchall()
-        raise
+        except Exception as ex:
+            ultimo = ex
+            _rollback_silencioso(cur)
+    if ultimo:
+        import logging
+
+        logging.getLogger(__name__).error(
+            "listar_ventas_recientes: no se pudo listar empresa_id=%s: %s",
+            empresa_id,
+            ultimo,
+        )
+    return []
 
 
 def actualizar_venta_cabecera(

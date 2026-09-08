@@ -7315,7 +7315,12 @@ def _filas_gestion_ventas(cur, emp_id: int, ambiente_empresa: str, limit: int = 
         limit=limit,
         ambiente_emision=ambiente_empresa,
     ) or []
-    filas = [fila_gestion_venta(r) for r in rows]
+    filas = []
+    for r in rows:
+        try:
+            filas.append(fila_gestion_venta(r))
+        except Exception:
+            current_app.logger.exception("gestion_ventas: fila inválida empresa_id=%s", emp_id)
     n_pend = sum(1 for f in filas if f.get("puede_remitir"))
     return filas, n_pend
 
@@ -7366,9 +7371,19 @@ def gestion_ventas():
 
         ambiente_empresa = obtener_ambiente_empresa(emp_id, cur=cur)
     except Exception:
-        pass
+        try:
+            conn.rollback()
+        except Exception:
+            pass
     try:
-        filas, n_pend = _filas_gestion_ventas(cur, emp_id, ambiente_empresa)
+        try:
+            filas, n_pend = _filas_gestion_ventas(cur, emp_id, ambiente_empresa)
+        except Exception:
+            current_app.logger.exception(
+                "gestion_ventas: no se pudo listar ventas empresa_id=%s", emp_id
+            )
+            flash("No se pudo cargar el listado de ventas. Si persiste, revise el registro del servidor.", "danger")
+            filas, n_pend = [], 0
         return render_template(
             "gestion_ventas.html",
             ventas=filas,
