@@ -1229,15 +1229,18 @@ class VentaViewSet(viewsets.ModelViewSet):
                 "mensaje": "El correo indicado no tiene un formato válido.",
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        motivo = []
         ok = enviar_factura_email(
             venta,
             destinatario_override=destino,
             persistir_correo_en_venta=usar_otro and destino != (correo_guardado or ''),
+            motivo=motivo,
         )
         if not ok:
+            detalle = (motivo[0] if motivo else "").strip()
             return Response({
                 "error": "No se pudo enviar",
-                "mensaje": (
+                "mensaje": detalle or (
                     "No se pudo enviar el correo. Verifique SMTP/SES en la empresa "
                     "y que el destinatario sea válido."
                 ),

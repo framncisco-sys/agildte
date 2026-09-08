@@ -116,31 +116,44 @@ def _aplicar_template(template: str, venta) -> str:
     )
 
 
+def _dte_listo_para_correo(venta) -> bool:
+    estado = getattr(venta, 'estado_dte', None)
+    if estado == 'AceptadoMH':
+        return True
+    if estado == 'Enviado' and (getattr(venta, 'sello_recepcion', None) or '').strip():
+        return True
+    return False
+
+
 def enviar_factura_email(
     venta,
     destinatario_override: str | None = None,
     *,
     persistir_correo_en_venta: bool = False,
+    motivo: list | None = None,
 ) -> bool:
     """
     Envía el correo con la factura (PDF + JSON) al cliente.
-    Solo se envía si el DTE fue aceptado por MH (estado_dte == 'AceptadoMH').
-    Usa la configuración SMTP de la empresa o las variables de entorno EMAIL_* como fallback.
-    Los errores de red se registran en el log pero NO bloquean el flujo principal.
+    Solo se envía si MH ya procesó el DTE (AceptadoMH, o Enviado con sello).
+    Prioridad: SES API si hay claves AWS; si SES falla, SMTP de la empresa / EMAIL_*.
+    Los errores de red se registran en el log pero NO bloquean el flujo de facturación.
     Retorna True si se envió correctamente, False en cualquier otro caso.
-
-    destinatario_override: correo alternativo (reenvío manual desde historial).
-    persistir_correo_en_venta: guarda el correo en venta.correo_receptor si cambió.
+    motivo: lista opcional donde se anexa la causa si falla (reenvío manual).
     """
-    if not venta.empresa:
-        logger.warning("Venta sin empresa, no se puede enviar correo")
+    def _fail(msg: str) -> bool:
+        logger.warning(msg)
+        if motivo is not None:
+            motivo.append(msg)
         return False
 
-    # Solo enviar si el DTE fue aceptado por MH
+    if not venta.empresa:
+        return _fail("Venta sin empresa, no se puede enviar correo")
+
     estado = getattr(venta, 'estado_dte', None)
-    if estado != 'AceptadoMH':
-        logger.info(f"Venta {venta.id} con estado '{estado}' (no AceptadoMH), omitiendo envío de correo")
-        return False
+    if not _dte_listo_para_correo(venta):
+        return _fail(
+            f"Venta {venta.id} con estado '{estado}' aún no está aceptada por Hacienda; no se envía correo"
+        )
 
     emp = venta.empresa
     smtp_cfg = _obtener_config_smtp(emp)
@@ -151,19 +164,17 @@ def enviar_factura_email(
         from_address = os.environ.get('EMAIL_FROM_ADDRESS', '').strip() or os.environ.get('EMAIL_HOST_USER', '').strip()
     use_ses_api = _tiene_credenciales_ses_api()
     if not smtp_cfg and not (use_ses_api and from_address):
-        logger.info(
-            f"Empresa '{emp.nombre}' sin SMTP configurado y sin credenciales SES API (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY). "
-            f"Omitiendo envío de correo para venta {venta.id}."
+        return _fail(
+            f"Empresa '{emp.nombre}' sin SMTP configurado y sin credenciales SES válidas. "
+            "Configure SMTP en la empresa (Ajustes) o las claves AWS SES."
         )
-        return False
 
     if destinatario_override and str(destinatario_override).strip():
         destinatario = str(destinatario_override).strip()
     else:
         destinatario = _obtener_destinatario(venta)
     if not destinatario or "@" not in destinatario:
-        logger.info(f"Venta {venta.id} sin correo de destinatario, omitiendo envío")
-        return False
+        return _fail("Esta factura no tiene un correo de destinatario válido.")
 
     if persistir_correo_en_venta:
         actual = (getattr(venta, 'correo_receptor', None) or '').strip()
@@ -177,7 +188,7 @@ def enviar_factura_email(
         pdf_bytes = pdf_buffer.getvalue() if hasattr(pdf_buffer, 'getvalue') else pdf_buffer.read()
     except Exception as e:
         logger.error(f"Error generando PDF para venta {venta.id}: {e}")
-        return False
+        return _fail(f"No se pudo generar el PDF de la factura: {e}")
 
     # Generar JSON DTE legible con firmaElectronica y selloRecibido
     json_bytes = None
@@ -266,21 +277,30 @@ def enviar_factura_email(
     # Enviar — prioridad: SES API (HTTPS 443) si hay credenciales IAM; sino SMTP
     raw_bytes = msg.as_bytes() if hasattr(msg, 'as_bytes') else msg.as_string().encode('utf-8')
 
+    ses_error = None
     if use_ses_api:
         try:
             _enviar_via_ses_api(raw_bytes, from_address, destinatario)
             logger.info(f"Correo enviado vía SES API a {destinatario} para venta {venta.id} (DTE {venta.codigo_generacion})")
             return True
         except Exception as e:
+            ses_error = e
             logger.error(
                 f"Error SES API enviando correo para venta {venta.id} a {destinatario}: {e}. "
-                f"La factura fue procesada correctamente por MH."
+                f"Se intentará SMTP si está configurado."
             )
-            return False
 
     if not smtp_cfg:
-        logger.warning("Credenciales SES API no disponibles y SMTP no configurado, no se envió correo")
-        return False
+        detalle = str(ses_error) if ses_error else "SMTP no configurado"
+        return _fail(
+            "No se pudo enviar el correo: "
+            + (
+                "las claves AWS SES no son válidas (InvalidClientTokenId). "
+                "Configure SMTP en la empresa o actualice AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY."
+                if ses_error and "InvalidClientTokenId" in str(ses_error)
+                else detalle
+            )
+        )
 
     try:
         if smtp_cfg['use_tls']:
@@ -305,10 +325,11 @@ def enviar_factura_email(
             f"Error de red/SMTP enviando correo para venta {venta.id} a {destinatario}: {e}. "
             f"La factura fue procesada correctamente por MH."
         )
-        return False
+        extra = f" SES: {ses_error}." if ses_error else ""
+        return _fail(f"Error SMTP ({smtp_cfg.get('host')}): {e}.{extra}")
     except Exception as e:
         logger.error(f"Error inesperado enviando correo para venta {venta.id}: {e}")
-        return False
+        return _fail(f"Error inesperado enviando correo: {e}")
 
 
 def _enviar_via_ses_api(raw_message_bytes: bytes, source: str, destination: str) -> None:
