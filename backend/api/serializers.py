@@ -689,7 +689,15 @@ class VentaSerializer(serializers.ModelSerializer):
                     try:
                         producto_obj = Producto.objects.get(id=producto_id)
                     except Producto.DoesNotExist:
-                        pass
+                        producto_obj = None
+                if producto_obj is None:
+                    from .utils.producto_catalogo import asegurar_producto_desde_linea
+                    producto_obj = asegurar_producto_desde_linea(
+                        empresa,
+                        descripcion=detalle_data.get('descripcion_libre') or detalle_data.get('descripcion'),
+                        codigo=detalle_data.get('codigo_libre') or detalle_data.get('codigo'),
+                        precio=detalle_data.get('precio_unitario'),
+                    )
                 
                 # Convertir y redondear campos decimales
                 campos_decimales = [
@@ -1140,8 +1148,15 @@ class VentaConDetallesSerializer(serializers.ModelSerializer):
                 try:
                     producto_obj = Producto.objects.get(id=producto_id)
                 except Producto.DoesNotExist:
-                    # Si el producto no existe, continuar sin producto (item libre)
-                    pass
+                    producto_obj = None
+            if producto_obj is None:
+                from .utils.producto_catalogo import asegurar_producto_desde_linea
+                producto_obj = asegurar_producto_desde_linea(
+                    empresa,
+                    descripcion=detalle_raw.get('descripcion_libre') or detalle_raw.get('descripcion'),
+                    codigo=detalle_raw.get('codigo_libre') or detalle_raw.get('codigo'),
+                    precio=detalle_raw.get('precio_unitario'),
+                )
             
             # Preparar datos del detalle
             detalle_data = {}

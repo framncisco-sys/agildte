@@ -256,6 +256,7 @@ def crear_venta_desde_carrito(
         prod = productos_repo.get_precio_y_stock_for_update(cur, producto_id)
         if not prod:
             raise ValueError(f"Producto no existe: {producto_id}")
+        productos_repo.asignar_empresa_si_vacia(cur, producto_id, empresa_id)
         nombre_producto = productos_repo.get_nombre_producto(cur, producto_id) or "Producto"
         precio_unitario = float(prod[0])
         precio_carrito = item.get("precio_carrito")

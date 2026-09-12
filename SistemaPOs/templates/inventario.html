@@ -154,8 +154,23 @@
     }
 
     /* —— Tabla inventario —— */
-    .inv-search-wrap { margin-bottom: 0.75rem; }
+    .inv-search-wrap {
+        margin-bottom: 0.75rem;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.55rem;
+    }
+    .inv-search-form {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.45rem;
+        flex: 1 1 280px;
+        max-width: 640px;
+    }
     .inv-search {
+        flex: 1 1 220px;
         max-width: 420px;
         font-size: 0.92rem;
         font-weight: 600;
@@ -163,6 +178,59 @@
         border-radius: 10px;
         border: 1px solid #e2e8f0;
         transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .inv-search-btn {
+        border: 0;
+        border-radius: 10px;
+        background: #2563eb;
+        color: #fff;
+        font-size: 0.82rem;
+        font-weight: 700;
+        padding: 0.52rem 0.9rem;
+    }
+    .inv-search-clear {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #64748b;
+        text-decoration: none;
+    }
+    .inv-meta {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #64748b;
+    }
+    .inv-pager {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.7rem 1rem;
+        border-top: 1px solid #e2e8f0;
+        background: #f8fafc;
+    }
+    .inv-pager-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #1d4ed8;
+        text-decoration: none;
+        padding: 0.28rem 0.6rem;
+        border-radius: 8px;
+        background: #eff6ff;
+    }
+    .inv-pager-link.is-disabled {
+        pointer-events: none;
+        color: #94a3b8;
+        background: #f1f5f9;
+    }
+    .inv-empty {
+        padding: 1.6rem 1rem;
+        text-align: center;
+        color: #64748b;
+        font-weight: 600;
     }
     .inv-search:focus {
         border-color: #93c5fd;
@@ -349,11 +417,11 @@
                     <div class="inv-toolbar-group">
                         <span class="inv-toolbar-group-label">Exportar</span>
                         <div class="inv-toolbar-group-btns">
-                            <a href="{{ url_for('admin.inventario_exportar_excel') }}" class="inv-tool-btn inv-tool-btn--excel" title="Descargar inventario en Excel">
+                            <a href="{{ url_for('admin.inventario_exportar_excel', buscar=buscar) }}" class="inv-tool-btn inv-tool-btn--excel" title="Descargar inventario en Excel">
                                 <span class="inv-tool-btn-icon"><i class="bi bi-file-earmark-excel"></i></span>
                                 Excel
                             </a>
-                            <a href="{{ url_for('admin.inventario_exportar_pdf') }}" class="inv-tool-btn inv-tool-btn--pdf" title="Descargar inventario en PDF">
+                            <a href="{{ url_for('admin.inventario_exportar_pdf', buscar=buscar) }}" class="inv-tool-btn inv-tool-btn--pdf" title="Descargar inventario en PDF">
                                 <span class="inv-tool-btn-icon"><i class="bi bi-file-earmark-pdf"></i></span>
                                 PDF
                             </a>
@@ -389,8 +457,29 @@
     </div>
 
     <div class="inv-search-wrap">
-        <input type="text" id="buscar_inventario" class="form-control inv-search" placeholder="Buscar por código o nombre…">
+        <form method="get" action="{{ url_for('admin.inventario') }}" class="inv-search-form" role="search">
+            <input type="text" id="buscar_inventario" name="buscar" value="{{ buscar or '' }}" class="form-control inv-search" placeholder="Buscar por código, nombre o presentación…" autocomplete="off">
+            <button type="submit" class="inv-search-btn"><i class="bi bi-search"></i> Buscar</button>
+            {% if buscar %}
+            <a class="inv-search-clear" href="{{ url_for('admin.inventario') }}">Ver todos</a>
+            {% endif %}
+        </form>
+        <div class="inv-meta">
+            {% if total_productos %}
+                Mostrando {{ mostrados_desde }}–{{ mostrados_hasta }} de {{ total_productos }} producto{{ 's' if total_productos != 1 else '' }}
+                {% if total_paginas > 1 %} · página {{ pagina }} de {{ total_paginas }}{% endif %}
+            {% elif buscar %}
+                Sin resultados para «{{ buscar }}»
+            {% else %}
+                Sin productos en la base
+            {% endif %}
+        </div>
     </div>
+    {% if alcance_ampliado %}
+    <div class="alert alert-warning py-2 small mb-3">
+        «{{ buscar }}» no está en la empresa de esta sesión. Se muestran coincidencias de <strong>todas las empresas</strong> (o sin empresa asignada).
+    </div>
+    {% endif %}
     <div class="card border-0 shadow-sm inv-table-card">
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -407,6 +496,17 @@
                         </tr>
                     </thead>
                     <tbody id="tbody_productos">
+                        {% if not productos %}
+                        <tr>
+                            <td colspan="{{ 7 if es_superadmin else 6 }}" class="inv-empty">
+                                {% if buscar %}
+                                No hay coincidencias para «{{ buscar }}». Pruebe el código o el nombre con el que lo factura.
+                                {% else %}
+                                No hay productos activos en inventario.
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endif %}
                         {% for p in productos %}
                         <tr data-id="{{ p[0] }}" data-codigo="{{ (p[1] or '')|lower }}" data-nombre="{{ (p[2] or '')|lower }}" data-precio="{{ p[3] }}" data-stock="{{ p[4] }}" data-empresa-id="{{ p[5] if p[5] is not none else '' }}" data-sucursal-id="{{ p[6] if p[6] is not none else '' }}" data-costo="{{ p[9] if p|length > 9 and p[9] is not none else '0' }}" data-promocion-tipo="{{ (p[10] or '')|lower if p|length > 10 else '' }}" data-promocion-valor="{{ p[11] if p|length > 11 and p[11] is not none else '' }}" data-fraccionable="{{ '1' if p|length > 12 and p[12] else '0' }}" data-unidades-por-caja="{{ p[13] if p|length > 13 and p[13] is not none else '' }}" data-unidades-por-docena="{{ p[14] if p|length > 14 and p[14] is not none else '12' }}" data-mh-codigo="{{ p[15] if p|length > 15 else '59' }}">
                             <td><span class="inv-codigo">{{ p[1] }}</span></td>
@@ -452,6 +552,21 @@
                     </tbody>
                 </table>
             </div>
+            {% if total_paginas > 1 %}
+            <div class="inv-pager">
+                {% if pagina > 1 %}
+                <a class="inv-pager-link" href="{{ url_for('admin.inventario', buscar=buscar, pagina=pagina-1) }}"><i class="bi bi-chevron-left"></i> Anterior</a>
+                {% else %}
+                <span class="inv-pager-link is-disabled"><i class="bi bi-chevron-left"></i> Anterior</span>
+                {% endif %}
+                <span class="inv-meta">Página {{ pagina }} de {{ total_paginas }}</span>
+                {% if pagina < total_paginas %}
+                <a class="inv-pager-link" href="{{ url_for('admin.inventario', buscar=buscar, pagina=pagina+1) }}">Siguiente <i class="bi bi-chevron-right"></i></a>
+                {% else %}
+                <span class="inv-pager-link is-disabled">Siguiente <i class="bi bi-chevron-right"></i></span>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -548,15 +663,25 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    var form = document.querySelector('.inv-search-form');
     var buscar = document.getElementById('buscar_inventario');
-    if (buscar) buscar.addEventListener('input', function() {
-        var q = this.value.toLowerCase().trim();
-        document.querySelectorAll('#tbody_productos tr').forEach(function(tr) {
-            var cod = (tr.dataset.codigo || '');
-            var nom = (tr.dataset.nombre || '');
-            tr.style.display = (!q || cod.indexOf(q) !== -1 || nom.indexOf(q) !== -1) ? '' : 'none';
+    if (buscar && buscar.value) {
+        buscar.focus();
+        var v = buscar.value;
+        buscar.setSelectionRange(v.length, v.length);
+    }
+    if (form && buscar) {
+        var t = null;
+        var ultimo = (buscar.value || '').trim();
+        buscar.addEventListener('input', function() {
+            clearTimeout(t);
+            t = setTimeout(function() {
+                var q = (buscar.value || '').trim();
+                if (q === ultimo) return;
+                form.submit();
+            }, 450);
         });
-    });
+    }
 });
 </script>
 {% include '_modal_producto_scripts.html' %}

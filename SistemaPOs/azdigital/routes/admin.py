@@ -3868,10 +3868,23 @@ def _acceso_producto_inventario(cur, producto_id: int, emp_id: int, es_super: bo
     return int(r[0]) == int(emp_id)
 
 
+INV_PAGE_SIZE = 20000
+
+
+def _params_listado_inventario() -> tuple[str, int]:
+    buscar = (request.args.get("buscar") or "").strip()
+    try:
+        pagina = max(1, int(request.args.get("pagina") or 1))
+    except (TypeError, ValueError):
+        pagina = 1
+    return buscar, pagina
+
+
 @bp.route("/inventario")
 @rol_requerido("GERENTE", "BODEGUERO")
 def inventario():
     emp_id = _empresa_id()
+    buscar, pagina = _params_listado_inventario()
     db = ConexionDB()
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
@@ -3881,9 +3894,38 @@ def inventario():
             conn.commit()
         es_super = _es_superadmin_db(cur)
         if es_super:
-            raw = productos_repo.listar_inventario_global(cur, limit=500) or []
+            total_productos = productos_repo.contar_inventario(cur, q=buscar, solo_activos=False)
         else:
-            raw = productos_repo.listar_inventario(cur, limit=500, empresa_id=emp_id) or []
+            total_productos = productos_repo.contar_inventario(
+                cur, empresa_id=emp_id, q=buscar, solo_activos=False
+            )
+        total_paginas = max(1, (total_productos + INV_PAGE_SIZE - 1) // INV_PAGE_SIZE) if total_productos else 1
+        if pagina > total_paginas:
+            pagina = total_paginas
+        offset = (pagina - 1) * INV_PAGE_SIZE
+        alcance_ampliado = False
+        if es_super:
+            raw = productos_repo.listar_inventario_global(
+                cur, limit=INV_PAGE_SIZE, offset=offset, q=buscar, solo_activos=False
+            ) or []
+        else:
+            raw = productos_repo.listar_inventario(
+                cur,
+                limit=INV_PAGE_SIZE,
+                offset=offset,
+                empresa_id=emp_id,
+                q=buscar,
+                solo_activos=False,
+            ) or []
+            if buscar and not raw:
+                total_productos = productos_repo.contar_inventario(cur, q=buscar, solo_activos=False)
+                total_paginas = max(1, (total_productos + INV_PAGE_SIZE - 1) // INV_PAGE_SIZE) if total_productos else 1
+                pagina = 1
+                offset = 0
+                raw = productos_repo.listar_inventario_global(
+                    cur, limit=INV_PAGE_SIZE, offset=0, q=buscar, solo_activos=False
+                ) or []
+                alcance_ampliado = bool(raw)
         en = session.get("empresa_nombre")
         productos = [_normalizar_producto(p, empresa_nombre=en, empresa_id_default=emp_id) for p in raw]
         empresas = empresas_repo.listar_empresas(cur) or [] if es_super else []
@@ -3897,6 +3939,7 @@ def inventario():
         puede_baja = puede_dar_baja_producto(rol)
         catalogo_mh = mh_unidades_repo.listar_todas(cur) or []
         catalogo_mh_grupos = catalogo_para_select_optgroups(dict(catalogo_mh))
+        mostrados_hasta = offset + len(productos)
         return render_template(
             "inventario.html",
             productos=productos,
@@ -3908,6 +3951,13 @@ def inventario():
             puede_dar_baja_producto=puede_baja,
             catalogo_mh=catalogo_mh,
             catalogo_mh_grupos=catalogo_mh_grupos,
+            buscar=buscar,
+            pagina=pagina,
+            total_paginas=total_paginas,
+            total_productos=total_productos,
+            mostrados_desde=(offset + 1) if productos else 0,
+            mostrados_hasta=mostrados_hasta,
+            alcance_ampliado=alcance_ampliado,
         )
     finally:
         cur.close()
@@ -3920,11 +3970,15 @@ def inventario_slash():
     return inventario()
 
 
-def _filas_exportacion_inventario(cur, es_super: bool, emp_id: int) -> tuple[list[tuple[Any, ...]], float, float]:
+def _filas_exportacion_inventario(
+    cur, es_super: bool, emp_id: int, q: str | None = None
+) -> tuple[list[tuple[Any, ...]], float, float]:
     if es_super:
-        raw = productos_repo.listar_inventario_global(cur, limit=5000) or []
+        raw = productos_repo.listar_inventario_global(cur, limit=20000, q=q, solo_activos=False) or []
     else:
-        raw = productos_repo.listar_inventario(cur, limit=5000, empresa_id=emp_id) or []
+        raw = productos_repo.listar_inventario(
+            cur, limit=20000, empresa_id=emp_id, q=q, solo_activos=False
+        ) or []
     en = session.get("empresa_nombre")
     productos = [_normalizar_producto(p, empresa_nombre=en, empresa_id_default=emp_id) for p in raw]
     suma_precio = 0.0
@@ -3952,7 +4006,10 @@ def inventario_exportar_excel():
     try:
         emp_id = _empresa_id()
         es_super = _es_superadmin_db(cur)
-        filas, suma_precio, suma_stock = _filas_exportacion_inventario(cur, es_super=es_super, emp_id=emp_id)
+        buscar, _pagina = _params_listado_inventario()
+        filas, suma_precio, suma_stock = _filas_exportacion_inventario(
+            cur, es_super=es_super, emp_id=emp_id, q=buscar
+        )
     finally:
         cur.close()
         conn.close()
@@ -4056,7 +4113,10 @@ def inventario_exportar_pdf():
     try:
         emp_id = _empresa_id()
         es_super = _es_superadmin_db(cur)
-        filas, suma_precio, suma_stock = _filas_exportacion_inventario(cur, es_super=es_super, emp_id=emp_id)
+        buscar, _pagina = _params_listado_inventario()
+        filas, suma_precio, suma_stock = _filas_exportacion_inventario(
+            cur, es_super=es_super, emp_id=emp_id, q=buscar
+        )
     finally:
         cur.close()
         conn.close()

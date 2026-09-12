@@ -52,8 +52,8 @@ def _pos_es_superadmin_db(cur) -> bool:
 def _pos_contexto_productos(cur) -> dict:
     """
     Empresa y alcance para APIs de productos POS.
-    Superadmin: catálogo global (como inventario). Resto: empresa de sesión.
-    Si la empresa de sesión no tiene productos, usa la empresa con más artículos.
+    Superadmin: catálogo global (como inventario). Resto: solo empresa de sesión
+    (incluye productos sin empresa asignada). Nunca toma el catálogo de otra empresa.
     """
     try:
         emp_id = int(session.get("empresa_id") or 1)
@@ -62,31 +62,11 @@ def _pos_contexto_productos(cur) -> dict:
     suc_u = session.get("sucursal_id")
     suc_f = int(suc_u) if suc_u is not None and str(suc_u).strip().isdigit() else None
     es_super = _pos_es_superadmin_db(cur)
-    use_global = es_super
-    if not use_global:
-        try:
-            cur.execute("SELECT COUNT(*) FROM productos WHERE empresa_id = %s", (emp_id,))
-            n = int((cur.fetchone() or [0])[0])
-            if n == 0:
-                cur.execute(
-                    """
-                    SELECT empresa_id FROM productos
-                    WHERE empresa_id IS NOT NULL
-                    GROUP BY empresa_id
-                    ORDER BY COUNT(*) DESC
-                    LIMIT 1
-                    """
-                )
-                row = cur.fetchone()
-                if row and row[0] is not None:
-                    emp_id = int(row[0])
-        except Exception:
-            pass
     return {
         "emp_id": emp_id,
         "suc_f": suc_f,
         "es_super": es_super,
-        "use_global": use_global,
+        "use_global": es_super,
     }
 
 

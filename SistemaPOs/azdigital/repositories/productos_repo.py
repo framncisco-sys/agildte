@@ -128,8 +128,9 @@ def _buscar_via_presentacion_codigo_barra(
     )
     params: list[Any] = list(ex_params) + [c]
     if empresa_id:
-        q += " AND p.empresa_id = %s"
-        params.append(empresa_id)
+        fe, pe = _alcance_empresa_inventario(empresa_id)
+        q += fe
+        params.extend(pe)
     if sucursal_id_usuario is not None:
         q += " AND (p.sucursal_id IS NULL OR p.sucursal_id = %s)"
         params.append(sucursal_id_usuario)
@@ -151,8 +152,9 @@ def buscar_por_codigo(cur, codigo: str, empresa_id: int = None, sucursal_id_usua
     )
     params: list[Any] = list(ex_params) + [codigo.strip()]
     if empresa_id:
-        q += " AND p.empresa_id = %s"
-        params.append(empresa_id)
+        fe, pe = _alcance_empresa_inventario(empresa_id)
+        q += fe
+        params.extend(pe)
     if sucursal_id_usuario is not None:
         q += " AND (p.sucursal_id IS NULL OR p.sucursal_id = %s)"
         params.append(sucursal_id_usuario)
@@ -173,7 +175,7 @@ def buscar_por_codigo(cur, codigo: str, empresa_id: int = None, sucursal_id_usua
         )
         params0: list[Any] = [codigo.strip()]
         if empresa_id:
-            q0 += " AND empresa_id = %s"
+            q0 += " AND (empresa_id IS NULL OR empresa_id = %s)"
             params0.append(empresa_id)
         if sucursal_id_usuario is not None:
             q0 += " AND (sucursal_id IS NULL OR sucursal_id = %s)"
@@ -209,8 +211,9 @@ def buscar_por_nombre(cur, q: str, limit: int = 10, empresa_id: int = None, sucu
     )
     params: list[Any] = list(ex_params) + [f"%{q.upper()}%"]
     if empresa_id:
-        sql += " AND p.empresa_id = %s"
-        params.append(empresa_id)
+        fe, pe = _alcance_empresa_inventario(empresa_id)
+        sql += fe
+        params.extend(pe)
     if sucursal_id_usuario is not None:
         sql += " AND (p.sucursal_id IS NULL OR p.sucursal_id = %s)"
         params.append(sucursal_id_usuario)
@@ -228,7 +231,7 @@ def buscar_por_nombre(cur, q: str, limit: int = 10, empresa_id: int = None, sucu
         )
         p0: list[Any] = [f"%{q.upper()}%"]
         if empresa_id:
-            sql0 += " AND empresa_id = %s"
+            sql0 += " AND (empresa_id IS NULL OR empresa_id = %s)"
             p0.append(empresa_id)
         if sucursal_id_usuario is not None:
             sql0 += " AND (sucursal_id IS NULL OR sucursal_id = %s)"
@@ -268,7 +271,7 @@ def listar_catalogo_pos_modal(
             COALESCE(NULLIF(TRIM(p.mh_codigo_unidad), ''), '59'),
             {ex_sql} AS existencia
         FROM productos p
-        WHERE p.empresa_id = %s
+        WHERE (p.empresa_id IS NULL OR p.empresa_id = %s)
     """ + filtro_suc_prod + _filtro_activos_sql(cur, "p", solo_activos=True) + """
         ORDER BY UPPER(p.nombre)
         LIMIT %s
@@ -285,7 +288,7 @@ def listar_catalogo_pos_modal(
         "COALESCE(p.promocion_tipo, ''), COALESCE(p.promocion_valor, 0), "
         "COALESCE(p.fraccionable, FALSE), p.unidades_por_caja, COALESCE(p.unidades_por_docena, 12), "
         "COALESCE(NULLIF(TRIM(p.mh_codigo_unidad), ''), '59'), COALESCE(p.stock_actual, 0) "
-        "FROM productos p WHERE p.empresa_id = %s" + filtro_suc_prod + fa + " ORDER BY UPPER(p.nombre) LIMIT %s"
+        "FROM productos p WHERE (p.empresa_id IS NULL OR p.empresa_id = %s)" + filtro_suc_prod + fa + " ORDER BY UPPER(p.nombre) LIMIT %s"
     )
     try:
         cur.execute(sql_simple, tuple([empresa_id] + params + [limit]))
@@ -295,7 +298,7 @@ def listar_catalogo_pos_modal(
         sql0 = (
             "SELECT p.id, p.nombre, p.precio_unitario, p.codigo_barra, "
             "COALESCE(p.promocion_tipo, ''), COALESCE(p.promocion_valor, 0) "
-            "FROM productos p WHERE p.empresa_id = %s" + filtro_suc_prod + " ORDER BY UPPER(p.nombre) LIMIT %s"
+            "FROM productos p WHERE (p.empresa_id IS NULL OR p.empresa_id = %s)" + filtro_suc_prod + " ORDER BY UPPER(p.nombre) LIMIT %s"
         )
         cur.execute(sql0, tuple([empresa_id] + params + [limit]))
         rows = cur.fetchall() or []
@@ -445,8 +448,173 @@ def incrementar_stock(cur, producto_id: int, cantidad: float) -> None:
     )
 
 
-def listar_inventario(cur, limit: int = 500, empresa_id: int = None):
-    fa = _filtro_activos_sql(cur, "p", solo_activos=True)
+_ACENTOS_INV = str.maketrans("ÁÉÍÓÚÜÑáéíóúüñ", "AEIOUUNAEIOUUN")
+
+
+def _sql_orden_inventario(q: str | None) -> str:
+    if (q or "").strip():
+        return " ORDER BY UPPER(p.nombre), p.id DESC"
+    return " ORDER BY p.id DESC"
+
+
+def _alcance_empresa_inventario(empresa_id: int | None) -> tuple[str, list[Any]]:
+    """Mismo criterio que ventas: la empresa de sesión o producto sin empresa asignada."""
+    if empresa_id is None:
+        return "", []
+    return " AND (p.empresa_id IS NULL OR p.empresa_id = %s)", [int(empresa_id)]
+
+
+def asignar_empresa_si_vacia(cur, producto_id: int, empresa_id: int) -> None:
+    """Si el producto se vendió sin empresa, lo ancla a la empresa de la venta (queda en inventario)."""
+    if not producto_id or not empresa_id:
+        return
+    try:
+        cur.execute(
+            "UPDATE productos SET empresa_id = %s WHERE id = %s AND empresa_id IS NULL",
+            (int(empresa_id), int(producto_id)),
+        )
+    except Exception:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+
+
+def _variantes_termino_inventario(term: str) -> list[str]:
+    t = (term or "").strip()
+    if not t:
+        return []
+    out = [t]
+    folded = t.translate(_ACENTOS_INV)
+    if folded.casefold() != t.casefold():
+        out.append(folded)
+    return out
+
+
+def _codigo_compacto_inventario(term: str) -> str:
+    return "".join(ch for ch in (term or "") if ch.isalnum())
+
+
+def _ids_por_presentacion_busqueda(cur, term: str) -> list[int]:
+    """IDs de producto cuyo código/nombre de presentación coincide (consulta aparte, no tumba el listado)."""
+    t = (term or "").strip()
+    if not t:
+        return []
+    try:
+        from azdigital.repositories import presentaciones_repo
+
+        if not presentaciones_repo.tabla_existe(cur):
+            return []
+        likes = [f"%{v}%" for v in _variantes_termino_inventario(t)]
+        compact = _codigo_compacto_inventario(t)
+        clauses = ["UPPER(COALESCE(pp.nombre, '')) LIKE UPPER(%s)" for _ in likes]
+        params: list[Any] = list(likes)
+        if presentaciones_repo.tiene_columna_codigo_barra(cur):
+            clauses += ["UPPER(TRIM(COALESCE(pp.codigo_barra, ''))) LIKE UPPER(%s)" for _ in likes]
+            params += likes
+            if compact:
+                clauses.append(
+                    "REPLACE(REPLACE(UPPER(TRIM(COALESCE(pp.codigo_barra, ''))), ' ', ''), '-', '') "
+                    "LIKE UPPER(%s)"
+                )
+                params.append(f"%{compact}%")
+        cur.execute(
+            "SELECT DISTINCT pp.producto_id FROM producto_presentacion pp WHERE " + " OR ".join(clauses),
+            tuple(params),
+        )
+        return [int(r[0]) for r in (cur.fetchall() or []) if r and r[0] is not None]
+    except Exception:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+        return []
+
+
+def _sql_filtro_busqueda_inventario(cur, q: str | None) -> tuple[str, list[Any]]:
+    """Nombre, código (con/sin espacios o guiones) y presentaciones. Sin EXISTS que pueda vaciar el listado."""
+    term = (q or "").strip()
+    if not term:
+        return "", []
+    clauses: list[str] = []
+    params: list[Any] = []
+    for v in _variantes_termino_inventario(term):
+        like = f"%{v}%"
+        clauses.append("UPPER(COALESCE(p.nombre, '')) LIKE UPPER(%s)")
+        params.append(like)
+        clauses.append("UPPER(TRIM(COALESCE(p.codigo_barra, ''))) LIKE UPPER(%s)")
+        params.append(like)
+    compact = _codigo_compacto_inventario(term)
+    if compact:
+        clauses.append(
+            "REPLACE(REPLACE(UPPER(TRIM(COALESCE(p.codigo_barra, ''))), ' ', ''), '-', '') LIKE UPPER(%s)"
+        )
+        params.append(f"%{compact}%")
+    ids = _ids_por_presentacion_busqueda(cur, term)
+    if ids:
+        placeholders = ",".join(["%s"] * len(ids))
+        clauses.append(f"p.id IN ({placeholders})")
+        params.extend(ids)
+    return " AND (" + " OR ".join(clauses) + ")", params
+
+
+def contar_inventario(
+    cur,
+    empresa_id: int | None = None,
+    q: str | None = None,
+    solo_activos: bool = True,
+) -> int:
+    """Total del mismo universo que el listado (empresa NULL incluida)."""
+    fa = _filtro_activos_sql(cur, "p", solo_activos=True) if solo_activos else ""
+    fe, pe = _alcance_empresa_inventario(empresa_id)
+    fq, pq = _sql_filtro_busqueda_inventario(cur, q)
+    try:
+        cur.execute(f"SELECT COUNT(*) FROM productos p WHERE 1=1{fe}{fa}{fq}", tuple([*pe, *pq]))
+        return int((cur.fetchone() or [0])[0] or 0)
+    except Exception:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+        try:
+            term = (q or "").strip()
+            simple = ""
+            extra: list[Any] = []
+            if term:
+                simple = (
+                    " AND (UPPER(COALESCE(p.nombre, '')) LIKE UPPER(%s) "
+                    "OR UPPER(TRIM(COALESCE(p.codigo_barra, ''))) LIKE UPPER(%s))"
+                )
+                extra = [f"%{term}%", f"%{term}%"]
+            cur.execute(
+                f"SELECT COUNT(*) FROM productos p WHERE 1=1{fe}{simple}",
+                tuple([*pe, *extra]),
+            )
+            return int((cur.fetchone() or [0])[0] or 0)
+        except Exception:
+            try:
+                cur.connection.rollback()
+            except Exception:
+                pass
+            return 0
+
+
+def listar_inventario(
+    cur,
+    limit: int = 500,
+    empresa_id: int = None,
+    q: str | None = None,
+    offset: int = 0,
+    solo_activos: bool = True,
+):
+    fa = _filtro_activos_sql(cur, "p", solo_activos=True) if solo_activos else ""
+    fe, pe = _alcance_empresa_inventario(empresa_id)
+    fq, pq = _sql_filtro_busqueda_inventario(cur, q)
+    off = max(0, int(offset or 0))
+    lim = max(1, int(limit or 500))
+    orden = _sql_orden_inventario(q)
+    bind = (*pe, *pq, lim, off)
+    rows = []
     try:
         if empresa_id:
             try:
@@ -462,17 +630,17 @@ def listar_inventario(cur, limit: int = 500, empresa_id: int = None):
                     FROM productos p
                     LEFT JOIN empresas e ON e.id = p.empresa_id
                     LEFT JOIN sucursales s ON s.id = p.sucursal_id
-                    WHERE p.empresa_id = %s{fa}
-                    ORDER BY p.id DESC
-                    LIMIT %s
+                    WHERE 1=1{fe}{fa}{fq}
+                    {orden}
+                    LIMIT %s OFFSET %s
                     """,
-                    (empresa_id, limit),
+                    bind,
                 )
             except Exception:
                 cur.connection.rollback()
                 try:
                     cur.execute(
-                        """SELECT p.id, p.codigo_barra, p.nombre, COALESCE(p.precio_unitario, 0), COALESCE(p.stock_actual, 0),
+                        f"""SELECT p.id, p.codigo_barra, p.nombre, COALESCE(p.precio_unitario, 0), COALESCE(p.stock_actual, 0),
                                    p.empresa_id, p.sucursal_id,
                                    COALESCE(e.nombre_comercial, e.nombre, '—'), COALESCE(s.nombre, ''),
                                    COALESCE(NULLIF(p.costo_unitario, 0), 0),
@@ -480,35 +648,35 @@ def listar_inventario(cur, limit: int = 500, empresa_id: int = None):
                             FROM productos p
                             LEFT JOIN empresas e ON e.id = p.empresa_id
                             LEFT JOIN sucursales s ON s.id = p.sucursal_id
-                            WHERE p.empresa_id = %s{fa} ORDER BY p.id DESC LIMIT %s""",
-                        (empresa_id, limit),
+                            WHERE 1=1{fe}{fa}{fq}{orden} LIMIT %s OFFSET %s""",
+                        bind,
                     )
                 except Exception:
                     cur.connection.rollback()
-                    fa0 = _filtro_activos_sql(cur, None, solo_activos=True)
+                    fq0, pq0 = _sql_filtro_busqueda_inventario(cur, q)
                     cur.execute(
-                        f"SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0), empresa_id, sucursal_id, '', 0, '', 0 FROM productos WHERE empresa_id = %s{fa0} ORDER BY id DESC LIMIT %s",
-                        (empresa_id, limit),
+                        f"SELECT p.id, p.codigo_barra, p.nombre, COALESCE(p.precio_unitario, 0), COALESCE(p.stock_actual, 0), p.empresa_id, p.sucursal_id, '', 0, '', 0 FROM productos p WHERE 1=1{fe}{fq0} ORDER BY p.id DESC LIMIT %s OFFSET %s",
+                        (*pe, *pq0, lim, off),
                     )
         else:
-            fa0 = _filtro_activos_sql(cur, None, solo_activos=True)
+            fq0, pq0 = _sql_filtro_busqueda_inventario(cur, q)
             cur.execute(
-                f"SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0) FROM productos WHERE 1=1{fa0} ORDER BY id DESC LIMIT %s",
-                (limit,),
+                f"SELECT p.id, p.codigo_barra, p.nombre, COALESCE(p.precio_unitario, 0), COALESCE(p.stock_actual, 0) FROM productos p WHERE 1=1{fa}{fq0} ORDER BY p.id DESC LIMIT %s OFFSET %s",
+                (*pq0, lim, off),
             )
         rows = cur.fetchall()
     except Exception:
         cur.connection.rollback()
-        fa0 = _filtro_activos_sql(cur, None, solo_activos=True)
+        fq0, pq0 = _sql_filtro_busqueda_inventario(cur, q)
         if empresa_id:
             cur.execute(
-                f"SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0), empresa_id, sucursal_id, '', 0, '', 0 FROM productos WHERE empresa_id = %s{fa0} ORDER BY id DESC LIMIT %s",
-                (empresa_id, limit),
+                f"SELECT p.id, p.codigo_barra, p.nombre, COALESCE(p.precio_unitario, 0), COALESCE(p.stock_actual, 0), p.empresa_id, p.sucursal_id, '', 0, '', 0 FROM productos p WHERE 1=1{fe}{fq0} ORDER BY p.id DESC LIMIT %s OFFSET %s",
+                (*pe, *pq0, lim, off),
             )
         else:
             cur.execute(
-                f"SELECT id, codigo_barra, nombre, COALESCE(precio_unitario, 0), COALESCE(stock_actual, 0) FROM productos WHERE 1=1{fa0} ORDER BY id DESC LIMIT %s",
-                (limit,),
+                f"SELECT p.id, p.codigo_barra, p.nombre, COALESCE(p.precio_unitario, 0), COALESCE(p.stock_actual, 0) FROM productos p WHERE 1=1{fq0} ORDER BY p.id DESC LIMIT %s OFFSET %s",
+                (*pq0, lim, off),
             )
         rows = cur.fetchall()
     umb_map = _umb_map_desde_presentaciones(cur, rows)
@@ -522,9 +690,15 @@ def _umb_map_desde_presentaciones(cur, rows) -> dict[int, str]:
     return presentaciones_repo.nombres_umb_por_productos(cur, ids)
 
 
-def listar_inventario_global(cur, limit: int = 500):
+def listar_inventario_global(
+    cur, limit: int = 500, q: str | None = None, offset: int = 0, solo_activos: bool = True
+):
     """Superusuario: mismas columnas normalizadas que listar_inventario (incl. texto stock y nombre UMB)."""
-    fa = _filtro_activos_sql(cur, "p", solo_activos=True)
+    fa = _filtro_activos_sql(cur, "p", solo_activos=True) if solo_activos else ""
+    fq, pq = _sql_filtro_busqueda_inventario(cur, q)
+    off = max(0, int(offset or 0))
+    lim = max(1, int(limit or 500))
+    orden = _sql_orden_inventario(q)
     try:
         cur.execute(
             f"""
@@ -539,18 +713,18 @@ def listar_inventario_global(cur, limit: int = 500):
             FROM productos p
             LEFT JOIN empresas e ON e.id = p.empresa_id
             LEFT JOIN sucursales s ON s.id = p.sucursal_id
-            WHERE 1=1{fa}
-            ORDER BY p.id DESC
-            LIMIT %s
+            WHERE 1=1{fa}{fq}
+            {orden}
+            LIMIT %s OFFSET %s
             """,
-            (limit,),
+            (*pq, lim, off),
         )
         rows = cur.fetchall()
     except Exception:
         cur.connection.rollback()
         try:
             cur.execute(
-                """
+                f"""
                 SELECT p.id, p.codigo_barra, p.nombre, COALESCE(p.precio_unitario, 0), COALESCE(p.stock_actual, 0),
                        p.empresa_id, p.sucursal_id,
                        COALESCE(e.nombre_comercial, e.nombre, '—'),
@@ -560,26 +734,29 @@ def listar_inventario_global(cur, limit: int = 500):
                 FROM productos p
                 LEFT JOIN empresas e ON e.id = p.empresa_id
                 LEFT JOIN sucursales s ON s.id = p.sucursal_id
-                ORDER BY p.id DESC
-                LIMIT %s
+                WHERE 1=1{fq}
+                {orden}
+                LIMIT %s OFFSET %s
                 """,
-                (limit,),
+                (*pq, lim, off),
             )
             rows = cur.fetchall()
         except Exception:
             cur.connection.rollback()
+            fq0, pq0 = _sql_filtro_busqueda_inventario(cur, q)
             cur.execute(
-                """
+                f"""
                 SELECT p.id, p.codigo_barra, p.nombre, COALESCE(p.precio_unitario, 0), COALESCE(p.stock_actual, 0),
                        p.empresa_id, p.sucursal_id,
                        COALESCE(e.nombre_comercial, e.nombre, '—'),
                        '—', 0, '', 0
                 FROM productos p
                 LEFT JOIN empresas e ON e.id = p.empresa_id
+                WHERE 1=1{fq0}
                 ORDER BY p.id DESC
-                LIMIT %s
+                LIMIT %s OFFSET %s
                 """,
-                (limit,),
+                (*pq0, lim, off),
             )
             rows = cur.fetchall()
     umb_map = _umb_map_desde_presentaciones(cur, rows)
