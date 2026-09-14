@@ -95,8 +95,24 @@ def login_api(request):
             pass
 
     if not user or not user.is_active:
+        from .models import RegistroAuditoria
+        from .utils.auditoria import registrar_evento
+        registrar_evento(
+            evento=RegistroAuditoria.EVENTO_LOGIN_FALLO,
+            username=login_input[:150],
+            detalle="Credenciales inválidas o usuario inactivo",
+            request=request,
+        )
         return Response({'detail': 'Credenciales inválidas'}, status=status.HTTP_401_UNAUTHORIZED)
 
+    from .models import RegistroAuditoria
+    from .utils.auditoria import registrar_evento
+    registrar_evento(
+        evento=RegistroAuditoria.EVENTO_LOGIN_OK,
+        username=user.username,
+        detalle="Acceso JWT",
+        request=request,
+    )
     refresh = RefreshToken.for_user(user)
     empresa_default = None
     try:

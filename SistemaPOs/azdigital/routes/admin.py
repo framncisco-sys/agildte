@@ -3865,6 +3865,8 @@ def _acceso_producto_inventario(cur, producto_id: int, emp_id: int, es_super: bo
         return False
     if es_super:
         return True
+    if r[0] is None:
+        return False
     return int(r[0]) == int(emp_id)
 
 
@@ -3903,7 +3905,6 @@ def inventario():
         if pagina > total_paginas:
             pagina = total_paginas
         offset = (pagina - 1) * INV_PAGE_SIZE
-        alcance_ampliado = False
         if es_super:
             raw = productos_repo.listar_inventario_global(
                 cur, limit=INV_PAGE_SIZE, offset=offset, q=buscar, solo_activos=False
@@ -3917,15 +3918,6 @@ def inventario():
                 q=buscar,
                 solo_activos=False,
             ) or []
-            if buscar and not raw:
-                total_productos = productos_repo.contar_inventario(cur, q=buscar, solo_activos=False)
-                total_paginas = max(1, (total_productos + INV_PAGE_SIZE - 1) // INV_PAGE_SIZE) if total_productos else 1
-                pagina = 1
-                offset = 0
-                raw = productos_repo.listar_inventario_global(
-                    cur, limit=INV_PAGE_SIZE, offset=0, q=buscar, solo_activos=False
-                ) or []
-                alcance_ampliado = bool(raw)
         en = session.get("empresa_nombre")
         productos = [_normalizar_producto(p, empresa_nombre=en, empresa_id_default=emp_id) for p in raw]
         empresas = empresas_repo.listar_empresas(cur) or [] if es_super else []
@@ -3957,7 +3949,6 @@ def inventario():
             total_productos=total_productos,
             mostrados_desde=(offset + 1) if productos else 0,
             mostrados_hasta=mostrados_hasta,
-            alcance_ampliado=alcance_ampliado,
         )
     finally:
         cur.close()

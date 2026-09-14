@@ -114,6 +114,17 @@ def ejecutar_tarea(tarea_id: int) -> bool:
         else:
             tarea.estado = 'Error'
             tarea.save(update_fields=['estado', 'intentos', 'error_mensaje', 'proximo_reintento', 'actualizada_at'])
+            try:
+                from .models import RegistroAuditoria
+                from .utils.auditoria import registrar_evento
+                registrar_evento(
+                    evento=RegistroAuditoria.EVENTO_FACTURA_ERROR,
+                    detalle=(tarea.error_mensaje or "Tarea de facturación en Error")[:4000],
+                    venta_id=tarea.venta_id,
+                    empresa_id=getattr(tarea.venta, "empresa_id", None),
+                )
+            except Exception:
+                logger.exception("No se pudo auditar tarea de facturación %s", tarea_id)
             return True  # Error final, no reintentar
 
     except EnvioMHTransitorioError as e:

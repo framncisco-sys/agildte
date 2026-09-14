@@ -1021,3 +1021,30 @@ class TareaFacturacion(models.Model):
 
     def __str__(self):
         return f"Tarea venta #{self.venta_id} - {self.estado}"
+
+
+class RegistroAuditoria(models.Model):
+    """
+    Bitácora de seguridad y facturación: logins fallidos (con IP) y errores de DTE.
+    No guarda contraseñas.
+    """
+    EVENTO_LOGIN_OK = "LOGIN_OK"
+    EVENTO_LOGIN_FALLO = "LOGIN_FALLO"
+    EVENTO_FACTURA_ERROR = "FACTURA_ERROR"
+
+    creado_en = models.DateTimeField(auto_now_add=True, db_index=True)
+    evento = models.CharField(max_length=40, db_index=True)
+    username = models.CharField(max_length=150, blank=True, default="", db_index=True)
+    ip_address = models.CharField(max_length=45, blank=True, default="", db_index=True)
+    user_agent = models.CharField(max_length=500, blank=True, default="")
+    detalle = models.TextField(blank=True, default="")
+    venta_id = models.IntegerField(null=True, blank=True, db_index=True)
+    empresa_id = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Registro de auditoría"
+        verbose_name_plural = "Registros de auditoría"
+        ordering = ["-creado_en"]
+
+    def __str__(self):
+        return f"{self.creado_en} {self.evento} {self.username or '-'} {self.ip_address or '-'}"

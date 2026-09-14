@@ -23,6 +23,21 @@ logger = logging.getLogger(__name__)
 TIPOS_DTE_SCHEMA_STRICT = frozenset({'01', '03', '05', '06', '14'})
 
 
+def _auditar_factura(venta: Venta, detalle: str) -> None:
+    try:
+        from ..models import RegistroAuditoria
+        from ..utils.auditoria import registrar_evento
+
+        registrar_evento(
+            evento=RegistroAuditoria.EVENTO_FACTURA_ERROR,
+            detalle=detalle,
+            venta_id=getattr(venta, "id", None),
+            empresa_id=getattr(venta, "empresa_id", None),
+        )
+    except Exception:
+        logger.exception("No se pudo auditar fallo de factura #%s", getattr(venta, "id", None))
+
+
 def _decode_jws_payload(jws: str) -> Optional[Dict[str, Any]]:
     """Extrae el JSON del payload de un JWS (DTE firmado tal como lo guardó MH)."""
     try:
@@ -670,6 +685,7 @@ class FacturacionService:
                 })
                 venta.save()
                 logger.warning(f"⚠️ FACTURA #{venta.id} RECHAZADA POR MH")
+                _auditar_factura(venta, f"RechazadoMH codigo={codigo} {desc}"[:4000])
                 # DEBUG: incluir JSON DTE enviado (antes de firma) para diagnosticar errores de MH
                 resultado["dte_json_preview"] = json_dte
                 resultado["receptor_preview"] = json_dte.get("receptor", {})
@@ -684,6 +700,7 @@ class FacturacionService:
             venta.estado_dte = 'Borrador'
             venta.observaciones_mh = json.dumps({'schema_mh': e.errores[:20]}, ensure_ascii=False)[:4000]
             venta.save(update_fields=['estado_dte', 'observaciones_mh'])
+            _auditar_factura(venta, error_msg)
             raise FacturacionServiceError(error_msg) from e
 
         except AutenticacionMHError as e:
@@ -693,6 +710,7 @@ class FacturacionService:
             resultado["mensaje"] = error_msg
             venta.estado_dte = 'Borrador'  # Mantener en borrador si falla auth
             venta.save()
+            _auditar_factura(venta, error_msg)
             raise FacturacionServiceError(error_msg) from e
             
         except FirmaDTEError as e:
@@ -702,6 +720,7 @@ class FacturacionService:
             resultado["mensaje"] = error_msg
             venta.estado_dte = 'Borrador'
             venta.save()
+            _auditar_factura(venta, error_msg)
             raise FacturacionServiceError(error_msg) from e
             
         except EnvioMHTransitorioError as e:
@@ -712,6 +731,7 @@ class FacturacionService:
             venta.estado_dte = 'PendienteEnvio'
             venta.error_envio_mensaje = str(e)[:500]
             venta.save()
+            _auditar_factura(venta, error_msg)
             raise FacturacionServiceError(error_msg) from e
         except EnvioMHError as e:
             error_msg = f"Error de envío: {str(e)}"
@@ -729,6 +749,7 @@ class FacturacionService:
             else:
                 venta.observaciones_mh = error_msg
             venta.save()
+            _auditar_factura(venta, error_msg)
             err = FacturacionServiceError(error_msg)
             try:
                 err.json_dte = json_dte
@@ -744,6 +765,7 @@ class FacturacionService:
             resultado["mensaje"] = error_msg
             venta.estado_dte = 'Borrador'
             venta.save()
+            _auditar_factura(venta, error_msg)
             raise FacturacionServiceError(error_msg) from e
 
     def invalidar_dte(self, venta: Venta, datos_invalidacion: Dict[str, Any]) -> Dict[str, Any]:

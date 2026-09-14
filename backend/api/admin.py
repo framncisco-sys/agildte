@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import Cliente, Compra, Venta, Empresa, Producto, DetalleVenta, Liquidacion, RetencionRecibida, PerfilUsuario, Correlativo, ActividadEconomica, TareaFacturacion
+from .models import Cliente, Compra, Venta, Empresa, Producto, DetalleVenta, Liquidacion, RetencionRecibida, PerfilUsuario, Correlativo, ActividadEconomica, TareaFacturacion, RegistroAuditoria
 
 @admin.register(Cliente)
 class ClienteAdmin(admin.ModelAdmin):
@@ -258,6 +258,18 @@ class TareaFacturacionAdmin(admin.ModelAdmin):
     search_fields = ('venta__id',)
     readonly_fields = ('venta', 'intentos', 'creada_at', 'actualizada_at')
     ordering = ('-creada_at',)
+
+
+@admin.register(RegistroAuditoria)
+class RegistroAuditoriaAdmin(admin.ModelAdmin):
+    list_display = ('creado_en', 'evento', 'username', 'ip_address', 'venta_id', 'empresa_id')
+    list_filter = ('evento',)
+    search_fields = ('username', 'ip_address', 'detalle')
+    readonly_fields = (
+        'creado_en', 'evento', 'username', 'ip_address', 'user_agent',
+        'detalle', 'venta_id', 'empresa_id',
+    )
+    ordering = ('-creado_en',)
 
 @admin.register(Correlativo)
 class CorrelativoAdmin(admin.ModelAdmin):

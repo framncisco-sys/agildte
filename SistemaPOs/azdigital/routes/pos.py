@@ -1151,8 +1151,28 @@ def guardar_venta():
             cliente_id=cliente_id,
             cliente_nombre_ticket=str(cliente or "Consumidor Final"),
         )
-        if agildte_sync is not None and not agildte_sync.get("ok"):
+        if agildte_sync is None:
+            registrar_accion(
+                cur,
+                historial_usuarios_repo.EVENTO_SYNC_AGILDTE_OFF,
+                f"Venta #{venta_id} quedó solo en POS (AGILDTE_SYNC_ENABLED=0).",
+            )
+            try:
+                conn.commit()
+            except Exception:
+                pass
+        elif not agildte_sync.get("ok"):
             current_app.logger.warning("AgilDTE sync venta #%s: %s", venta_id, agildte_sync)
+            msg = (
+                agildte_sync.get("mensaje_usuario")
+                or agildte_sync.get("error")
+                or "fallo de sincronización"
+            )
+            registrar_accion(
+                cur,
+                historial_usuarios_repo.EVENTO_SYNC_AGILDTE_FALLO,
+                f"Venta #{venta_id}: {msg}"[:2000],
+            )
 
         # Confirmar en BD local código de generación / sello si AgilDTE los devolvió.
         if agildte_sync is not None and agildte_sync.get("dte_persistido"):
