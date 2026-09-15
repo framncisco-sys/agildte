@@ -668,13 +668,17 @@ document.addEventListener('DOMContentLoaded', function() {
     if (form && buscar) {
         var t = null;
         var ultimo = (buscar.value || '').trim();
+        var esperaMs = 3000;
         buscar.addEventListener('input', function() {
             clearTimeout(t);
             t = setTimeout(function() {
                 var q = (buscar.value || '').trim();
                 if (q === ultimo) return;
                 form.submit();
-            }, 450);
+            }, esperaMs);
+        });
+        buscar.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') clearTimeout(t);
         });
     }
 });
