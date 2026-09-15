@@ -668,7 +668,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (form && buscar) {
         var t = null;
         var ultimo = (buscar.value || '').trim();
-        var esperaMs = 3000;
+        var esperaMs = 1000;
         buscar.addEventListener('input', function() {
             clearTimeout(t);
             t = setTimeout(function() {
