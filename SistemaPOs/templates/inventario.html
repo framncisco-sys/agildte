@@ -668,13 +668,36 @@ document.addEventListener('DOMContentLoaded', function() {
     if (form && buscar) {
         var t = null;
         var ultimo = (buscar.value || '').trim();
-        var esperaMs = 1000;
+        var esperaMs = 800;
+        function filtrarFilasLocales(q) {
+            var ql = (q || '').toLowerCase().trim();
+            var visibles = 0;
+            document.querySelectorAll('#tbody_productos tr').forEach(function(tr) {
+                var cod = (tr.dataset.codigo || '').toLowerCase();
+                var nom = (tr.dataset.nombre || '').toLowerCase();
+                var ok = !ql || cod.indexOf(ql) !== -1 || nom.indexOf(ql) !== -1;
+                tr.style.display = ok ? '' : 'none';
+                if (ok) visibles++;
+            });
+            return visibles;
+        }
         buscar.addEventListener('input', function() {
+            var q = (buscar.value || '').trim();
+            filtrarFilasLocales(q);
             clearTimeout(t);
             t = setTimeout(function() {
-                var q = (buscar.value || '').trim();
-                if (q === ultimo) return;
-                form.submit();
+                var q2 = (buscar.value || '').trim();
+                if (q2 === ultimo) return;
+                if (!q2) {
+                    form.submit();
+                    return;
+                }
+                if (q2.length < 2) return;
+                var n = 0;
+                document.querySelectorAll('#tbody_productos tr').forEach(function(tr) {
+                    if (tr.style.display !== 'none') n++;
+                });
+                if (n === 0) form.submit();
             }, esperaMs);
         });
         buscar.addEventListener('keydown', function(ev) {

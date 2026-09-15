@@ -6,7 +6,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var pendienteAccion = null;
 
     var buscar = document.getElementById('buscar_inventario');
-    if (buscar) buscar.addEventListener('input', function() {
+    var formServerInv = document.querySelector('.inv-search-form');
+    if (buscar && !formServerInv) buscar.addEventListener('input', function() {
         var q = this.value.toLowerCase().trim();
         document.querySelectorAll('#tbody_productos tr').forEach(function(tr) {
             var cod = (tr.dataset.codigo || '');

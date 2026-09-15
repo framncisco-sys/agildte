@@ -739,43 +739,7 @@ def productos_pos_cache():
         res = productos_repo.buscar_por_nombre(
             cur, "", limit=800, empresa_id=filtro_emp, sucursal_id_usuario=suc_f
         ) or []
-        productos = []
-        for r in res:
-            promo_tipo = (r[4] or "").strip().upper() if len(r) > 4 else ""
-            promo_val = float(r[5]) if len(r) > 5 and r[5] else 0
-            promo_vc, promo_vp, promo_dm = 2, 1, None
-            try:
-                emp_promo = productos_repo._empresa_id_de_producto(cur, int(r[0]), emp_id)
-                promo_activa = promociones_repo.get_promocion_activa_producto(
-                    cur, r[0], emp_promo, hoy_sv()
-                )
-                if promo_activa:
-                    promo_tipo, promo_val = promo_activa[0], float(promo_activa[1] or 0)
-                    if len(promo_activa) > 4:
-                        promo_vc = float(promo_activa[2] or 2)
-                        promo_vp = float(promo_activa[3] or 1)
-                        promo_dm = float(promo_activa[4]) if promo_activa[4] is not None else None
-                    if promo_tipo == "DESCUENTO_CANTIDAD" and len(promo_activa) > 6 and promo_activa[6] is not None:
-                        promo_vc = float(promo_activa[6])
-            except Exception:
-                pass
-            if promo_tipo not in ("2X1", "3X2", "PORCENTAJE", "DESCUENTO_MONTO", "VOLUMEN", "REGALO", "PRECIO_FIJO", "DESCUENTO_CANTIDAD"):
-                promo_tipo = ""
-            fracc = bool(r[6]) if len(r) > 6 else False
-            uxcaja = int(r[7]) if len(r) > 7 and r[7] is not None else None
-            uxdoc = int(r[8]) if len(r) > 8 and r[8] is not None else 12
-            mh = normalizar_codigo_mh(str(r[9]) if len(r) > 9 else None)
-            nom_prod = str(r[1] or "").strip() if len(r) > 1 else None
-            pres = presentaciones_repo.lista_para_pos_json(cur, int(r[0]), uxdoc, uxcaja, nombre_producto=nom_prod)
-            ex_cache = float(r[10]) if len(r) > 10 and r[10] is not None else 0.0
-            productos.append({
-                "id": r[0], "nombre": r[1], "precio": float(r[2]), "codigo": (r[3] or "").strip(),
-                "promocion_tipo": promo_tipo, "promocion_valor": promo_val,
-                "promocion_valor_comprar": promo_vc, "promocion_valor_pagar": promo_vp, "promocion_descuento_monto": promo_dm,
-                "fraccionable": fracc, "unidades_por_caja": uxcaja, "unidades_por_docena": uxdoc, "mh_codigo_unidad": mh,
-                "presentaciones": pres,
-                "existencia": ex_cache,
-            })
+        productos = _filas_a_catalogo_pos_json(cur, res, emp_id, use_global=ctx["use_global"])
         return jsonify({"productos": productos, "empresa_id": emp_id, "catalogo_global": ctx["use_global"]})
     finally:
         cur.close()
@@ -949,43 +913,7 @@ def buscar_por_nombre():
         res = productos_repo.buscar_por_nombre(
             cur, q, limit=10, empresa_id=filtro_emp, sucursal_id_usuario=suc_f
         ) or []
-        productos = []
-        for r in res:
-            promo_tipo = (r[4] or "").strip().upper() if len(r) > 4 else ""
-            promo_val = float(r[5]) if len(r) > 5 and r[5] else 0
-            promo_vc, promo_vp, promo_dm = 2, 1, None
-            try:
-                emp_promo = productos_repo._empresa_id_de_producto(cur, int(r[0]), emp_id)
-                promo_activa = promociones_repo.get_promocion_activa_producto(
-                    cur, r[0], emp_promo, hoy_sv()
-                )
-                if promo_activa:
-                    promo_tipo, promo_val = promo_activa[0], float(promo_activa[1] or 0)
-                    if len(promo_activa) > 4:
-                        promo_vc = float(promo_activa[2] or 2)
-                        promo_vp = float(promo_activa[3] or 1)
-                        promo_dm = float(promo_activa[4]) if promo_activa[4] is not None else None
-                    if promo_tipo == "DESCUENTO_CANTIDAD" and len(promo_activa) > 6 and promo_activa[6] is not None:
-                        promo_vc = float(promo_activa[6])
-            except Exception:
-                pass
-            if promo_tipo not in ("2X1", "3X2", "PORCENTAJE", "DESCUENTO_MONTO", "VOLUMEN", "REGALO", "PRECIO_FIJO", "DESCUENTO_CANTIDAD"):
-                promo_tipo = ""
-            fracc = bool(r[6]) if len(r) > 6 else False
-            uxcaja = int(r[7]) if len(r) > 7 and r[7] is not None else None
-            uxdoc = int(r[8]) if len(r) > 8 and r[8] is not None else 12
-            mh = normalizar_codigo_mh(str(r[9]) if len(r) > 9 else None)
-            nom_prod = str(r[1] or "").strip() if len(r) > 1 else None
-            pres = presentaciones_repo.lista_para_pos_json(cur, int(r[0]), uxdoc, uxcaja, nombre_producto=nom_prod)
-            ex_n = float(r[10]) if len(r) > 10 and r[10] is not None else 0.0
-            productos.append({
-                "id": r[0], "nombre": r[1], "precio": float(r[2]), "codigo": (r[3] or "").strip(),
-                "promocion_tipo": promo_tipo, "promocion_valor": promo_val,
-                "promocion_valor_comprar": promo_vc, "promocion_valor_pagar": promo_vp, "promocion_descuento_monto": promo_dm,
-                "fraccionable": fracc, "unidades_por_caja": uxcaja, "unidades_por_docena": uxdoc, "mh_codigo_unidad": mh,
-                "presentaciones": pres,
-                "existencia": ex_n,
-            })
+        productos = _filas_a_catalogo_pos_json(cur, res, emp_id, use_global=ctx["use_global"])
         return jsonify(productos)
     finally:
         cur.close()

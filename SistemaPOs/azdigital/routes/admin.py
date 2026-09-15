@@ -3881,7 +3881,7 @@ def _acceso_producto_inventario(cur, producto_id: int, emp_id: int, es_super: bo
     return int(r[0]) == int(emp_id)
 
 
-INV_PAGE_SIZE = 20000
+INV_PAGE_SIZE = 400
 
 
 def _params_listado_inventario() -> tuple[str, int]:

@@ -2054,8 +2054,10 @@
             if (f2) setTimeout(function () { f2.focus(); }, 280);
         });
     });
+    let _timerFiltroCatalogo = null;
     document.getElementById('modal_catalogo_filtro')?.addEventListener('input', function () {
-        renderCatalogoModalTabla();
+        clearTimeout(_timerFiltroCatalogo);
+        _timerFiltroCatalogo = setTimeout(renderCatalogoModalTabla, 120);
     });
     setTimeout(prefetchCatalogoModalEnSegundoPlano, 800);
     function agregarDesdeFavoritoGuardado(st) {
@@ -2627,45 +2629,62 @@
         });
     })();
 
-    inputCliente.addEventListener('input', async function() {
+    let _timerCliente = null;
+    let _abortCliente = null;
+    inputCliente.addEventListener('input', function() {
         inputClienteId.value = '';
         telefonoClientePos = '';
         actualizarPanelWhatsappPos();
         posActualizarVisibilidadEditarCliente();
         if (clienteResumen) { clienteResumen.style.display = 'none'; clienteResumen.textContent = ''; }
         if (formularioCliente) formularioCliente.style.display = 'none';
-        let q = this.value.trim();
-        if (q.length < 1) { listaClientes.style.display = 'none'; return; }
-        try {
-            const resp = await fetch(posUrl(`/buscar_clientes?q=${encodeURIComponent(q)}`));
-            if (!resp.ok) { listaClientes.style.display = 'none'; return; }
-            const clientes = await resp.json();
-            if (clientes.length > 0) {
-                listaClientes.innerHTML = '';
-                clientes.forEach(c => {
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'list-group-item list-group-item-action small';
-                    const doc = c.documento || c.nit || '';
-                    const td = c.tipo_documento ? ` · ${escAttr(c.tipo_documento)}` : '';
-                    const cf = c.contribuyente ? ' <span class="badge bg-success ms-1">Contrib.</span>' : '';
-                    const tel = (c.telefono || '').trim();
-                    const telPart = tel
-                        ? ` <span class="text-success text-nowrap" title="Teléfono en ficha"><i class="bi bi-whatsapp"></i> ${escAttr(tel)}</span>`
-                        : ' <span class="text-muted small">Sin tel.</span>';
-                    btn.innerHTML = `<b>${escAttr(c.nombre || '')}</b> <span class="text-muted">${escAttr(doc)}${td}</span>${cf}${telPart}`;
-                    btn.addEventListener('mousedown', function(ev) { ev.preventDefault(); });
-                    btn.addEventListener('click', function(ev) {
-                        ev.preventDefault();
-                        aplicarClienteSeleccionado(c);
+        const q = this.value.trim();
+        if (q.length < 1) {
+            clearTimeout(_timerCliente);
+            if (_abortCliente) _abortCliente.abort();
+            listaClientes.style.display = 'none';
+            return;
+        }
+        clearTimeout(_timerCliente);
+        _timerCliente = setTimeout(async function() {
+            const qNow = (inputCliente.value || '').trim();
+            if (qNow.length < 1) { listaClientes.style.display = 'none'; return; }
+            if (_abortCliente) _abortCliente.abort();
+            _abortCliente = new AbortController();
+            try {
+                const resp = await fetch(posUrl(`/buscar_clientes?q=${encodeURIComponent(qNow)}`), { signal: _abortCliente.signal });
+                if (!resp.ok) { listaClientes.style.display = 'none'; return; }
+                const clientes = await resp.json();
+                if (clientes.length > 0) {
+                    listaClientes.innerHTML = '';
+                    clientes.forEach(c => {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'list-group-item list-group-item-action small';
+                        const doc = c.documento || c.nit || '';
+                        const td = c.tipo_documento ? ` · ${escAttr(c.tipo_documento)}` : '';
+                        const cf = c.contribuyente ? ' <span class="badge bg-success ms-1">Contrib.</span>' : '';
+                        const tel = (c.telefono || '').trim();
+                        const telPart = tel
+                            ? ` <span class="text-success text-nowrap" title="Teléfono en ficha"><i class="bi bi-whatsapp"></i> ${escAttr(tel)}</span>`
+                            : ' <span class="text-muted small">Sin tel.</span>';
+                        btn.innerHTML = `<b>${escAttr(c.nombre || '')}</b> <span class="text-muted">${escAttr(doc)}${td}</span>${cf}${telPart}`;
+                        btn.addEventListener('mousedown', function(ev) { ev.preventDefault(); });
+                        btn.addEventListener('click', function(ev) {
+                            ev.preventDefault();
+                            aplicarClienteSeleccionado(c);
+                        });
+                        listaClientes.appendChild(btn);
                     });
-                    listaClientes.appendChild(btn);
-                });
-                listaClientes.style.display = 'block';
-            } else {
+                    listaClientes.style.display = 'block';
+                } else {
+                    listaClientes.style.display = 'none';
+                }
+            } catch (e) {
+                if (e && e.name === 'AbortError') return;
                 listaClientes.style.display = 'none';
             }
-        } catch (e) { listaClientes.style.display = 'none'; }
+        }, 280);
     });
 
     inputCliente.addEventListener('keydown', function(e) {
@@ -2682,29 +2701,46 @@
     if (selTipoComprobante) selTipoComprobante.addEventListener('change', actualizarPanelWhatsappPos);
     actualizarPanelWhatsappPos();
 
-    inputNombre.addEventListener('input', async function() {
-        let q = this.value;
-        if (q.length < 2) { listaSugerencias.style.display = 'none'; return; }
-        if (!navigator.onLine) {
-            const productos = buscarProductosEnCache(q);
-            if (productos.length > 0) {
-                listaSugerencias.innerHTML = '';
-                productos.forEach(p => { listaSugerencias.appendChild(filaSugerenciaProducto(p)); });
-                listaSugerencias.style.display = 'block';
-            } else {
-                listaSugerencias.style.display = 'none';
-            }
+    let _timerNombre = null;
+    let _abortNombre = null;
+    function pintarSugerenciasProductos(productos) {
+        if (!productos || productos.length === 0) {
+            listaSugerencias.style.display = 'none';
             return;
         }
-        try {
-            const resp = await fetch(posUrl(`/buscar_por_nombre?q=${encodeURIComponent(q)}`));
-            const productos = await resp.json();
-            if (productos.length > 0) {
-                listaSugerencias.innerHTML = '';
-                productos.forEach(p => { listaSugerencias.appendChild(filaSugerenciaProducto(p)); });
-                listaSugerencias.style.display = 'block';
+        listaSugerencias.innerHTML = '';
+        productos.forEach(p => { listaSugerencias.appendChild(filaSugerenciaProducto(p)); });
+        listaSugerencias.style.display = 'block';
+    }
+    inputNombre.addEventListener('input', function() {
+        const q = this.value;
+        if (q.length < 2) {
+            clearTimeout(_timerNombre);
+            if (_abortNombre) _abortNombre.abort();
+            listaSugerencias.style.display = 'none';
+            return;
+        }
+        const cached = buscarProductosEnCache(q);
+        if (cached.length > 0) pintarSugerenciasProductos(cached);
+        if (!navigator.onLine) {
+            if (cached.length === 0) listaSugerencias.style.display = 'none';
+            return;
+        }
+        clearTimeout(_timerNombre);
+        _timerNombre = setTimeout(async function() {
+            const qNow = inputNombre.value || '';
+            if (qNow.length < 2) return;
+            if (_abortNombre) _abortNombre.abort();
+            _abortNombre = new AbortController();
+            try {
+                const resp = await fetch(posUrl(`/buscar_por_nombre?q=${encodeURIComponent(qNow)}`), { signal: _abortNombre.signal });
+                const productos = await resp.json();
+                if (productos.length > 0) pintarSugerenciasProductos(productos);
+                else if (buscarProductosEnCache(qNow).length === 0) listaSugerencias.style.display = 'none';
+            } catch (e) {
+                if (e && e.name === 'AbortError') return;
             }
-        } catch (e) {}
+        }, 280);
     });
 
     function metaProducto(p) {
