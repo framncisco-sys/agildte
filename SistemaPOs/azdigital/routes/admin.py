@@ -2271,6 +2271,17 @@ def contingencia_registrar_evento():
         )
         conn.commit()
         flash("Evento de contingencia registrado. Debe transmitirse al MH en las próximas 24 horas.", "success")
+        try:
+            from azdigital.utils.alerta_operativa import alertar_contingencia
+
+            alertar_contingencia(
+                empresa=str(session.get("empresa_nombre") or emp_id),
+                motivo=descripcion or f"Causa MH {causa}",
+                origen="POS plan de contingencia",
+                forzar=True,
+            )
+        except Exception:
+            pass
     except Exception as e:
         conn.rollback()
         flash(f"Error al registrar evento: {e}", "danger")

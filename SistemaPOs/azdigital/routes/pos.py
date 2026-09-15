@@ -1124,6 +1124,17 @@ def guardar_venta():
             f"Venta #{venta_id}. Total ${total_neto:,.2f}",
         )
         conn.commit()
+        if emitir_contingencia:
+            try:
+                from azdigital.utils.alerta_operativa import alertar_contingencia
+
+                alertar_contingencia(
+                    empresa=str(session.get("empresa_nombre") or emp_id),
+                    motivo=f"Venta #{venta_id} emitida en contingencia (causa {causa_contingencia}).",
+                    origen="POS caja",
+                )
+            except Exception:
+                current_app.logger.exception("No se pudo enviar alerta de contingencia")
 
         cur.execute("SELECT 1 FROM ventas WHERE id = %s", (venta_id,))
         if cur.fetchone() is None:
@@ -1161,6 +1172,15 @@ def guardar_venta():
                 conn.commit()
             except Exception:
                 pass
+            try:
+                from azdigital.utils.alerta_operativa import alertar_modo_local
+
+                alertar_modo_local(
+                    "AGILDTE_SYNC_ENABLED=0: la venta no se envió a AgilDTE.",
+                    detalle=f"Venta #{venta_id} quedó solo en POS.",
+                )
+            except Exception:
+                current_app.logger.exception("No se pudo enviar alerta de modo local")
         elif not agildte_sync.get("ok"):
             current_app.logger.warning("AgilDTE sync venta #%s: %s", venta_id, agildte_sync)
             msg = (
@@ -1173,6 +1193,15 @@ def guardar_venta():
                 historial_usuarios_repo.EVENTO_SYNC_AGILDTE_FALLO,
                 f"Venta #{venta_id}: {msg}"[:2000],
             )
+            try:
+                from azdigital.utils.alerta_operativa import alertar_modo_local
+
+                alertar_modo_local(
+                    f"Falló la sincronización con AgilDTE: {msg}",
+                    detalle=f"Venta #{venta_id} quedó en POS sin código de generación.",
+                )
+            except Exception:
+                current_app.logger.exception("No se pudo enviar alerta de modo local")
 
         # Confirmar en BD local código de generación / sello si AgilDTE los devolvió.
         if agildte_sync is not None and agildte_sync.get("dte_persistido"):

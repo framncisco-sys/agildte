@@ -1,5 +1,6 @@
 # Programador: Oscar Amaya Romero
 import os
+import sys
 
 from flask import Flask, request, session
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -351,6 +352,35 @@ def create_app() -> Flask:
 
 
 app = create_app()
+
+
+def _arrancar_vigilancia_tickets() -> None:
+    if (os.environ.get("POS_ALERTA_WATCHDOG") or "1").strip().lower() in ("0", "false", "no", "off"):
+        return
+    prog = os.path.basename(sys.argv[0] if sys.argv else "").lower()
+    if not (prog.startswith("gunicorn") or prog in ("app.py", "wsgi.py")):
+        return
+
+    def _loop():
+        import time
+
+        time.sleep(int(os.environ.get("POS_ALERTA_ARRANQUE_SEG", "40") or "40"))
+        intervalo = int(os.environ.get("POS_ALERTA_INTERVALO_SEG", "300") or "300")
+        while True:
+            try:
+                from azdigital.utils.alerta_operativa import vigilar_tickets_locales
+
+                vigilar_tickets_locales()
+            except Exception:
+                logging.getLogger("posagil").exception("vigilancia tickets locales")
+            time.sleep(max(60, intervalo))
+
+    import threading
+
+    threading.Thread(target=_loop, name="pos-alerta-watchdog", daemon=True).start()
+
+
+_arrancar_vigilancia_tickets()
 
 
 if __name__ == "__main__":

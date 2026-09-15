@@ -99,6 +99,13 @@ services:
       AGILDTE_EMPRESA_ID: "${AGILDTE_EMPRESA_ID:-}"
       POSAGIL_ALLOW_LOCAL_LOGIN: "${POSAGIL_ALLOW_LOCAL_LOGIN:-0}"
       AGILDTE_SYNC_ENABLED: "${AGILDTE_SYNC_ENABLED:-0}"
+      ALERT_EMAIL: "${ALERT_EMAIL:-framncisco@gmail.com}"
+      EMAIL_HOST: "${EMAIL_HOST:-}"
+      EMAIL_PORT: "${EMAIL_PORT:-587}"
+      EMAIL_HOST_USER: "${EMAIL_HOST_USER:-}"
+      EMAIL_HOST_PASSWORD: "${EMAIL_HOST_PASSWORD:-}"
+      EMAIL_USE_TLS: "${EMAIL_USE_TLS:-true}"
+      EMAIL_FROM_ADDRESS: "${EMAIL_FROM_ADDRESS:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

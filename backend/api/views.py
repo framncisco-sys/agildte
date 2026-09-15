@@ -262,6 +262,12 @@ class EmpresaViewSet(viewsets.ModelViewSet):
             'contingencia_motivo',
         ])
 
+        try:
+            from .utils.alerta_operativa import alertar_contingencia_empresa
+            alertar_contingencia_empresa(empresa, motivo=str(motivo or ''))
+        except Exception:
+            pass
+
         pendientes_previos = Venta.objects.filter(
             empresa=empresa,
             estado_dte='PendienteEnvio',
