@@ -573,6 +573,20 @@ class AgilDTEClient:
         self._access = new_access
         if self._profile:
             self._profile.access = new_access
+        # Persistimos el access renovado para no reintentar con JWT viejo en cada venta.
+        try:
+            from flask import has_request_context, session as flask_session
+
+            if has_request_context():
+                flask_session["agildte_access_token"] = new_access
+                new_refresh = data.get("refresh")
+                if new_refresh:
+                    self._refresh = new_refresh
+                    flask_session["agildte_refresh_token"] = new_refresh
+                    if self._profile:
+                        self._profile.refresh = new_refresh
+        except Exception:
+            pass
         return True
 
     def request(
@@ -1118,6 +1132,32 @@ def login_client_from_env() -> AgilDTEClient:
     cli = client_from_env()
     cli.login(user, password)
     return cli
+
+
+def clear_stale_agildte_session_tokens() -> None:
+    """Quita JWT caducados de la sesión Flask para permitir fallback a credenciales de servicio."""
+    try:
+        from flask import has_request_context, session as flask_session
+    except ImportError:
+        return
+    if not has_request_context():
+        return
+    flask_session.pop("agildte_access_token", None)
+    flask_session.pop("agildte_refresh_token", None)
+    flask_session.pop("_agildte_role_sync_ts", None)
+
+
+def login_client_tras_sesion_expirada() -> AgilDTEClient:
+    """
+    Tras 401/refresh fallido: limpia JWT de sesión y vuelve a autenticar con
+    AGILDTE_USERNAME/PASSWORD. Así el cajero no depende de reabrir el portal.
+    """
+    clear_stale_agildte_session_tokens()
+    if not _credenciales_servicio_validas():
+        raise AgilDTEUnauthorizedError(
+            "Sesión AgilDTE expirada y no hay AGILDTE_USERNAME/PASSWORD de servicio para reentrar."
+        )
+    return login_client_from_env()
 
 
 def debe_generar_dte_remoto(tipo_comprobante_pos: str) -> bool:

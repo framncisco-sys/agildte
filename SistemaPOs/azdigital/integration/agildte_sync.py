@@ -21,7 +21,9 @@ from azdigital.integration.agildte_client import (
     AgilDTEUnauthorizedError,
     build_crear_venta_con_detalles_payload,
     login_client_from_request_or_env,
+    login_client_tras_sesion_expirada,
     public_sync_result,
+    _credenciales_servicio_validas,
 )
 from azdigital.repositories import ventas_repo
 from azdigital.utils.fecha_sv import fecha_hora_desde_registro
@@ -166,6 +168,7 @@ def sync_venta_a_agildte(
     cliente_id: int | None,
     cliente_nombre_ticket: str,
     cliente: AgilDTEClient | None = None,
+    _reintento_auth: bool = False,
 ) -> dict[str, Any]:
     """
     Crea venta remota con POST /api/ventas/crear-con-detalles/ (encola o procesa DTE en AgilDTE).
@@ -173,6 +176,7 @@ def sync_venta_a_agildte(
     No llama a generar-dte después: el backend ya dispara facturación al crear la venta.
 
     Retorna dict serializable para incluir en la respuesta JSON del POS (agildte_sync).
+    Si el JWT de sesión caducó, reintenta una vez con AGILDTE_USERNAME/PASSWORD.
     """
     cli = cliente
     try:
@@ -283,11 +287,45 @@ def sync_venta_a_agildte(
 
         return public_sync_result(out) or out
     except AgilDTEUnauthorizedError:
+        # JWT de cajero caducó: reentrar con usuario/clave de servicio (misma cuenta AgilDTE).
+        if cliente is None and not _reintento_auth and _credenciales_servicio_validas():
+            try:
+                cli_svc = login_client_tras_sesion_expirada()
+                # Dejar tokens frescos en sesión para las siguientes ventas del turno.
+                try:
+                    from flask import has_request_context, session as flask_session
+
+                    if has_request_context() and getattr(cli_svc, "_access", None):
+                        flask_session["agildte_access_token"] = cli_svc._access
+                        if getattr(cli_svc, "_refresh", None):
+                            flask_session["agildte_refresh_token"] = cli_svc._refresh
+                except Exception:
+                    pass
+                return sync_venta_a_agildte(
+                    cur=cur,
+                    empresa_id_local=empresa_id_local,
+                    venta_id_local=venta_id_local,
+                    tipo_comprobante=tipo_comprobante,
+                    tipo_pago=tipo_pago,
+                    lineas=lineas,
+                    total_neto=total_neto,
+                    total_bruto=total_bruto,
+                    descuento=descuento,
+                    cliente_id=cliente_id,
+                    cliente_nombre_ticket=cliente_nombre_ticket,
+                    cliente=cli_svc,
+                    _reintento_auth=True,
+                )
+            except (AgilDTEUnauthorizedError, AgilDTEAuthError):
+                pass
         return public_sync_result(
             {
                 "ok": False,
                 "error": "unauthorized",
-                "mensaje_usuario": "Sesión AgilDTE expirada. Vuelva a abrir el POS desde el portal.",
+                "mensaje_usuario": (
+                    "Sesión AgilDTE expirada. Se intentó reentrar con credenciales de servicio; "
+                    "si el fallo continúa, vuelva a abrir el POS desde el portal."
+                ),
             }
         ) or {"ok": False, "error": "unauthorized"}
     except AgilDTEForbiddenError:
