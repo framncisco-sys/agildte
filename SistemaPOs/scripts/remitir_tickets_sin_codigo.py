@@ -41,15 +41,18 @@ def _listar_pendientes(cur, desde: str | None):
     return cur.fetchall() or []
 
 
-def _contar_sin_codigo(cur) -> int:
-    cur.execute(
-        """
+def _contar_sin_codigo(cur, desde: str | None = None) -> int:
+    sql = """
         SELECT COUNT(*) FROM ventas v
         WHERE COALESCE(v.estado, 'ACTIVO') = 'ACTIVO'
           AND TRIM(COALESCE(v.codigo_generacion, '')) = ''
           AND UPPER(COALESCE(v.tipo_comprobante, 'TICKET')) IN ('TICKET', 'FACTURA', 'CREDITO_FISCAL')
-        """
-    )
+    """
+    params: list = []
+    if desde:
+        sql += " AND v.fecha_registro::date >= %s"
+        params.append(desde)
+    cur.execute(sql, tuple(params))
     return int((cur.fetchone() or [0])[0] or 0)
 
 
@@ -125,8 +128,9 @@ def main() -> int:
                 print(f"FALLO #{vid}: {e}")
             time.sleep(max(0.0, args.pausa))
 
-        quedan = _contar_sin_codigo(cur)
-        print(f"Resumen: ok={ok_n} fallo={fail_n} quedan_sin_codigo={quedan}")
+        quedan = _contar_sin_codigo(cur, args.desde)
+        quedan_hist = _contar_sin_codigo(cur, None)
+        print(f"Resumen: ok={ok_n} fallo={fail_n} quedan_sin_codigo_rango={quedan} historicos={quedan_hist}")
         if quedan > 0:
             det = "\n".join(errores[:20])
             alertar_modo_local(
@@ -135,7 +139,7 @@ def main() -> int:
                 forzar=True,
             )
             return 2
-        print("OK: no queda ticket local sin código de generación.")
+        print("OK: no queda ticket local sin código de generación en el rango remitido.")
         return 0
     finally:
         cur.close()

@@ -71,8 +71,8 @@ def _enviar_smtp(asunto: str, cuerpo: str) -> bool:
     cfg = _smtp_cfg()
     destino = _destino()
     if not cfg:
-        logger.warning("Alerta operativa no enviada (sin EMAIL_HOST/EMAIL_HOST_USER): %s", asunto)
-        return False
+        logger.warning("Sin SMTP local; se envía la alerta por AgilDTE: %s", asunto)
+        return _enviar_via_agildte(asunto, cuerpo)
     msg = MIMEMultipart("alternative")
     msg["Subject"] = asunto
     msg["From"] = cfg["from_address"]
@@ -102,7 +102,24 @@ def _enviar_smtp(asunto: str, cuerpo: str) -> bool:
         logger.info("Alerta operativa enviada a %s: %s", destino, asunto)
         return True
     except Exception:
-        logger.exception("No se pudo enviar alerta operativa a %s", destino)
+        logger.exception("No se pudo enviar alerta operativa SMTP a %s", destino)
+        return _enviar_via_agildte(asunto, cuerpo)
+
+
+def _enviar_via_agildte(asunto: str, cuerpo: str) -> bool:
+    """El SMTP 587 suele estar bloqueado en el droplet; AgilDTE envía por SES en 443."""
+    try:
+        from azdigital.integration.agildte_client import login_client_from_env
+
+        cli = login_client_from_env()
+        cli.post_json(
+            "/api/alertas-operativas/",
+            {"asunto": asunto, "cuerpo": cuerpo, "forzar": True},
+        )
+        logger.info("Alerta operativa enviada vía AgilDTE a %s: %s", _destino(), asunto)
+        return True
+    except Exception:
+        logger.exception("Alerta operativa vía AgilDTE falló")
         return False
 
 

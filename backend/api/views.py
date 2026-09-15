@@ -176,6 +176,22 @@ def change_password_api(request):
     return Response({'detail': 'Contraseña actualizada correctamente'})
 
 
+@api_view(['POST'])
+@drf_permission_classes([DRFIsAuthenticated])
+def alerta_operativa_api(request):
+    """El POS llama aquí si SMTP 587 está bloqueado; AgilDTE envía por SES/SMTP."""
+    from .utils.alerta_operativa import enviar_alerta_operativa
+
+    asunto = str(request.data.get('asunto') or '')[:200]
+    cuerpo = str(request.data.get('cuerpo') or '')[:8000]
+    clave = str(request.data.get('clave') or 'ops')[:80]
+    forzar = bool(request.data.get('forzar'))
+    if not asunto or not cuerpo:
+        return Response({'ok': False, 'detail': 'asunto y cuerpo requeridos'}, status=status.HTTP_400_BAD_REQUEST)
+    ok = enviar_alerta_operativa(asunto, cuerpo, clave=clave, forzar=forzar)
+    return Response({'ok': ok})
+
+
 @api_view(['GET'])
 def auth_me_api(request):
     """

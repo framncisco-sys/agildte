@@ -42,9 +42,9 @@ def _debe_enviar(clave: str) -> bool:
         return True
 
 
-def enviar_alerta_operativa(asunto: str, cuerpo: str, *, clave: str = "ops") -> bool:
+def enviar_alerta_operativa(asunto: str, cuerpo: str, *, clave: str = "ops", forzar: bool = False) -> bool:
     """Envía correo de alerta (SES API si hay AWS, si no SMTP EMAIL_*). No lanza."""
-    if not _debe_enviar(clave):
+    if not forzar and not _debe_enviar(clave):
         return False
     destino = _destino()
     from_address = (

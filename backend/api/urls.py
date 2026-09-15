@@ -23,6 +23,7 @@ urlpatterns = [
     path('auth/login/', views.login_api, name='login_api'),
     path('auth/me/', views.auth_me_api, name='auth_me'),
     path('auth/change-password/', views.change_password_api, name='change_password_api'),
+    path('alertas-operativas/', views.alerta_operativa_api, name='alerta_operativa_api'),
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('dashboard-stats/', views.dashboard_stats_api, name='dashboard_stats_api'),
