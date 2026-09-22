@@ -17,7 +17,7 @@ def listar_productos_para_compra(
     cur,
     empresa_id: int,
     umbral: float = 10,
-    limit: int = 500,
+    limit: int = 50000,
     busqueda: str | None = None,
 ) -> list[tuple]:
     """
@@ -25,11 +25,14 @@ def listar_productos_para_compra(
 
     Si ``busqueda`` tiene texto, también incluye coincidencias por nombre o código aunque
     el stock sea >= umbral (para localizar un producto específico).
+    Mismo alcance de empresa que inventario/caja (incluye empresa_id NULL anclado al tenant).
     """
     from azdigital.repositories import productos_repo
 
     productos_repo.asegurar_columnas_baja(cur)
     fa = productos_repo._filtro_activos_sql(cur, "p", solo_activos=True)
+    fe, pe = productos_repo._alcance_empresa_inventario(empresa_id)
+    lim = max(1, int(limit or 50000))
     term = (busqueda or "").strip()
     if term:
         like = f"%{term}%"
@@ -40,7 +43,8 @@ def listar_productos_para_compra(
                    COALESCE(NULLIF(p.costo_unitario, 0), 0),
                    COALESCE(p.precio_unitario, 0)
             FROM productos p
-            WHERE p.empresa_id = %s
+            WHERE 1=1
+              {fe}
               {fa}
               AND (
                 COALESCE(p.stock_actual, 0) < %s
@@ -57,7 +61,7 @@ def listar_productos_para_compra(
             LIMIT %s
             """
         params = (
-            empresa_id,
+            *pe,
             umbral,
             like,
             like,
@@ -65,7 +69,7 @@ def listar_productos_para_compra(
             term_trim,
             like,
             like,
-            max(limit, 50),
+            lim,
         )
         try:
             cur.execute(sql, params)
@@ -80,7 +84,8 @@ def listar_productos_para_compra(
                 SELECT p.id, COALESCE(TRIM(p.codigo_barra), '—'),
                        p.nombre, COALESCE(p.stock_actual, 0), 0, COALESCE(p.precio_unitario, 0)
                 FROM productos p
-                WHERE p.empresa_id = %s
+                WHERE 1=1
+                  {fe}
                   {fa}
                   AND (
                     COALESCE(p.stock_actual, 0) < %s
@@ -90,7 +95,7 @@ def listar_productos_para_compra(
                 ORDER BY p.stock_actual ASC NULLS FIRST
                 LIMIT %s
                 """,
-                (empresa_id, umbral, like, like, max(limit, 50)),
+                (*pe, umbral, like, like, lim),
             )
             return cur.fetchall() or []
         except Exception:
@@ -102,14 +107,15 @@ def listar_productos_para_compra(
                COALESCE(NULLIF(p.costo_unitario, 0), 0),
                COALESCE(p.precio_unitario, 0)
         FROM productos p
-        WHERE p.empresa_id = %s
+        WHERE 1=1
+          {fe}
           AND COALESCE(p.stock_actual, 0) < %s
           {fa}
         ORDER BY p.stock_actual ASC NULLS FIRST
         LIMIT %s
         """
     try:
-        cur.execute(sql_base, (empresa_id, umbral, limit))
+        cur.execute(sql_base, (*pe, umbral, lim))
         return cur.fetchall() or []
     except Exception:
         cur.execute(
@@ -117,12 +123,14 @@ def listar_productos_para_compra(
             SELECT p.id, COALESCE(TRIM(p.codigo_barra), '—'),
                    p.nombre, COALESCE(p.stock_actual, 0), 0, COALESCE(p.precio_unitario, 0)
             FROM productos p
-            WHERE p.empresa_id = %s AND COALESCE(p.stock_actual, 0) < %s
+            WHERE 1=1
+              {fe}
+              AND COALESCE(p.stock_actual, 0) < %s
               {fa}
             ORDER BY p.stock_actual ASC NULLS FIRST
             LIMIT %s
             """,
-            (empresa_id, umbral, limit),
+            (*pe, umbral, lim),
         )
         return cur.fetchall() or []
 

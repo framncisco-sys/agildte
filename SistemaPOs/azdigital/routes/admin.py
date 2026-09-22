@@ -38,6 +38,9 @@ from azdigital.repositories import (
 from azdigital.utils.fecha_sv import ahora_sv, hoy_sv, hoy_sv_str
 from azdigital.utils.historial_helper import registrar_accion
 from azdigital.utils.mh_cat003_unidades import catalogo_para_select_optgroups, normalizar_codigo_mh
+
+# Selects de catálogo (compras, promociones, filtros): catálogo completo de la empresa.
+CATALOGO_SELECT_LIMIT = 50000
 from azdigital.utils.precio_umb_desde_caja import (
     aplicar_derivacion_desde_presentacion,
     presentacion_tiene_monto_derivable,
@@ -688,9 +691,18 @@ def reporte_inventario_index():
 
 
 def _get_productos_para_filtro(cur, empresa_id: int):
+    from azdigital.repositories.productos_repo import _alcance_empresa_inventario
+
+    fe, pe = _alcance_empresa_inventario(empresa_id)
     cur.execute(
-        "SELECT p.id, p.nombre, p.codigo_barra FROM productos p WHERE p.empresa_id = %s ORDER BY p.nombre LIMIT 500",
-        (empresa_id,),
+        f"""
+        SELECT p.id, p.nombre, p.codigo_barra
+        FROM productos p
+        WHERE 1=1{fe}
+        ORDER BY p.nombre
+        LIMIT %s
+        """,
+        (*pe, CATALOGO_SELECT_LIMIT),
     )
     return cur.fetchall() or []
 
@@ -5694,7 +5706,9 @@ def promociones_nueva():
     conn = psycopg2.connect(**db.config)
     cur = conn.cursor()
     try:
-        productos = productos_repo.listar_inventario(cur, limit=500, empresa_id=emp_id) or []
+        productos = productos_repo.listar_inventario(
+            cur, limit=CATALOGO_SELECT_LIMIT, empresa_id=emp_id, solo_activos=True
+        ) or []
         if request.method == "POST":
             nombre = (request.form.get("nombre") or "").strip()
             tipo = (request.form.get("tipo") or "").strip().upper()
@@ -5765,7 +5779,9 @@ def promociones_editar(promocion_id: int):
             flash("Promoción no encontrada.", "danger")
             return redirect(url_for("admin.promociones"))
         prod_ids = promociones_repo.get_productos_promocion(cur, promocion_id)
-        productos = productos_repo.listar_inventario(cur, limit=500, empresa_id=promocion[1] or emp_id) or []
+        productos = productos_repo.listar_inventario(
+            cur, limit=CATALOGO_SELECT_LIMIT, empresa_id=promocion[1] or emp_id, solo_activos=True
+        ) or []
         if request.method == "POST":
             nombre = (request.form.get("nombre") or "").strip()
             tipo = (request.form.get("tipo") or "").strip().upper()
@@ -6563,7 +6579,9 @@ def _compras_tpl_context(cur, emp_id, es_super, **kw):
     from azdigital.decorators import puede_gestionar_compras_factura, rol_efectivo_usuario
 
     proveedores_lista = proveedores_repo.listar(cur, emp_id)
-    productos_lista = productos_repo.listar_inventario(cur, limit=500, empresa_id=emp_id)
+    productos_lista = productos_repo.listar_inventario(
+        cur, limit=CATALOGO_SELECT_LIMIT, empresa_id=emp_id, solo_activos=True
+    )
     empresas = (empresas_repo.listar_empresas(cur) or []) if es_super else []
     rol = rol_efectivo_usuario()
     sucursales_empresa = (

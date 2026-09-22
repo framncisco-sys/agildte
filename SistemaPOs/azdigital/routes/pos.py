@@ -881,11 +881,11 @@ def pos_catalogo_productos():
         suc_f = ctx["suc_f"]
         if ctx["use_global"]:
             res = productos_repo.listar_catalogo_pos_modal_global(
-                cur, sucursal_id_usuario=suc_f, limit=800
+                cur, sucursal_id_usuario=suc_f, limit=50000
             )
         else:
             res = productos_repo.listar_catalogo_pos_modal(
-                cur, emp_id, sucursal_id_usuario=suc_f, limit=800
+                cur, emp_id, sucursal_id_usuario=suc_f, limit=50000
             )
         productos = _filas_a_catalogo_pos_json(cur, res, emp_id, use_global=ctx["use_global"])
         return jsonify({

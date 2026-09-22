@@ -252,7 +252,7 @@ def listar_catalogo_pos_modal(
     cur,
     empresa_id: int,
     sucursal_id_usuario: int | None = None,
-    limit: int = 800,
+    limit: int = 50000,
 ) -> list[tuple]:
     """
     Lista para modal POS: mismas columnas base que buscar_por_nombre + existencia (UMB / stock).
@@ -308,7 +308,7 @@ def listar_catalogo_pos_modal(
 def listar_catalogo_pos_modal_global(
     cur,
     sucursal_id_usuario: int | None = None,
-    limit: int = 800,
+    limit: int = 50000,
 ) -> list[tuple]:
     """Superusuario POS: catálogo de todas las empresas (como inventario global)."""
     params: list[Any] = []
