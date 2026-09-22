@@ -134,10 +134,19 @@
     }
     .compr-nueva-wrap .compr-det-table tbody tr:hover { background: #f8fafc; }
     .compr-nueva-wrap .compr-det-table tbody td { padding: 0.45rem 0.55rem; vertical-align: middle; }
-    .compr-nueva-wrap .compr-det-table .form-control,
-    .compr-nueva-wrap .compr-det-table .form-select {
-        font-size: 0.88rem;
-        padding: 0.42rem 0.55rem;
+    .compr-nueva-wrap .compr-det-table .inp-codigo {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.85rem;
+        letter-spacing: 0.02em;
+        min-width: 9.5rem;
+    }
+    .compr-nueva-wrap .compr-det-table .inp-codigo.is-found {
+        border-color: #86efac;
+        background: #f0fdf4;
+    }
+    .compr-nueva-wrap .compr-det-table .inp-codigo.is-miss {
+        border-color: #fca5a5;
+        background: #fef2f2;
     }
     .compr-nueva-wrap .td-equiv .equiv-val {
         font-size: 0.88rem;
@@ -276,6 +285,7 @@
                 <table class="table compr-det-table align-middle mb-0" id="tablaDetalle">
                     <thead>
                         <tr>
+                            <th style="min-width: 140px;">Código</th>
                             <th>Producto</th>
                             <th style="min-width: 160px;">Presentación</th>
                             <th style="width: 110px;">Cant. recibida</th>
@@ -293,6 +303,9 @@
                         {% set cant_pres = (d[6]|float) if (d|length > 6 and d[6] is not none) else (d[3]|float) %}
                         {% set costo_pres = (d[4]|float) * fac %}
                         <tr class="fila-detalle">
+                            <td>
+                                <input type="text" class="form-control inp-codigo" placeholder="Pegar código…" autocomplete="off" inputmode="text" title="Pegue o escriba el código de barras y pulse Enter">
+                            </td>
                             <td>
                                 <select name="producto_id" class="form-select producto-select" data-selected="{{ d[0] }}">
                                     <option value="">— Producto —</option>
@@ -314,6 +327,9 @@
                         {% endfor %}
                         {% else %}
                         <tr class="fila-detalle">
+                            <td>
+                                <input type="text" class="form-control inp-codigo" placeholder="Pegar código…" autocomplete="off" inputmode="text" title="Pegue o escriba el código de barras y pulse Enter">
+                            </td>
                             <td>
                                 <select name="producto_id" class="form-select producto-select">
                                     <option value="">— Producto —</option>
@@ -337,7 +353,7 @@
                 </table>
             </div>
             <div class="compr-hint">
-                Ejemplo café: <strong>60</strong> en presentación <strong>Caja (×50)</strong>, costo <strong>$5.00</strong> por caja → inventario <strong>+3 000</strong> UMB, inversión <strong>$300.00</strong>.
+                Ejemplo: pegue el <strong>código de barras</strong> en la primera columna (Enter) y se selecciona el producto. Café: <strong>60</strong> en <strong>Caja (×50)</strong>, costo <strong>$5.00</strong> → inventario <strong>+3 000</strong> UMB, inversión <strong>$300.00</strong>.
             </div>
         </div>
 
@@ -369,6 +385,74 @@
     var COMPRA_PRES = {{ compra_presentaciones_opts|tojson }};
     var PRODUCTOS = {{ productos_json|tojson }};
     var productoOptionsFragment = null;
+    function normCodigo(c) {
+        return String(c == null ? '' : c).replace(/\s+/g, '').toUpperCase();
+    }
+    function buscarProductoPorCodigo(cod) {
+        var q = normCodigo(cod);
+        if (!q) return null;
+        var hit = null;
+        (PRODUCTOS || []).some(function(p) {
+            if (normCodigo(p.codigo) === q) { hit = p; return true; }
+            return false;
+        });
+        return hit;
+    }
+    function codigoDeProductoId(pid) {
+        var sid = String(pid || '');
+        if (!sid) return '';
+        for (var i = 0; i < (PRODUCTOS || []).length; i++) {
+            if (String(PRODUCTOS[i].id) === sid) return String(PRODUCTOS[i].codigo || '');
+        }
+        return '';
+    }
+    function setCodigoEstado(inp, estado) {
+        if (!inp) return;
+        inp.classList.remove('is-found', 'is-miss');
+        if (estado) inp.classList.add(estado);
+    }
+    function syncCodigoDesdeProducto(tr) {
+        var sel = tr.querySelector('.producto-select');
+        var inp = tr.querySelector('.inp-codigo');
+        if (!sel || !inp) return;
+        var cod = codigoDeProductoId(sel.value);
+        if (cod) {
+            inp.value = cod;
+            setCodigoEstado(inp, 'is-found');
+        } else if (!sel.value) {
+            if (!(inp.value || '').trim()) setCodigoEstado(inp, null);
+        }
+    }
+    function aplicarCodigoEnFila(tr, opts) {
+        opts = opts || {};
+        var inp = tr.querySelector('.inp-codigo');
+        var sel = tr.querySelector('.producto-select');
+        if (!inp || !sel) return false;
+        var raw = (inp.value || '').trim();
+        if (!raw) {
+            setCodigoEstado(inp, null);
+            return false;
+        }
+        var p = buscarProductoPorCodigo(raw);
+        if (!p) {
+            setCodigoEstado(inp, 'is-miss');
+            if (opts.alertar) alert('No se encontró producto con código: ' + raw);
+            return false;
+        }
+        inp.value = String(p.codigo || raw);
+        setCodigoEstado(inp, 'is-found');
+        if (String(sel.value) !== String(p.id)) {
+            sel.value = String(p.id);
+            onProductChange(tr);
+        } else {
+            syncRow(tr);
+        }
+        if (opts.focusCant) {
+            var cant = tr.querySelector('.inp-cant');
+            if (cant) { cant.focus(); cant.select(); }
+        }
+        return true;
+    }
     function buildProductoOptionsFragment() {
         if (productoOptionsFragment) return productoOptionsFragment;
         var frag = document.createDocumentFragment();
@@ -460,12 +544,14 @@
         if (!pid) {
             psel.innerHTML = '<option value="">— Elija producto —</option>';
             psel.disabled = true;
+            syncCodigoDesdeProducto(tr);
             syncRow(tr);
             return;
         }
         var facH = tr.querySelector('.factor-hidden');
         var nomH = tr.querySelector('.pres-nombre-hidden');
         fillPresSelect(psel, pid, facH ? parseFloat(facH.value) : null, nomH ? nomH.value : null);
+        syncCodigoDesdeProducto(tr);
         syncRow(tr);
     }
     function agregarOpcionProducto(pid, nombre, codigo) {
@@ -493,6 +579,24 @@
             if (psel) psel.addEventListener('change', function() { syncRow(tr); });
             tr.querySelector('.inp-cant').addEventListener('input', function() { syncRow(tr); });
             tr.querySelector('.inp-costo').addEventListener('input', function() { syncRow(tr); });
+            var cinp = tr.querySelector('.inp-codigo');
+            if (cinp) {
+                cinp.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        aplicarCodigoEnFila(tr, { alertar: true, focusCant: true });
+                    }
+                });
+                cinp.addEventListener('paste', function() {
+                    setTimeout(function() { aplicarCodigoEnFila(tr, { focusCant: true }); }, 0);
+                });
+                cinp.addEventListener('blur', function() {
+                    if ((cinp.value || '').trim()) aplicarCodigoEnFila(tr, {});
+                });
+                cinp.addEventListener('input', function() {
+                    setCodigoEstado(cinp, null);
+                });
+            }
         }
         tbody.querySelectorAll('.fila-detalle').forEach(function(tr) {
             initProductoSelect(tr.querySelector('.producto-select'));
@@ -503,7 +607,9 @@
         document.getElementById('btnAgregarLinea').addEventListener('click', function() {
             var first = tbody.querySelector('.fila-detalle');
             var tr = first.cloneNode(true);
-            tr.querySelectorAll('input.inp-cant, input.inp-costo').forEach(function(inp) { inp.value = ''; });
+            tr.querySelectorAll('input.inp-cant, input.inp-costo, input.inp-codigo').forEach(function(inp) { inp.value = ''; });
+            var cinp = tr.querySelector('.inp-codigo');
+            if (cinp) setCodigoEstado(cinp, null);
             tr.querySelector('.equiv-val').textContent = '—';
             tr.querySelector('.td-sub').textContent = '$0.00';
             tr.querySelector('.factor-hidden').value = '1';
@@ -520,6 +626,7 @@
             lastTd.innerHTML = '<button type="button" class="btn-quitar" title="Quitar línea"><i class="bi bi-trash"></i></button>';
             tbody.appendChild(tr);
             bindRow(tr);
+            if (cinp) cinp.focus();
         });
 
         tbody.addEventListener('click', function(e) {
