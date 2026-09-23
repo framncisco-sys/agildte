@@ -243,7 +243,7 @@ export function DashboardPage() {
         </div>
         {comprasPremium && (
           <div className="lg:col-span-1 min-w-0">
-            <ComprasDelMesCard />
+            <ComprasDelMesCard empresaId={empresaId} />
           </div>
         )}
       </div>

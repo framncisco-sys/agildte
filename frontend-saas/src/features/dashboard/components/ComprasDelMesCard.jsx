@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react'
+import { getResumenIvaMesContable } from '../../../api/dashboard'
+
 /**
  * Cuadro resumen compras / IVA del mes (premium).
- * Por ahora datos de demostración; luego se conectará al backend.
+ * Datos publicados por el Sistema Contable (no líneas de compras).
  */
 const COMPRAS_MES_VACIO = {
   ventas: 0,
@@ -8,6 +11,10 @@ const COMPRAS_MES_VACIO = {
   retencion: 0,
   compras: 0,
   credito_fiscal: 0,
+  valor_a_pagar: null,
+  tiene_datos: false,
+  periodo: null,
+  actualizado_en: null,
 }
 
 function formatMoney(n) {
@@ -24,11 +31,58 @@ const ROWS = [
   { key: 'credito_fiscal', label: 'Crédito fiscal' },
 ]
 
-export function ComprasDelMesCard({ data = COMPRAS_MES_VACIO }) {
+export function ComprasDelMesCard({ empresaId }) {
+  const [data, setData] = useState(COMPRAS_MES_VACIO)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!empresaId) {
+      setData(COMPRAS_MES_VACIO)
+      setError(null)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    getResumenIvaMesContable(empresaId)
+      .then((res) => {
+        if (cancelled) return
+        setData({
+          ...COMPRAS_MES_VACIO,
+          ...res,
+          tiene_datos: !!res?.tiene_datos,
+        })
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setData(COMPRAS_MES_VACIO)
+        setError(
+          err.response?.data?.error
+          || err.message
+          || 'No se pudo cargar el resumen contable.',
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [empresaId])
+
   const debito = Number(data.debito) || 0
   const credito = Number(data.credito_fiscal) || 0
   const retencion = Number(data.retencion) || 0
-  const valorPagar = Math.round((debito - credito - retencion) * 100) / 100
+  const valorPagar = data.valor_a_pagar != null && Number.isFinite(Number(data.valor_a_pagar))
+    ? Number(data.valor_a_pagar)
+    : Math.round((debito - credito - retencion) * 100) / 100
+
+  const subtexto = loading
+    ? 'Cargando resumen…'
+    : error
+      ? error
+      : data.tiene_datos_compras
+        ? `Ventas en vivo (AgilDTE)${data.periodo ? ` · compras del contable (${data.periodo})` : ''}.`
+        : 'Ventas en vivo (AgilDTE). Aún no hay compras publicadas desde el servidor contable; se muestran $0 en compras/crédito.'
 
   return (
     <div className="bg-agil-bg-white rounded-xl border border-agil-border-subtle shadow-sm p-4 sm:p-5 h-full flex flex-col min-h-[280px]">
@@ -41,7 +95,7 @@ export function ComprasDelMesCard({ data = COMPRAS_MES_VACIO }) {
         </span>
       </div>
       <p className="text-xs text-agil-text-secondary mb-3">
-        Resumen IVA ventas vs compras (mes en curso). Sin movimientos registrados.
+        {subtexto}
       </p>
       <div className="flex-1 overflow-auto rounded-lg border border-agil-border-subtle">
         <table className="w-full text-sm">
@@ -50,7 +104,7 @@ export function ComprasDelMesCard({ data = COMPRAS_MES_VACIO }) {
               <tr key={key} className="border-b border-agil-border-subtle last:border-b-0">
                 <td className="px-3 py-2.5 text-agil-text-primary font-medium">{label}</td>
                 <td className="px-3 py-2.5 text-right text-agil-text-primary tabular-nums whitespace-nowrap">
-                  {formatMoney(data[key])}
+                  {loading ? '…' : formatMoney(data[key])}
                 </td>
               </tr>
             ))}
@@ -59,14 +113,17 @@ export function ComprasDelMesCard({ data = COMPRAS_MES_VACIO }) {
                 Valor a pagar el fin de mes
               </td>
               <td className="px-3 py-3 text-right font-bold text-agil-primary tabular-nums whitespace-nowrap">
-                {formatMoney(valorPagar)}
+                {loading ? '…' : formatMoney(valorPagar)}
               </td>
             </tr>
           </tbody>
         </table>
       </div>
       <p className="text-[11px] text-agil-text-secondary mt-2 leading-snug">
-        Cálculo: Débito − Crédito fiscal − Retención
+        Cálculo: Débito (AgilDTE) − Crédito fiscal (contable) − Retención (AgilDTE)
+        {data.actualizado_en
+          ? ` · Compras actualizadas ${new Date(data.actualizado_en).toLocaleString('es-SV')}`
+          : ' · Sin publicación de compras aún (se conserva vacío, no se borra histórico de otros periodos)'}
       </p>
     </div>
   )

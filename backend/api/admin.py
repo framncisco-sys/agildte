@@ -1,7 +1,11 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import Cliente, Compra, Venta, Empresa, Producto, DetalleVenta, Liquidacion, RetencionRecibida, PerfilUsuario, Correlativo, ActividadEconomica, TareaFacturacion, RegistroAuditoria
+from .models import (
+    Cliente, Compra, Venta, Empresa, Producto, DetalleVenta, Liquidacion,
+    RetencionRecibida, PerfilUsuario, Correlativo, ActividadEconomica,
+    TareaFacturacion, RegistroAuditoria, ResumenIvaMensualContable,
+)
 
 @admin.register(Cliente)
 class ClienteAdmin(admin.ModelAdmin):
@@ -176,11 +180,18 @@ class VentaAdmin(admin.ModelAdmin):
 
 @admin.register(Empresa)
 class EmpresaAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'nrc', 'nit', 'ambiente', 'cod_actividad')
+    list_display = ('id', 'nombre', 'nrc', 'nit', 'ambiente', 'cod_actividad')
+    list_display_links = ('id', 'nombre')
     list_filter = ('ambiente', 'es_importador')
-    search_fields = ('nombre', 'nrc', 'nit', 'cod_actividad')
+    search_fields = ('nombre', 'nrc', 'nit', 'cod_actividad', 'id')
+    ordering = ('id',)
+    readonly_fields = ('id',)
     
     fieldsets = (
+        ('Identificador AgilDTE', {
+            'fields': ('id',),
+            'description': 'Use este número en el Sistema Contable → «ID empresa en AgilDTE».',
+        }),
         ('Información Básica', {
             'fields': ('nombre', 'nrc', 'nit', 'direccion', 'es_importador')
         }),
@@ -229,7 +240,25 @@ class EmpresaAdmin(admin.ModelAdmin):
             'fields': ('dashboard_compras_premium_enabled',),
             'description': 'Muestra el cuadro «Compras del mes» en el dashboard AgilDTE.',
         }),
+        ('Sistema Contable (local / integración)', {
+            'fields': ('sync_contable_habilitado', 'sistema_contable_empresa_id'),
+            'description': (
+                'Vínculo con el bufete. El resumen IVA lo publica el contable; '
+                'no aplicar migraciones en VPS productivo hasta validar en local.'
+            ),
+        }),
     )
+
+
+@admin.register(ResumenIvaMensualContable)
+class ResumenIvaMensualContableAdmin(admin.ModelAdmin):
+    list_display = (
+        'empresa', 'periodo', 'ventas', 'debito', 'compras', 'credito_fiscal',
+        'valor_a_pagar', 'actualizado_en',
+    )
+    list_filter = ('periodo', 'empresa')
+    search_fields = ('empresa__nombre', 'empresa__nrc', 'periodo')
+    readonly_fields = ('creado_en', 'actualizado_en')
 
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):

@@ -16,6 +16,8 @@ export function buildEmpresaPayload(form) {
 
   payload.whatsapp_premium_enabled = Boolean(payload.whatsapp_premium_enabled)
   payload.dashboard_compras_premium_enabled = Boolean(payload.dashboard_compras_premium_enabled)
+  payload.sync_contable_habilitado = Boolean(payload.sync_contable_habilitado)
+  if (!payload.sistema_contable_empresa_id) delete payload.sistema_contable_empresa_id
 
   return payload
 }

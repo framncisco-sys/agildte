@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from . import views
+from . import views_integracion_contable
 from .views import EmpresaViewSet, VentaViewSet, ActividadEconomicaViewSet
 from .views_carga_masiva import carga_masiva_upload, carga_masiva_plantilla_ejemplo
 
@@ -29,6 +30,13 @@ urlpatterns = [
     path('dashboard-stats/', views.dashboard_stats_api, name='dashboard_stats_api'),
     path('clientes/', views.clientes_api, name='clientes_api'),
     path('clientes/<int:pk>/', views.cliente_detail_api, name='cliente_detail_api'),
+
+    # Integración Sistema Contable (resumen IVA; validar en LOCAL antes de producción)
+    path(
+        'integraciones/contable/resumen-iva-mes/',
+        views_integracion_contable.resumen_iva_mes_contable_api,
+        name='integracion_contable_resumen_iva_mes',
+    ),
     
     # COMPRAS
     path('compras/crear/', views.crear_compra),

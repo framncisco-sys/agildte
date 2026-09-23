@@ -26,6 +26,7 @@ export function EmpresasTable({ empresas = [], loading = false, onDelete }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-slate-50 border-b border-slate-200">
+            <th className="text-left p-3 font-medium text-slate-600">ID</th>
             <th className="text-left p-3 font-medium text-slate-600">Empresa</th>
             <th className="text-left p-3 font-medium text-slate-600">NRC</th>
             <th className="text-left p-3 font-medium text-slate-600">NIT</th>
@@ -37,6 +38,7 @@ export function EmpresasTable({ empresas = [], loading = false, onDelete }) {
         <tbody>
           {empresas.map((e) => (
             <tr key={e.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/80">
+              <td className="p-3 font-mono text-sm font-semibold text-indigo-700">{e.id}</td>
               <td className="p-3 font-medium text-slate-800">{e.nombre}</td>
               <td className="p-3 text-slate-600 font-mono text-xs">{e.nrc}</td>
               <td className="p-3 text-slate-600 font-mono text-xs">{e.nit || '—'}</td>

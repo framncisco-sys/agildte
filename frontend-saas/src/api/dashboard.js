@@ -11,3 +11,15 @@ export async function getDashboardStats(empresaId = null) {
   })
   return data
 }
+
+/**
+ * Resumen IVA mensual publicado por el Sistema Contable (cuadro premium).
+ * @param {number} empresaId
+ * @param {string|null} periodo YYYY-MM
+ */
+export async function getResumenIvaMesContable(empresaId, periodo = null) {
+  const params = { empresa_id: empresaId }
+  if (periodo) params.periodo = periodo
+  const { data } = await apiClient.get('/integraciones/contable/resumen-iva-mes/', { params })
+  return data
+}

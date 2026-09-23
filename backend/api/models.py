@@ -194,6 +194,20 @@ class Empresa(models.Model):
         default=False,
         help_text="Si está activo, el dashboard AgilDTE muestra el cuadro «Compras del mes» (IVA débito/crédito).",
     )
+    # Vínculo opcional con Sistema Contable (bufete). Solo desarrollo/local hasta desplegar con cuidado.
+    sistema_contable_empresa_id = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=True,
+        help_text=(
+            "UUID permanente de EmpresaCliente en el sistema contable (único e intransferible). "
+            "Es el vínculo oficial Contable↔AgilDTE; no usar el id numérico de esta ficha."
+        ),
+    )
+    sync_contable_habilitado = models.BooleanField(
+        default=False,
+        help_text="Si está activo, acepta publicación de resumen IVA desde el sistema contable.",
+    )
     # Legacy: ya no se usan para el envío (credenciales centralizadas en env). Se conservan por compatibilidad.
     whatsapp_phone_number_id = models.CharField(
         max_length=32,
@@ -1048,3 +1062,48 @@ class RegistroAuditoria(models.Model):
 
     def __str__(self):
         return f"{self.creado_en} {self.evento} {self.username or '-'} {self.ip_address or '-'}"
+
+
+class ResumenIvaMensualContable(models.Model):
+    """
+    Resumen IVA del mes publicado por el Sistema Contable (fuente de verdad del libro).
+    Alimenta el cuadro premium «Compras del mes» sin sincronizar proveedores ni líneas.
+    """
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name='resumenes_iva_contable',
+    )
+    periodo = models.CharField(max_length=7, help_text='YYYY-MM')
+    ventas = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    debito = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    retencion = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    compras = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    credito_fiscal = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    valor_a_pagar = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    generado_en = models.DateTimeField(null=True, blank=True)
+    origen = models.CharField(max_length=40, default='sistema_contable')
+    checksum = models.CharField(max_length=64, blank=True, default='')
+    nrc_reportado = models.CharField(max_length=20, blank=True, default='')
+    documento_reportado = models.CharField(
+        max_length=30,
+        blank=True,
+        default='',
+        help_text='NIT o DUI normalizado enviado por el contable.',
+    )
+    actualizado_en = models.DateTimeField(auto_now=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Resumen IVA mensual (contable)'
+        verbose_name_plural = 'Resúmenes IVA mensuales (contable)'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['empresa', 'periodo'],
+                name='uniq_resumen_iva_contable_empresa_periodo',
+            ),
+        ]
+        ordering = ['-periodo', 'empresa_id']
+
+    def __str__(self):
+        return f"{self.empresa_id} {self.periodo} pagar={self.valor_a_pagar}"

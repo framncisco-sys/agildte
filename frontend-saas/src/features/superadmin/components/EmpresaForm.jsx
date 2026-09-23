@@ -43,6 +43,8 @@ const EMPTY = {
   clave_certificado: '',
   whatsapp_premium_enabled: false,
   dashboard_compras_premium_enabled: false,
+  sync_contable_habilitado: false,
+  sistema_contable_empresa_id: '',
   whatsapp_phone_number_id: '',
   whatsapp_access_token: '',
   whatsapp_business_account_id: '',
@@ -317,6 +319,31 @@ export function EmpresaForm({ initial = EMPTY, onSubmit, saving = false, submitL
               Mostrar cuadro «Compras del mes» en el dashboard (premium)
             </span>
           </label>
+          <label className="inline-flex items-center gap-2 cursor-pointer mt-3">
+            <input
+              type="checkbox"
+              name="sync_contable_habilitado"
+              checked={Boolean(form.sync_contable_habilitado)}
+              onChange={handleChange}
+              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            <span className="text-sm text-slate-700">
+              Aceptar resumen IVA desde Sistema Contable
+            </span>
+          </label>
+          <div className="mt-3">
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              UUID empresa en Sistema Contable (opcional)
+            </label>
+            <input
+              type="text"
+              name="sistema_contable_empresa_id"
+              value={form.sistema_contable_empresa_id || ''}
+              onChange={handleChange}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            />
+          </div>
         </section>
 
         <section className="border-t border-slate-200 pt-6">
