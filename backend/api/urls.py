@@ -37,6 +37,16 @@ urlpatterns = [
         views_integracion_contable.resumen_iva_mes_contable_api,
         name='integracion_contable_resumen_iva_mes',
     ),
+    path(
+        'integraciones/contable/dte/manifest/',
+        views_integracion_contable.dte_manifest_contable_api,
+        name='integracion_contable_dte_manifest',
+    ),
+    path(
+        'integraciones/contable/dte/<str:codigo_generacion>/',
+        views_integracion_contable.dte_documento_contable_api,
+        name='integracion_contable_dte_documento',
+    ),
     
     # COMPRAS
     path('compras/crear/', views.crear_compra),

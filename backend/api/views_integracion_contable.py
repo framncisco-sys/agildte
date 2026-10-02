@@ -10,8 +10,9 @@ GET híbrido:
 from __future__ import annotations
 
 import calendar
+import hashlib
 import re
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db.models import Sum
@@ -22,7 +23,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from .dte_constants import TIPO_VENTA_A_CODIGO_DOCUMENTO_MH, codigo_documento_mh_por_tipo_venta
 from .models import Empresa, ResumenIvaMensualContable, Venta
+from .utils.dte_historico import obtener_dte_historico
 from .utils.tenant import get_empresa_ids_allowlist, require_empresa_allowed
 
 
@@ -361,3 +364,200 @@ def _post_resumen(request):
         str(empresa.sistema_contable_empresa_id) if empresa.sistema_contable_empresa_id else None
     )
     return Response(payload, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# Fase 2: DTE emitidos para el motor contable del servidor (solo lectura).
+# ---------------------------------------------------------------------------
+
+ESTADOS_DTE_MANIFEST = ('AceptadoMH', 'Anulado')
+DIAS_VENTANA_MANIFEST = 10
+MAX_DIAS_RANGO_MANIFEST = 93
+MAX_LIMIT_MANIFEST = 5000
+
+
+def _parse_fecha(valor) -> date | None:
+    s = str(valor or '').strip()
+    if not s:
+        return None
+    try:
+        return date.fromisoformat(s[:10])
+    except ValueError:
+        return None
+
+
+def _sha256_texto(texto: str | None) -> str:
+    if not texto:
+        return ''
+    return hashlib.sha256(texto.encode('utf-8')).hexdigest()
+
+
+def _resolver_empresa_para_dte(request):
+    empresa_ids = get_empresa_ids_allowlist(request)
+    if not empresa_ids:
+        return None, Response({'error': 'Autenticación requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    qp = request.query_params
+    empresa, err = _resolver_empresa_contable(
+        request,
+        empresa_id_raw=qp.get('empresa_id'),
+        contable_uuid_raw=qp.get('sistema_contable_empresa_id') or qp.get('contable_empresa_id'),
+        nrc_raw=qp.get('nrc'),
+    )
+    if err is not None:
+        return None, err
+
+    if not empresa.sync_contable_habilitado:
+        return None, Response(
+            {
+                'error': 'La empresa no tiene sync contable habilitado en AgilDTE.',
+                'code': 'sync_contable_disabled',
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return empresa, None
+
+
+def _qs_ventas_dte_empresa(empresa: Empresa):
+    return (
+        Venta.objects.filter(
+            empresa_id=empresa.id,
+            ambiente_emision=empresa.ambiente,
+            estado_dte__in=ESTADOS_DTE_MANIFEST,
+        )
+        .exclude(codigo_generacion__isnull=True)
+        .exclude(codigo_generacion='')
+    )
+
+
+def _item_manifest(v: Venta) -> dict:
+    ret1 = _dec(v.iva_retenido_1)
+    ret2 = _dec(v.iva_retenido_2)
+    gravada = _dec(v.venta_gravada)
+    exenta = _dec(v.venta_exenta)
+    nosuj = _dec(v.venta_no_sujeta)
+    debito = _dec(v.debito_fiscal)
+    total = (gravada + exenta + nosuj + debito).quantize(Decimal('0.01'))
+    return {
+        'codigo_generacion': (v.codigo_generacion or '').strip().upper(),
+        'tipo_dte': codigo_documento_mh_por_tipo_venta(v.tipo_venta),
+        'tipo_venta': v.tipo_venta,
+        'numero_control': v.numero_control or '',
+        'sello_recepcion': v.sello_recepcion or '',
+        'fecha_emision': v.fecha_emision.isoformat() if v.fecha_emision else None,
+        'hora_emision': v.hora_emision or '',
+        'estado': v.estado_dte,
+        'condicion_operacion': v.condicion_operacion,
+        'receptor_nombre': v.nombre_receptor or '',
+        'receptor_nrc': _solo_digitos(v.nrc_receptor),
+        'receptor_documento': _solo_digitos(v.documento_receptor),
+        'venta_gravada': float(gravada),
+        'venta_exenta': float(exenta),
+        'venta_no_sujeta': float(nosuj),
+        'debito_fiscal': float(debito),
+        'iva_retenido_1': float(ret1),
+        'iva_retenido_2': float(ret2),
+        'total': float(total),
+        'tiene_retencion': (ret1 + ret2) > 0,
+        'codigo_generacion_referenciado': (v.codigo_generacion_referenciado or '').strip().upper() or None,
+        'documento_relacionado_tipo': v.documento_relacionado_tipo or None,
+        'tiene_json': bool((v.dte_firmado or '').strip()),
+        'sha256': _sha256_texto(v.dte_firmado),
+    }
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dte_manifest_contable_api(request):
+    """
+    Lista los DTE emitidos (AceptadoMH y Anulado) de la empresa en un rango de fechas.
+
+    Sin `desde`/`hasta`: ventana móvil de los últimos días cerrados (hasta = ayer), para que el
+    motor detecte también anulaciones tardías. Venta no tiene updated_at; el motor compara
+    estado + sha256 contra lo que ya asentó.
+    """
+    empresa, err = _resolver_empresa_para_dte(request)
+    if err is not None:
+        return err
+
+    qp = request.query_params
+    hoy = timezone.localdate()
+    hasta = _parse_fecha(qp.get('hasta')) or (hoy - timedelta(days=1))
+    desde = _parse_fecha(qp.get('desde')) or (hasta - timedelta(days=DIAS_VENTANA_MANIFEST - 1))
+    if desde > hasta:
+        return Response({'error': 'desde no puede ser mayor que hasta'}, status=status.HTTP_400_BAD_REQUEST)
+    if (hasta - desde).days + 1 > MAX_DIAS_RANGO_MANIFEST:
+        return Response(
+            {'error': f'Rango máximo {MAX_DIAS_RANGO_MANIFEST} días'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        limit = min(max(int(qp.get('limit') or 1000), 1), MAX_LIMIT_MANIFEST)
+        offset = max(int(qp.get('offset') or 0), 0)
+    except (TypeError, ValueError):
+        return Response({'error': 'limit/offset inválidos'}, status=status.HTTP_400_BAD_REQUEST)
+
+    qs = _qs_ventas_dte_empresa(empresa).filter(fecha_emision__gte=desde, fecha_emision__lte=hasta)
+    tipos = {t.strip() for t in (qp.get('tipos') or '').split(',') if t.strip()}
+    if tipos:
+        tipos_venta = [tv for tv, cod in TIPO_VENTA_A_CODIGO_DOCUMENTO_MH.items() if cod in tipos]
+        qs = qs.filter(tipo_venta__in=tipos_venta)
+    total_registros = qs.count()
+    ventas = list(qs.order_by('fecha_emision', 'hora_emision', 'id')[offset:offset + limit + 1])
+    hay_mas = len(ventas) > limit
+    items = [_item_manifest(v) for v in ventas[:limit]]
+
+    return Response(
+        {
+            'empresa_id': empresa.id,
+            'sistema_contable_empresa_id': (
+                str(empresa.sistema_contable_empresa_id) if empresa.sistema_contable_empresa_id else None
+            ),
+            'nrc': _solo_digitos(empresa.nrc),
+            'ambiente': empresa.ambiente,
+            'desde': desde.isoformat(),
+            'hasta': hasta.isoformat(),
+            'offset': offset,
+            'limit': limit,
+            'total': total_registros,
+            'hay_mas': hay_mas,
+            'generado_en': timezone.now().isoformat(),
+            'items': items,
+        }
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dte_documento_contable_api(request, codigo_generacion: str):
+    """
+    Devuelve el JSON original firmado y aceptado por MH (con firmaElectronica y selloRecibido).
+    Nunca reconstruye: si la venta no conserva el JWS responde 404 `sin_json_firmado`.
+    """
+    empresa, err = _resolver_empresa_para_dte(request)
+    if err is not None:
+        return err
+
+    codigo = _parse_uuid(codigo_generacion)
+    if not codigo:
+        return Response({'error': 'codigo_generacion inválido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    venta = (
+        _qs_ventas_dte_empresa(empresa)
+        .filter(codigo_generacion__iexact=codigo)
+        .order_by('-id')
+        .first()
+    )
+    if venta is None:
+        return Response({'error': 'DTE no encontrado', 'code': 'dte_no_encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+    documento = obtener_dte_historico(venta)
+    if documento is None:
+        return Response(
+            {'error': 'La venta no conserva el JSON firmado.', 'code': 'sin_json_firmado'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    meta = _item_manifest(venta)
+    return Response({**meta, 'documento': documento})
