@@ -15,7 +15,7 @@ import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
@@ -392,6 +392,12 @@ def _sha256_texto(texto: str | None) -> str:
     return hashlib.sha256(texto.encode('utf-8')).hexdigest()
 
 
+def _fecha_local_iso(valor: datetime | None) -> str | None:
+    if not valor:
+        return None
+    return timezone.localtime(valor).date().isoformat()
+
+
 def _resolver_empresa_para_dte(request):
     empresa_ids = get_empresa_ids_allowlist(request)
     if not empresa_ids:
@@ -463,6 +469,10 @@ def _item_manifest(v: Venta) -> dict:
         'documento_relacionado_tipo': v.documento_relacionado_tipo or None,
         'tiene_json': bool((v.dte_firmado or '').strip()),
         'sha256': _sha256_texto(v.dte_firmado),
+        'fecha_registro': _fecha_local_iso(v.fecha_registro),
+        'fecha_anulacion': _fecha_local_iso(v.fecha_anulacion),
+        'codigo_generacion_anulacion': (v.codigo_generacion_anulacion or '').strip().upper() or None,
+        'sello_anulacion': (v.sello_anulacion or '').strip() or None,
     }
 
 
@@ -470,11 +480,16 @@ def _item_manifest(v: Venta) -> dict:
 @permission_classes([IsAuthenticated])
 def dte_manifest_contable_api(request):
     """
-    Lista los DTE emitidos (AceptadoMH y Anulado) de la empresa en un rango de fechas.
+    Lista los DTE emitidos (AceptadoMH y Anulado) de la empresa que tuvieron actividad en el rango.
 
-    Sin `desde`/`hasta`: ventana móvil de los últimos días cerrados (hasta = ayer), para que el
-    motor detecte también anulaciones tardías. Venta no tiene updated_at; el motor compara
-    estado + sha256 contra lo que ya asentó.
+    Un documento entra si cualquiera de estas fechas (hora de El Salvador) cae en [desde, hasta]:
+    - fecha_emision: emisión normal.
+    - fecha_registro: factura generada tarde con fecha de emisión anterior al rango.
+    - fecha_anulacion: anulación tardía de un documento emitido meses atrás. Los anulados
+      históricos sin fecha_anulacion solo entran por emisión o registro.
+
+    Sin `desde`/`hasta`: ventana móvil de los últimos días cerrados (hasta = ayer). El motor
+    compara estado + sha256 contra lo que ya asentó.
     """
     empresa, err = _resolver_empresa_para_dte(request)
     if err is not None:
@@ -498,7 +513,11 @@ def dte_manifest_contable_api(request):
     except (TypeError, ValueError):
         return Response({'error': 'limit/offset inválidos'}, status=status.HTTP_400_BAD_REQUEST)
 
-    qs = _qs_ventas_dte_empresa(empresa).filter(fecha_emision__gte=desde, fecha_emision__lte=hasta)
+    qs = _qs_ventas_dte_empresa(empresa).filter(
+        Q(fecha_emision__range=(desde, hasta))
+        | Q(fecha_registro__date__range=(desde, hasta))
+        | Q(fecha_anulacion__date__range=(desde, hasta))
+    )
     tipos = {t.strip() for t in (qp.get('tipos') or '').split(',') if t.strip()}
     if tipos:
         tipos_venta = [tv for tv, cod in TIPO_VENTA_A_CODIGO_DOCUMENTO_MH.items() if cod in tipos]

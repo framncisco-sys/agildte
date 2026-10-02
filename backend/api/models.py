@@ -608,6 +608,18 @@ class Venta(models.Model):
         ('Anulado', 'Anulado'),
     ]
     estado_dte = models.CharField(max_length=20, choices=ESTADO_DTE_CHOICES, default='Borrador')
+    fecha_anulacion = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Momento en que MH procesó el evento de invalidación (null en anulados históricos)",
+    )
+    codigo_generacion_anulacion = models.CharField(
+        max_length=36, null=True, blank=True,
+        help_text="codigoGeneracion del evento de invalidación enviado a MH",
+    )
+    sello_anulacion = models.CharField(
+        max_length=100, null=True, blank=True,
+        help_text="selloRecibido devuelto por MH para el evento de invalidación",
+    )
     error_envio_mensaje = models.CharField(
         max_length=500, blank=True, null=True,
         help_text="Último error al enviar a MH (timeout, red, servidor caído)"

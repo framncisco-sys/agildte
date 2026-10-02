@@ -11,6 +11,7 @@ from typing import Optional, Dict, Any
 
 import requests
 from django.conf import settings
+from django.utils import timezone as dj_timezone
 
 from ..firmador_interno import firmar_dte_interno
 from ..models import Empresa, Venta
@@ -1003,6 +1004,9 @@ class FacturacionService:
                 estado = datos.get("estado", "")
                 if estado == "PROCESADO":
                     venta.estado_dte = 'Anulado'
+                    venta.fecha_anulacion = dj_timezone.now()
+                    venta.codigo_generacion_anulacion = codigo_anulacion
+                    venta.sello_anulacion = datos.get("selloRecibido")
                     venta.save()
                     logger.info(f"DTE venta #{venta.id} anulado exitosamente")
                     return {
